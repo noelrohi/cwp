@@ -1,7 +1,4 @@
-import { api } from "@chatwithpodcast/backend/convex/_generated/api";
-import type { Id } from "@chatwithpodcast/backend/convex/_generated/dataModel";
 import { generateId, tool, type UIMessageStreamWriter } from "ai";
-import { ConvexHttpClient } from "convex/browser";
 import z from "zod/v4";
 import type { MyUIMessage } from "@/ai/schema";
 
@@ -25,7 +22,7 @@ export const createSearchTool = ({
         .optional()
         .describe("Filter to a specific episode id"),
     }),
-    execute: async ({ query, limit = 16, podcastExternalId, episodeId }) => {
+    execute: async ({ query, limit = 16, episodeId }) => {
       const id = generateId();
 
       writer.write({
@@ -80,12 +77,9 @@ export const createEpisodeDetailsTool = ({
         query: z.string().optional(),
         limit: z.number().int().min(1).max(64).optional().default(6),
       })
-      .refine(
-        (v) => Boolean(v.episodeId || (v.episodeIds && v.episodeIds.length)),
-        {
-          message: "Provide episodeId or episodeIds",
-        },
-      ),
+      .refine((v) => Boolean(v.episodeId || v.episodeIds?.length), {
+        message: "Provide episodeId or episodeIds",
+      }),
     execute: async ({ episodeId, episodeIds, query, limit = 6 }) => {
       const id = generateId();
 
@@ -98,120 +92,64 @@ export const createEpisodeDetailsTool = ({
         },
       });
 
-      try {
-        const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
-        if (!convexUrl) throw new Error("Missing NEXT_PUBLIC_CONVEX_URL");
-        const client = new ConvexHttpClient(convexUrl);
+      const ids: string[] = episodeId ? [episodeId] : (episodeIds as string[]);
 
-        const ids: string[] = episodeId
-          ? [episodeId]
-          : (episodeIds as string[]);
+      type EpisodeSummary = {
+        title: string;
+        createdAt?: number;
+        durationSeconds: number;
+        durationMinutes: number;
+        thumbnail?: string;
+        podcastExternalId: string;
+        podcastName?: string;
+        highlights?: Array<{
+          text: string;
+          startMs: string | number;
+          endMs: string | number;
+          score: number;
+        }>;
+      };
 
-        type EpisodeSummary = {
-          title: string;
-          createdAt?: number;
-          durationSeconds: number;
-          durationMinutes: number;
-          thumbnail?: string;
-          podcastExternalId: string;
-          podcastName?: string;
-          highlights?: Array<{
-            text: string;
-            startMs: string | number;
-            endMs: string | number;
-            score: number;
-          }>;
+      // Mock data for now
+      const results: Array<EpisodeSummary> = ids.map((_, i) => {
+        const summary: EpisodeSummary = {
+          title: `Mock Episode ${i + 1}`,
+          createdAt: Date.now() - i * 86400000,
+          durationSeconds: 3600 + i * 300,
+          durationMinutes: 60 + i * 5,
+          thumbnail: `https://via.placeholder.com/300x300?text=Episode+${i + 1}`,
+          podcastExternalId: `mock-podcast-${i + 1}`,
+          podcastName: `Mock Podcast ${i + 1}`,
         };
 
-        const results: Array<EpisodeSummary> = [];
-
-        for (const rawId of ids) {
-          const eid = rawId as Id<"episodes">;
-          const ep = await client.query(api.episodes.getById, { id: eid });
-          if (!ep) continue;
-
-          const podcast = await client.query(api.podcasts.getByExternalId, {
-            externalId: ep.podcastExternalId,
-          });
-
-          const summary: EpisodeSummary = {
-            title: ep.title,
-            createdAt: ep.createdAt,
-            durationSeconds: ep.durationSeconds,
-            durationMinutes: ep.durationMinutes,
-            thumbnail: ep.thumbnail,
-            podcastExternalId: ep.podcastExternalId,
-            podcastName: podcast?.name,
-          };
-
-          if (query) {
-            const searchRes = await client.action(
-              api.embeddings.searchTranscript,
-              {
-                query,
-                limit,
-                episodeId: eid,
-              },
-            );
-
-            const highlights = (searchRes.items || []).map(
-              (r: {
-                _score: number;
-                segment: {
-                  text: string;
-                  startMs: string | number;
-                  endMs: string | number;
-                };
-              }) => ({
-                text: r.segment.text,
-                startMs: r.segment.startMs,
-                endMs: r.segment.endMs,
-                score: r._score,
-              }),
-            );
-
-            summary.highlights = highlights;
-          }
-
-          results.push(summary);
+        if (query) {
+          summary.highlights = Array.from(
+            { length: Math.min(limit, 3) },
+            (_, j) => ({
+              text: `Mock highlight ${j + 1} for query: ${query}`,
+              startMs: j * 30000,
+              endMs: (j + 1) * 30000,
+              score: 0.9 - j * 0.1,
+            }),
+          );
         }
 
-        if (results.length === 0) {
-          writer.write({
-            id,
-            type: "data-episode-details",
-            data: {
-              status: "error",
-              text: "No episodes found",
-            },
-          });
-          return { error: "No episodes found or access denied" };
-        }
+        return summary;
+      });
 
-        writer.write({
-          id,
-          type: "data-episode-details",
-          data: {
-            status: "complete",
-            text: `Retrieved ${results.length} episode${
-              results.length > 1 ? "s" : ""
-            }${query ? " with highlights" : ""}`,
-            results,
-          },
-        });
+      writer.write({
+        id,
+        type: "data-episode-details",
+        data: {
+          status: "complete",
+          text: `Retrieved ${results.length} episode${
+            results.length > 1 ? "s" : ""
+          }${query ? " with highlights" : ""}`,
+          results,
+        },
+      });
 
-        return { episodes: results };
-      } catch (error) {
-        writer.write({
-          id,
-          type: "data-episode-details",
-          data: {
-            status: "error",
-            text: "Failed to get episode details",
-          },
-        });
-        throw error;
-      }
+      return { episodes: results };
     },
   });
 };

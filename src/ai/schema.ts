@@ -1,4 +1,3 @@
-import type { Doc } from "@chatwithpodcast/backend/convex/_generated/dataModel";
 import type { UIMessage } from "ai";
 import { z } from "zod";
 
@@ -24,11 +23,7 @@ export type MyUIMessage = UIMessage<
     "vector-search": {
       status: "processing" | "complete" | "error";
       text: string;
-      items?: {
-        _id: Doc<"episodeEmbeddings">["_id"];
-        _score: number;
-        segment: Doc<"episodeEmbeddings">;
-      }[];
+      items?: unknown[];
     };
     "episode-details": {
       status: "processing" | "complete" | "error";

@@ -36,22 +36,15 @@ import {
   tabs,
 } from "./chat-suggestions";
 
-export function ChatPanel({
-  className,
-  initialMessages,
-}: {
-  className?: string;
-  initialMessages?: MyUIMessage[];
-}) {
+export function ChatPanel({ className }: { className?: string }) {
   const [input, setInput] = useState("");
   const { messages, sendMessage, status, stop } = useChat<MyUIMessage>({
-    messages: initialMessages,
     transport: new DefaultChatTransport({
       api: "/api/chat",
       prepareSendMessagesRequest({ messages, id }) {
         return {
           body: {
-            message: messages[messages.length - 1],
+            messages,
             id,
           },
         };
