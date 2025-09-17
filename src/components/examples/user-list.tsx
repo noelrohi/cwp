@@ -1,11 +1,11 @@
 "use client";
 
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { useTRPC } from "@/lib/trpc/client";
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useState } from "react";
+import { useTRPC } from "@/lib/trpc/client";
 
 export function UserList() {
   const trpc = useTRPC();
@@ -18,21 +18,8 @@ export function UserList() {
   // Query to get all users
   const usersQuery = useQuery(trpc.users.getUsers.queryOptions());
 
-  // Mutation to create a new user
-  const createUserMutation = useMutation(
-    trpc.users.createUser.mutationOptions({
-      onSuccess: () => {
-        // Invalidate and refetch users query
-        usersQuery.refetch();
-        // Reset form
-        setNewUser({ name: "", email: "", age: 0 });
-      },
-    }),
-  );
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    createUserMutation.mutate(newUser);
   };
 
   if (usersQuery.isLoading) return <div>Loading users...</div>;
@@ -51,9 +38,6 @@ export function UserList() {
             </p>
             <p>
               <strong>Email:</strong> {user.email}
-            </p>
-            <p>
-              <strong>Age:</strong> {user.age}
             </p>
           </div>
         ))}
@@ -91,14 +75,18 @@ export function UserList() {
             type="number"
             value={newUser.age || ""}
             onChange={(e) =>
-              setNewUser({ ...newUser, age: parseInt(e.target.value) || 0 })
+              setNewUser({
+                ...newUser,
+                // biome-ignore lint/correctness/useParseIntRadix: *
+                age: Number.parseInt(e.target.value) || 0,
+              })
             }
             required
           />
         </div>
 
-        <Button type="submit" disabled={createUserMutation.isPending}>
-          {createUserMutation.isPending ? "Creating..." : "Create User"}
+        <Button type="submit" disabled={true}>
+          Create
         </Button>
       </form>
     </div>
