@@ -175,3 +175,22 @@ The updated `fetch-episodes` script automatically fetches:
 - **`episode_word_timestamp`** - Stores individual word timestamps linked to segments for precise search and analysis
 
 This streamlined 3-step pipeline will populate **all tables** and create a comprehensive podcast knowledge graph with word-level precision! 🎯
+
+## 📊 **Database Schema Visualization**
+
+Visit `/schema` to view an **interactive node-based graph** of all database tables and their relationships!
+
+### Features:
+- **🎨 Color-coded nodes** by table type (Core, Junction, Auth, Metadata)
+- **🔗 Interactive relationships** showing foreign key connections  
+- **📋 Detailed table info** with key fields and descriptions
+- **🎯 Zoom & pan** controls for easy navigation
+- **📈 Live statistics** showing table counts by type
+
+### Table Categories:
+- **🔵 Core Entities** - Episodes, Podcasts, People, Companies, Books, Topics, Categories
+- **🟢 Junction Tables** - Many-to-many relationship mappings
+- **🟠 Metadata** - Segments, Word Timestamps, Quotes
+- **🟣 Authentication** - User sessions and auth data
+
+**Perfect for understanding the complete data architecture at a glance!** 🎉

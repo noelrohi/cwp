@@ -1,5 +1,5 @@
 import { IconCirclePlusFilled } from "@tabler/icons-react";
-import { BookOpenIcon, MessageCircleIcon } from "lucide-react";
+import { BookOpenIcon, MessageCircleIcon, DatabaseIcon } from "lucide-react";
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -13,6 +13,11 @@ const items = [
     title: "Chats",
     icon: MessageCircleIcon,
     url: "/",
+  },
+  {
+    title: "Database Schema",
+    icon: DatabaseIcon,
+    url: "/schema",
   },
   // {
   // 	title: "Library",
