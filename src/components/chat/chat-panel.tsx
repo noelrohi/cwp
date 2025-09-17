@@ -2,7 +2,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { ArrowUpIcon } from "lucide-react";
+import { ArrowUpIcon, CheckIcon, GlobeIcon, LayersIcon, SearchIcon } from "lucide-react";
 import { memo, useState } from "react";
 import type { MyUIMessage } from "@/ai/schema";
 import {
@@ -15,11 +15,26 @@ import {
   PromptInput,
   PromptInputBody,
   type PromptInputMessage,
+  PromptInputButton,
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputToolbar,
   PromptInputTools,
+  PromptInputModelSelect,
+  PromptInputModelSelectContent,
+  PromptInputModelSelectItem,
+  PromptInputModelSelectTrigger,
+  PromptInputModelSelectValue,
 } from "@/components/ai-elements/prompt-input";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Response } from "@/components/ai-elements/response";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -38,6 +53,13 @@ import {
 
 export function ChatPanel({ className }: { className?: string }) {
   const [input, setInput] = useState("");
+  const [model, setModel] = useState<string>("openrouter/sonoma-dusk-alpha");
+  // searchMode picker is always available; button is the trigger
+  const [searchMode, setSearchMode] = useState<"similarity" | "sonar">(
+    "similarity",
+  );
+  const [searchPickerOpen, setSearchPickerOpen] = useState(false);
+
   const { messages, sendMessage, status, stop } = useChat<MyUIMessage>({
     transport: new DefaultChatTransport({
       api: "/api/chat",
@@ -46,6 +68,8 @@ export function ChatPanel({ className }: { className?: string }) {
           body: {
             messages,
             id,
+            model,
+            searchMode,
           },
         };
       },
@@ -144,7 +168,92 @@ export function ChatPanel({ className }: { className?: string }) {
               onChange={(e) => setInput(e.target.value)}
             />
             <PromptInputToolbar className="relative px-2 pt-0 pb-2">
-              <PromptInputTools className="gap-2"></PromptInputTools>
+              <PromptInputTools className="gap-2">
+                <Popover open={searchPickerOpen} onOpenChange={setSearchPickerOpen}>
+                  <PopoverTrigger asChild>
+                    <PromptInputButton variant="ghost" onClick={() => setSearchPickerOpen(true)}>
+                      {searchMode === "sonar" ? (
+                        <GlobeIcon className="size-4" />
+                      ) : (
+                        <LayersIcon className="size-4" />
+                      )}
+                      <span>Search</span>
+                    </PromptInputButton>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-72 p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Search modes..." />
+                      <CommandList>
+                        <CommandEmpty>No modes found.</CommandEmpty>
+                        <CommandGroup heading="Search Mode">
+                          <CommandItem
+                            value="sonar"
+                            onSelect={() => {
+                              setSearchMode("sonar");
+                              setSearchPickerOpen(false);
+                            }}
+                          >
+                            <div className="flex items-start gap-2 w-full">
+                              <GlobeIcon className="mt-0.5 size-4" />
+                              <div className="flex min-w-0 flex-col">
+                                <span className="font-medium">Web</span>
+                                <span className="text-muted-foreground text-xs">Search across the internet via Perplexity Sonar</span>
+                              </div>
+                              {searchMode === "sonar" ? (
+                                <CheckIcon className="ml-auto size-4 opacity-70" />
+                              ) : null}
+                            </div>
+                          </CommandItem>
+                          <CommandItem
+                            value="similarity"
+                            onSelect={() => {
+                              setSearchMode("similarity");
+                              setSearchPickerOpen(false);
+                            }}
+                          >
+                            <div className="flex items-start gap-2 w-full">
+                              <LayersIcon className="mt-0.5 size-4" />
+                              <div className="flex min-w-0 flex-col">
+                                <span className="font-medium">Similarity</span>
+                                <span className="text-muted-foreground text-xs">Search podcast segments via vector similarity</span>
+                              </div>
+                              {searchMode === "similarity" ? (
+                                <CheckIcon className="ml-auto size-4 opacity-70" />
+                              ) : null}
+                            </div>
+                          </CommandItem>
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+
+                <PromptInputModelSelect
+                  value={model}
+                  onValueChange={(value) => setModel(value)}
+                >
+                  <PromptInputModelSelectTrigger>
+                    <PromptInputModelSelectValue />
+                  </PromptInputModelSelectTrigger>
+                  <PromptInputModelSelectContent>
+                    {[
+                      { id: "openrouter/sonoma-dusk-alpha", name: "Sonoma Dusk" },
+                      {
+                        id: "deepseek/deepseek-chat-v3.1:free",
+                        name: "DeepSeek Chat v3.1 (Free)",
+                      },
+                      { id: "openai/gpt-5-low", name: "GPT-5 (Low)" },
+                      { id: "openai/gpt-5-medium", name: "GPT-5 (Medium)" },
+                      { id: "openai/gpt-5-high", name: "GPT-5 (High)" },
+                      { id: "anthropic/claude-sonnet-4", name: "Claude 4 Sonnet" },
+                    ].map((m) => (
+                      <PromptInputModelSelectItem key={m.id} value={m.id}>
+                        {m.name}
+                      </PromptInputModelSelectItem>
+                    ))}
+                  </PromptInputModelSelectContent>
+                </PromptInputModelSelect>
+              </PromptInputTools>
               <PromptInputSubmit
                 status={status}
                 onClick={status === "streaming" ? stop : undefined}

@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import { Geist_Mono, Manrope, Merriweather } from "next/font/google";
-import { AppSidebar } from "@/components/app-sidebar";
 import { TRPCProviders } from "@/components/providers/trpc-provider";
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import "./globals.css";
 
 const sans = Manrope({
@@ -36,21 +34,7 @@ export default function RootLayout({
       <body
         className={`${sans.variable} ${geistMono.variable} ${serif.variable} font-sans antialiased`}
       >
-        <TRPCProviders>
-          <SidebarProvider
-            style={
-              {
-                "--sidebar-width": "calc(var(--spacing) * 72)",
-                "--header-height": "calc(var(--spacing) * 12)",
-              } as React.CSSProperties
-            }
-          >
-            <AppSidebar variant="inset" />
-            <SidebarInset className="md:peer-data-[variant=inset]:mb-0 md:peer-data-[variant=inset]:rounded-b-none">
-              {children}
-            </SidebarInset>
-          </SidebarProvider>
-        </TRPCProviders>
+        <TRPCProviders>{children}</TRPCProviders>
       </body>
     </html>
   );

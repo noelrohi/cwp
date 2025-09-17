@@ -4,7 +4,6 @@ import {
   IconLogout,
   IconUserCircle,
 } from "@tabler/icons-react";
-import { useRouter } from "next/navigation";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -21,7 +20,8 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { useSession } from "../lib/auth-client";
+import { useRouter } from "next/navigation";
+import { useSession, signOut } from "../lib/auth-client";
 
 export function NavUser() {
   const { data, isPending } = useSession();
@@ -37,7 +37,7 @@ export function NavUser() {
           <SidebarMenuButton
             size="lg"
             onClick={() => {
-              router.push("/signin");
+              router.push("/sign-in");
             }}
           >
             <IconUserCircle />
@@ -103,7 +103,11 @@ export function NavUser() {
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                signOut();
+              }}
+            >
               <IconLogout />
               Log out
             </DropdownMenuItem>
