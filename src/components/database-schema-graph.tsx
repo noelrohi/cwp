@@ -1,19 +1,19 @@
 "use client";
 
-import { useCallback } from "react";
 import {
-  ReactFlow,
-  Controls,
-  Background,
-  type Node,
-  type Edge,
   addEdge,
-  useNodesState,
-  useEdgesState,
+  Background,
+  Controls,
+  type Edge,
+  MarkerType,
+  type Node,
   type OnConnect,
   Position,
-  MarkerType,
+  ReactFlow,
+  useEdgesState,
+  useNodesState,
 } from "@xyflow/react";
+import { useCallback } from "react";
 import "@xyflow/react/dist/style.css";
 
 // Define table node data

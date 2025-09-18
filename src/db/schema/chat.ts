@@ -14,4 +14,3 @@ export const chatSession = pgTable("chat_session", {
     .$onUpdate(() => new Date())
     .notNull(),
 });
-

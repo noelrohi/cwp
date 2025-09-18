@@ -1,7 +1,9 @@
 export default function TermsPage() {
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6 py-10">
-      <h1 className="text-3xl font-semibold tracking-tight">Terms of Service</h1>
+      <h1 className="text-3xl font-semibold tracking-tight">
+        Terms of Service
+      </h1>
       <p className="text-muted-foreground">
         These Terms govern your use of our application. By accessing or using
         the service, you agree to be bound by these Terms.
@@ -30,4 +32,3 @@ export default function TermsPage() {
     </div>
   );
 }
-

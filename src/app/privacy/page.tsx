@@ -3,8 +3,8 @@ export default function PrivacyPage() {
     <div className="mx-auto w-full max-w-3xl space-y-6 py-10">
       <h1 className="text-3xl font-semibold tracking-tight">Privacy Policy</h1>
       <p className="text-muted-foreground">
-        We value your privacy. This policy explains what information we
-        collect, how we use it, and your choices.
+        We value your privacy. This policy explains what information we collect,
+        how we use it, and your choices.
       </p>
       <section className="space-y-2">
         <h2 className="text-xl font-medium">Information We Collect</h2>
@@ -29,4 +29,3 @@ export default function PrivacyPage() {
     </div>
   );
 }
-

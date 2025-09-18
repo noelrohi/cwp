@@ -4,6 +4,7 @@ import {
   IconLogout,
   IconUserCircle,
 } from "@tabler/icons-react";
+import { useRouter } from "next/navigation";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -20,8 +21,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { useRouter } from "next/navigation";
-import { useSession, signOut } from "../lib/auth-client";
+import { signOut, useSession } from "../lib/auth-client";
 
 export function NavUser() {
   const { data, isPending } = useSession();

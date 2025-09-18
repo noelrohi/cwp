@@ -1,7 +1,7 @@
 "use client";
+import { IconBrandGoogle, IconBrandLinkedin } from "@tabler/icons-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { IconBrandGoogle, IconBrandLinkedin } from "@tabler/icons-react";
 import { signIn } from "@/lib/auth-client";
 
 export default function SignInPage() {

@@ -2,30 +2,40 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { ArrowUpIcon, CheckIcon, GlobeIcon, LayersIcon, SearchIcon } from "lucide-react";
-import { memo, useState } from "react";
+import {
+  ArrowUpIcon,
+  CheckIcon,
+  GlobeIcon,
+  LayersIcon,
+  PlusIcon,
+} from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { memo, useEffect, useRef, useState } from "react";
 import type { MyUIMessage } from "@/ai/schema";
 import {
   Conversation,
   ConversationContent,
   ConversationEmptyState,
+  ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import {
   PromptInput,
   PromptInputBody,
-  type PromptInputMessage,
   PromptInputButton,
-  PromptInputSubmit,
-  PromptInputTextarea,
-  PromptInputToolbar,
-  PromptInputTools,
+  type PromptInputMessage,
   PromptInputModelSelect,
   PromptInputModelSelectContent,
   PromptInputModelSelectItem,
   PromptInputModelSelectTrigger,
   PromptInputModelSelectValue,
+  PromptInputSubmit,
+  PromptInputTextarea,
+  PromptInputToolbar,
+  PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
+import { Response } from "@/components/ai-elements/response";
+import { Button } from "@/components/ui/button";
 import {
   Command,
   CommandEmpty,
@@ -34,10 +44,13 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Response } from "@/components/ai-elements/response";
-import { Button } from "@/components/ui/button";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
+import { useLocalStorage } from "@/hooks/use-local-storage";
 import { cn } from "@/lib/utils";
 import {
   Reasoning,
@@ -53,12 +66,19 @@ import {
 
 export function ChatPanel({ className }: { className?: string }) {
   const [input, setInput] = useState("");
-  const [model, setModel] = useState<string>("openrouter/sonoma-dusk-alpha");
+  const [model, setModel] = useLocalStorage<string>(
+    "chat-model",
+    "openrouter/sonoma-dusk-alpha",
+  );
   // searchMode picker is always available; button is the trigger
-  const [searchMode, setSearchMode] = useState<"similarity" | "sonar">(
+  const [searchMode, setSearchMode] = useLocalStorage<"similarity" | "sonar">(
+    "chat-search-mode",
     "similarity",
   );
   const [searchPickerOpen, setSearchPickerOpen] = useState(false);
+
+  // Read URL params for contextual hints (e.g., episodeId)
+  const searchParams = useSearchParams();
 
   const { messages, sendMessage, status, stop } = useChat<MyUIMessage>({
     transport: new DefaultChatTransport({
@@ -70,11 +90,28 @@ export function ChatPanel({ className }: { className?: string }) {
             id,
             model,
             searchMode,
+            // Forward contextual episodeId so the server can narrow tools
+            episodeId: searchParams.get("episodeId") ?? undefined,
           },
         };
       },
     }),
   });
+
+  // Seed initial query from ?q=...
+  const router = useRouter();
+  const seededRef = useRef<string | null>(null);
+  useEffect(() => {
+    const q = searchParams.get("q");
+    if (!q) return;
+    if (seededRef.current === q) return;
+    seededRef.current = q;
+    sendMessage({ text: q });
+    // Remove q from the URL to avoid re-sending on back/forward
+    const params = new URLSearchParams(Array.from(searchParams.entries()));
+    params.delete("q");
+    router.replace(`/?${params.toString()}`);
+  }, [router, searchParams, sendMessage]);
 
   const [category, setCategory] = useState<CategoryKey>("growth");
 
@@ -155,7 +192,15 @@ export function ChatPanel({ className }: { className?: string }) {
             ))
           )}
         </ConversationContent>
+        <ConversationScrollButton />
       </Conversation>
+      <LatestSuggestions
+        messages={messages}
+        status={status}
+        onPick={(text) => {
+          sendMessage({ text });
+        }}
+      />
       <div className="sticky inset-x-0 bottom-0 z-10 mx-auto w-full px-4 pb-0">
         <PromptInput
           onSubmit={handleSubmit}
@@ -169,9 +214,15 @@ export function ChatPanel({ className }: { className?: string }) {
             />
             <PromptInputToolbar className="relative px-2 pt-0 pb-2">
               <PromptInputTools className="gap-2">
-                <Popover open={searchPickerOpen} onOpenChange={setSearchPickerOpen}>
+                <Popover
+                  open={searchPickerOpen}
+                  onOpenChange={setSearchPickerOpen}
+                >
                   <PopoverTrigger asChild>
-                    <PromptInputButton variant="ghost" onClick={() => setSearchPickerOpen(true)}>
+                    <PromptInputButton
+                      variant="ghost"
+                      onClick={() => setSearchPickerOpen(true)}
+                    >
                       {searchMode === "sonar" ? (
                         <GlobeIcon className="size-4" />
                       ) : (
@@ -197,7 +248,10 @@ export function ChatPanel({ className }: { className?: string }) {
                               <GlobeIcon className="mt-0.5 size-4" />
                               <div className="flex min-w-0 flex-col">
                                 <span className="font-medium">Web</span>
-                                <span className="text-muted-foreground text-xs">Search across the internet via Perplexity Sonar</span>
+                                <span className="text-muted-foreground text-xs">
+                                  Search across the internet via Perplexity
+                                  Sonar
+                                </span>
                               </div>
                               {searchMode === "sonar" ? (
                                 <CheckIcon className="ml-auto size-4 opacity-70" />
@@ -215,7 +269,9 @@ export function ChatPanel({ className }: { className?: string }) {
                               <LayersIcon className="mt-0.5 size-4" />
                               <div className="flex min-w-0 flex-col">
                                 <span className="font-medium">Similarity</span>
-                                <span className="text-muted-foreground text-xs">Search podcast segments via vector similarity</span>
+                                <span className="text-muted-foreground text-xs">
+                                  Search podcast segments via vector similarity
+                                </span>
                               </div>
                               {searchMode === "similarity" ? (
                                 <CheckIcon className="ml-auto size-4 opacity-70" />
@@ -237,7 +293,10 @@ export function ChatPanel({ className }: { className?: string }) {
                   </PromptInputModelSelectTrigger>
                   <PromptInputModelSelectContent>
                     {[
-                      { id: "openrouter/sonoma-dusk-alpha", name: "Sonoma Dusk" },
+                      {
+                        id: "openrouter/sonoma-dusk-alpha",
+                        name: "Sonoma Dusk",
+                      },
                       {
                         id: "deepseek/deepseek-chat-v3.1:free",
                         name: "DeepSeek Chat v3.1 (Free)",
@@ -245,7 +304,10 @@ export function ChatPanel({ className }: { className?: string }) {
                       { id: "openai/gpt-5-low", name: "GPT-5 (Low)" },
                       { id: "openai/gpt-5-medium", name: "GPT-5 (Medium)" },
                       { id: "openai/gpt-5-high", name: "GPT-5 (High)" },
-                      { id: "anthropic/claude-sonnet-4", name: "Claude 4 Sonnet" },
+                      {
+                        id: "anthropic/claude-sonnet-4",
+                        name: "Claude 4 Sonnet",
+                      },
                     ].map((m) => (
                       <PromptInputModelSelectItem key={m.id} value={m.id}>
                         {m.name}
@@ -300,6 +362,8 @@ export const MessagePart = memo(function MessagePart({
       </Task>
     );
   }
+  // Suggestions are rendered separately at the bottom.
+  if (part.type === "data-suggestions") return null;
   if (part.type === "text") {
     return <Response>{part.text}</Response>;
   }
@@ -313,3 +377,76 @@ export const MessagePart = memo(function MessagePart({
   }
   return null;
 });
+
+function LatestSuggestions({
+  messages,
+  status,
+  onPick,
+}: {
+  messages: MyUIMessage[];
+  status: "submitted" | "streaming" | "ready" | "error";
+  onPick: (text: string) => void;
+}) {
+  const [dismissedFromMessageId, setDismissedFromMessageId] = useState<
+    string | null
+  >(null);
+
+  // Get the latest assistant message that has suggestions
+  let latest: { id: string; suggestions: string[] } | null = null;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role !== "assistant") continue;
+    const p = m.parts.find((x) => x.type === "data-suggestions");
+    if (p && Array.isArray(p.data) && p.data.length > 0) {
+      latest = { id: m.id, suggestions: p.data as string[] };
+      break;
+    }
+  }
+
+  // Reset dismissal when a new suggestions message arrives
+  const latestId = latest?.id ?? null;
+  const lastIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (latestId && lastIdRef.current !== latestId) {
+      setDismissedFromMessageId(null);
+      lastIdRef.current = latestId;
+    }
+  }, [latestId]);
+
+  const shouldShow =
+    status === "ready" &&
+    latest &&
+    latest.suggestions.length > 0 &&
+    dismissedFromMessageId !== latest.id;
+
+  if (!shouldShow) return null;
+
+  return (
+    <div className="mx-auto mb-3 w-full max-w-3xl px-4">
+      <div className="rounded-lg border bg-muted/30">
+        <div className="flex items-center gap-2 px-4 py-2 text-sm font-medium">
+          <span className="tracking-tight">Suggested questions</span>
+        </div>
+        <div className="divide-y">
+          {latest.suggestions.map((s, idx) => (
+            <div key={`${idx}-${s}`} className="flex items-center px-4 py-3">
+              <div className="flex-1 text-sm text-foreground/90">{s}</div>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="ml-2 size-6 rounded-full"
+                onClick={() => {
+                  onPick(s);
+                  setDismissedFromMessageId(latest?.id ?? null);
+                }}
+                aria-label="Ask this question"
+              >
+                <PlusIcon className="size-4" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}

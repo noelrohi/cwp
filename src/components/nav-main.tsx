@@ -1,5 +1,5 @@
 import { IconCirclePlusFilled } from "@tabler/icons-react";
-import { BookOpenIcon, MessageCircleIcon } from "lucide-react";
+import { MessageCircleIcon } from "lucide-react";
 import {
   SidebarGroup,
   SidebarGroupContent,

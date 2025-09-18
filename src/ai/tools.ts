@@ -1,11 +1,25 @@
-import { generateId, tool, type UIMessageStreamWriter } from "ai";
+import { openai } from "@ai-sdk/openai";
+import { embed, generateId, tool, type UIMessageStreamWriter } from "ai";
+import {
+  and,
+  cosineDistance,
+  desc,
+  eq,
+  inArray,
+  type SQL,
+  sql,
+} from "drizzle-orm";
 import z from "zod/v4";
 import type { MyUIMessage } from "@/ai/schema";
+import { db } from "@/db";
+import { episode, podcast, transcriptChunk } from "@/db/schema/podcast";
 
 export const createSearchTool = ({
   writer,
+  defaultEpisodeId,
 }: {
   writer: UIMessageStreamWriter<MyUIMessage>;
+  defaultEpisodeId?: string;
 }) => {
   return tool({
     description:
@@ -22,7 +36,7 @@ export const createSearchTool = ({
         .optional()
         .describe("Filter to a specific episode id"),
     }),
-    execute: async ({ query, limit = 16, episodeId }) => {
+    execute: async ({ query, limit = 16, episodeId, podcastExternalId }) => {
       const id = generateId();
 
       writer.write({
@@ -34,17 +48,54 @@ export const createSearchTool = ({
         },
       });
 
-      // Mock data for now
-      const mockResults = Array.from(
-        { length: Math.min(limit, 3) },
-        (_, i) => ({
-          text: `Mock search result ${i + 1} for query: ${query}`,
-          score: 0.9 - i * 0.1,
-          startMs: i * 30000,
-          endMs: (i + 1) * 30000,
-          episodeId: episodeId || `mock-episode-${i + 1}`,
-        }),
-      );
+      // Generate embedding for the query
+      const { embedding: queryEmbedding } = await embed({
+        model: openai.textEmbeddingModel("text-embedding-3-small"),
+        value: query.replaceAll("\n", " "),
+      });
+
+      // similarity = 1 - cosine_distance
+      const similarity = sql<number>`1 - (${cosineDistance(
+        transcriptChunk.embedding,
+        queryEmbedding,
+      )})`;
+
+      const filters: SQL<unknown>[] = [];
+      const effectiveEpisodeId = episodeId ?? defaultEpisodeId;
+      if (effectiveEpisodeId) {
+        filters.push(eq(transcriptChunk.episodeId, effectiveEpisodeId));
+      }
+
+      const needJoin = Boolean(podcastExternalId);
+      const base = db
+        .select({
+          text: transcriptChunk.text,
+          startSec: transcriptChunk.startSec,
+          endSec: transcriptChunk.endSec,
+          episodeId: transcriptChunk.episodeId,
+          similarity,
+        })
+        .from(transcriptChunk);
+
+      const qb = needJoin
+        ? base.leftJoin(episode, eq(episode.id, transcriptChunk.episodeId))
+        : base;
+      if (podcastExternalId) {
+        filters.push(eq(episode.series, podcastExternalId));
+      }
+
+      const rows = await qb
+        .where(filters.length ? and(...filters) : undefined)
+        .orderBy((t) => desc(t.similarity))
+        .limit(limit);
+
+      const results = rows.map((r) => ({
+        text: r.text,
+        score: Number(r.similarity ?? 0),
+        startMs: r.startSec ? Number(r.startSec) * 1000 : 0,
+        endMs: r.endSec ? Number(r.endSec) * 1000 : 0,
+        episodeId: r.episodeId,
+      }));
 
       writer.write({
         id,
@@ -52,20 +103,21 @@ export const createSearchTool = ({
         data: {
           status: "complete",
           text: `Searched for ${query}`,
+          items: results,
         },
       });
 
-      return {
-        results: mockResults,
-      };
+      return { results };
     },
   });
 };
 
 export const createEpisodeDetailsTool = ({
   writer,
+  defaultEpisodeId,
 }: {
   writer: UIMessageStreamWriter<MyUIMessage>;
+  defaultEpisodeId?: string;
 }) => {
   return tool({
     description:
@@ -92,7 +144,10 @@ export const createEpisodeDetailsTool = ({
         },
       });
 
-      const ids: string[] = episodeId ? [episodeId] : (episodeIds as string[]);
+      const ids: string[] =
+        (episodeId ?? defaultEpisodeId)
+          ? [episodeId ?? (defaultEpisodeId as string)]
+          : (episodeIds as string[]) || [];
 
       type EpisodeSummary = {
         title: string;
@@ -100,7 +155,7 @@ export const createEpisodeDetailsTool = ({
         durationSeconds: number;
         durationMinutes: number;
         thumbnail?: string;
-        podcastExternalId: string;
+        podcastExternalId: string | null;
         podcastName?: string;
         highlights?: Array<{
           text: string;
@@ -109,33 +164,77 @@ export const createEpisodeDetailsTool = ({
           score: number;
         }>;
       };
+      if (ids.length === 0) {
+        writer.write({
+          id,
+          type: "data-episode-details",
+          data: {
+            status: "error",
+            text: "No episode id provided",
+          },
+        });
+        return { episodes: [] };
+      }
 
-      // Mock data for now
-      const results: Array<EpisodeSummary> = ids.map((_, i) => {
+      // Fetch base episode details
+      const epRows = await db
+        .select({
+          id: episode.id,
+          title: episode.title,
+          durationSec: episode.durationSec,
+          publishedAt: episode.publishedAt,
+          thumbnailUrl: episode.thumbnailUrl,
+          podcastExternalId: episode.series,
+          podcastName: podcast.title,
+        })
+        .from(episode)
+        .leftJoin(podcast, eq(episode.podcastId, podcast.id))
+        .where(inArray(episode.id, ids));
+
+      const results: Array<EpisodeSummary> = [];
+      for (const row of epRows) {
         const summary: EpisodeSummary = {
-          title: `Mock Episode ${i + 1}`,
-          createdAt: Date.now() - i * 86400000,
-          durationSeconds: 3600 + i * 300,
-          durationMinutes: 60 + i * 5,
-          thumbnail: `https://via.placeholder.com/300x300?text=Episode+${i + 1}`,
-          podcastExternalId: `mock-podcast-${i + 1}`,
-          podcastName: `Mock Podcast ${i + 1}`,
+          title: row.title ?? "Untitled Episode",
+          createdAt: row.publishedAt
+            ? Number(new Date(row.publishedAt))
+            : undefined,
+          durationSeconds: row.durationSec ?? 0,
+          durationMinutes: Math.round((row.durationSec ?? 0) / 60),
+          thumbnail: row.thumbnailUrl ?? undefined,
+          podcastExternalId: row.podcastExternalId ?? null,
+          podcastName: row.podcastName ?? undefined,
         };
 
         if (query) {
-          summary.highlights = Array.from(
-            { length: Math.min(limit, 3) },
-            (_, j) => ({
-              text: `Mock highlight ${j + 1} for query: ${query}`,
-              startMs: j * 30000,
-              endMs: (j + 1) * 30000,
-              score: 0.9 - j * 0.1,
-            }),
-          );
+          const { embedding: qEmbedding } = await embed({
+            model: openai.textEmbeddingModel("text-embedding-3-small"),
+            value: query.replaceAll("\n", " "),
+          });
+          const sim = sql<number>`1 - (${cosineDistance(
+            transcriptChunk.embedding,
+            qEmbedding,
+          )})`;
+          const highlights = await db
+            .select({
+              text: transcriptChunk.text,
+              startSec: transcriptChunk.startSec,
+              endSec: transcriptChunk.endSec,
+              score: sim,
+            })
+            .from(transcriptChunk)
+            .where(eq(transcriptChunk.episodeId, row.id))
+            .orderBy((t) => desc(t.score))
+            .limit(limit);
+          summary.highlights = highlights.map((h) => ({
+            text: h.text,
+            startMs: h.startSec ? Number(h.startSec) * 1000 : 0,
+            endMs: h.endSec ? Number(h.endSec) * 1000 : 0,
+            score: Number(h.score ?? 0),
+          }));
         }
 
-        return summary;
-      });
+        results.push(summary);
+      }
 
       writer.write({
         id,

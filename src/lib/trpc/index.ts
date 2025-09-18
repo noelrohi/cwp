@@ -1,17 +1,17 @@
 // Server exports
-export { appRouter, type AppRouter } from "./root";
-export { createTRPCContext, type Context } from "./context";
-export {
-  createTRPCRouter,
-  publicProcedure,
-  protectedProcedure,
-} from "./init";
 
 // Client exports
 export {
-  useTRPC,
-  useTRPCClient,
-  TRPCProvider,
   getQueryClient,
   makeQueryClient,
+  TRPCProvider,
+  useTRPC,
+  useTRPCClient,
 } from "./client";
+export { type Context, createTRPCContext } from "./context";
+export {
+  createTRPCRouter,
+  protectedProcedure,
+  publicProcedure,
+} from "./init";
+export { type AppRouter, appRouter } from "./root";

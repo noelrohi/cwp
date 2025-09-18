@@ -1,6 +1,6 @@
-import { user as usersTable } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
+import { user as usersTable } from "@/db/schema";
 import { createTRPCRouter, publicProcedure } from "../init";
 
 export const usersRouter = createTRPCRouter({

@@ -1,7 +1,7 @@
 "use client";
+import { IconBrandGoogle, IconBrandLinkedin } from "@tabler/icons-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { IconBrandGoogle, IconBrandLinkedin } from "@tabler/icons-react";
 import { signIn } from "@/lib/auth-client";
 
 export default function SignUpPage() {
@@ -9,7 +9,9 @@ export default function SignUpPage() {
     <div className="w-full max-w-sm">
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-1 text-center">
-          <h1 className="text-2xl font-semibold tracking-tight">Create your account</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Create your account
+          </h1>
           <p className="text-muted-foreground text-sm">
             Use a provider to get started quickly.
           </p>

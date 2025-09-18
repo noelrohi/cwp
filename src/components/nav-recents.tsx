@@ -1,5 +1,7 @@
 "use client";
 
+import type { Route } from "next";
+import Link from "next/link";
 import {
   SidebarGroup,
   SidebarGroupLabel,
@@ -7,8 +9,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import type { Route } from "next";
-import Link from "next/link";
 
 export function NavRecents({
   items,

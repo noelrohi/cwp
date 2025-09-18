@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 export default function AuthLayout({ children }: { children: ReactNode }) {
   return (
@@ -28,8 +28,9 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
           © {new Date().getFullYear()} CWP. All rights reserved.
         </footer>
       </aside>
-      <main className="flex items-center justify-center p-6 md:p-10">{children}</main>
+      <main className="flex items-center justify-center p-6 md:p-10">
+        {children}
+      </main>
     </div>
   );
 }
-

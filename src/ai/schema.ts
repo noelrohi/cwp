@@ -30,5 +30,9 @@ export type MyUIMessage = UIMessage<
       text: string;
       results?: unknown;
     };
+    // Follow-up suggestions streamed from the model.
+    // This will be written with UIMessageStream type: 'data-suggestions'
+    // and contains a simple array of suggestion strings.
+    suggestions: string[];
   }
 >;
