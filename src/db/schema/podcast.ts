@@ -137,6 +137,10 @@ export const qaFeedback = pgTable("qa_feedback", {
   queryId: text("query_id").references(() => qaQuery.queryId, {
     onDelete: "cascade",
   }),
+  // Optional: attach feedback to a specific answer
+  answerId: text("answer_id").references(() => qaAnswer.answerId, {
+    onDelete: "cascade",
+  }),
   signal: text("signal").$type<"helpful" | "unhelpful" | "better_clip">(),
   altChunkId: text("alt_chunk_id").references(() => transcriptChunk.chunkId),
   createdAt: timestamp("created_at", { withTimezone: true })
@@ -170,10 +174,34 @@ export const starterQuestionRelations = relations(
 
 export const transcriptChunkRelations = relations(
   transcriptChunk,
-  ({ one }) => ({
+  ({ one, many }) => ({
     episode: one(episode, {
       fields: [transcriptChunk.episodeId],
       references: [episode.id],
     }),
+    citations: many(qaCitation),
   }),
 );
+
+export const qaAnswerRelations = relations(qaAnswer, ({ one, many }) => ({
+  query: one(qaQuery, {
+    fields: [qaAnswer.queryId],
+    references: [qaQuery.queryId],
+  }),
+  citations: many(qaCitation),
+}));
+
+export const qaQueryRelations = relations(qaQuery, ({ many }) => ({
+  answers: many(qaAnswer),
+}));
+
+export const qaCitationRelations = relations(qaCitation, ({ one }) => ({
+  answer: one(qaAnswer, {
+    fields: [qaCitation.answerId],
+    references: [qaAnswer.answerId],
+  }),
+  chunk: one(transcriptChunk, {
+    fields: [qaCitation.chunkId],
+    references: [transcriptChunk.chunkId],
+  }),
+}));

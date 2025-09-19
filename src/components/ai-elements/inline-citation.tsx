@@ -68,14 +68,22 @@ export const InlineCitationCardTrigger = ({
       variant="secondary"
       {...props}
     >
-      {sources.length ? (
-        <>
-          {new URL(sources[0]).hostname}{" "}
-          {sources.length > 1 && `+${sources.length - 1}`}
-        </>
-      ) : (
-        "unknown"
-      )}
+      {(() => {
+        if (!sources.length) return "unknown";
+        const first = sources[0];
+        let label = first;
+        try {
+          label = new URL(first).hostname;
+        } catch {
+          // Not a URL; show the raw label (e.g., timestamp like 02:13)
+          label = first;
+        }
+        return (
+          <>
+            {label} {sources.length > 1 && `+${sources.length - 1}`}
+          </>
+        );
+      })()}
     </Badge>
   </HoverCardTrigger>
 );
@@ -96,14 +104,29 @@ const useCarouselApi = () => {
   return context;
 };
 
-export type InlineCitationCarouselProps = ComponentProps<typeof Carousel>;
+export type InlineCitationCarouselProps = ComponentProps<typeof Carousel> & {
+  activeIndex?: number;
+};
 
 export const InlineCitationCarousel = ({
   className,
   children,
+  activeIndex,
   ...props
 }: InlineCitationCarouselProps) => {
   const [api, setApi] = useState<CarouselApi>();
+
+  useEffect(() => {
+    if (!api) return;
+    if (typeof activeIndex !== "number") return;
+    try {
+      api.scrollTo(
+        Math.max(0, Math.min(activeIndex, api.scrollSnapList().length - 1)),
+      );
+    } catch {
+      // noop
+    }
+  }, [api, activeIndex]);
 
   return (
     <CarouselApiContext.Provider value={api}>

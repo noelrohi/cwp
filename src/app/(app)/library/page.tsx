@@ -1,17 +1,44 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { useTRPC } from "@/lib/trpc/client";
 
 export default function LibraryPage() {
   const trpc = useTRPC();
+  const qc = useQueryClient();
+  const router = useRouter();
+
   const { data, isLoading, error } = useQuery(
     trpc.episodes.list.queryOptions({ limit: 24 }),
   );
+
+  const createQuestion = useMutation(trpc.questions.create.mutationOptions());
+
+  async function handleAskQuestion({
+    question,
+    episodeId,
+  }: {
+    question: string;
+    episodeId: string;
+  }) {
+    try {
+      const res = await createQuestion.mutateAsync({
+        question,
+        episodeId,
+      });
+      router.push(`/question/${res.queryId}`);
+    } catch (err) {
+      console.error("Failed to create question:", err);
+    }
+    qc.invalidateQueries({
+      queryKey: trpc.questions.list.queryKey({ limit: 20, sort: "newest" }),
+    });
+  }
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-8">
@@ -63,17 +90,19 @@ export default function LibraryPage() {
             {ep.starterQuestions?.length ? (
               <div className="mt-3 flex flex-wrap gap-2">
                 {ep.starterQuestions.slice(0, 5).map((q) => (
-                  <Link
+                  <Badge
                     key={q.id}
-                    href={`/?${new URLSearchParams({
-                      q: q.question,
-                      episodeId: String(ep.id),
-                    }).toString()}`}
+                    variant="secondary"
+                    className="cursor-pointer"
+                    onClick={() =>
+                      handleAskQuestion({
+                        question: q.question,
+                        episodeId: String(ep.id),
+                      })
+                    }
                   >
-                    <Badge variant="secondary" className="cursor-pointer">
-                      {q.question}
-                    </Badge>
-                  </Link>
+                    {q.question}
+                  </Badge>
                 ))}
               </div>
             ) : (

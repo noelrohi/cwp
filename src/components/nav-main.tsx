@@ -1,5 +1,5 @@
 import { IconCirclePlusFilled } from "@tabler/icons-react";
-import { MessageCircleIcon } from "lucide-react";
+import { BookOpenIcon, HelpCircleIcon, MessageCircleIcon } from "lucide-react";
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -14,11 +14,16 @@ const items = [
     icon: MessageCircleIcon,
     url: "/",
   },
-  // {
-  // 	title: "Library",
-  // 	icon: BookOpenIcon,
-  // 	url: "/library",
-  // },
+  {
+    title: "Questions",
+    icon: HelpCircleIcon,
+    url: "/questions",
+  },
+  {
+    title: "Library",
+    icon: BookOpenIcon,
+    url: "/library",
+  },
 ] as const;
 
 export function NavMain() {

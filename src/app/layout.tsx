@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist_Mono, Manrope, Merriweather } from "next/font/google";
+import { AudioPlayerProvider } from "@/components/providers/audio-player-provider";
 import { TRPCProviders } from "@/components/providers/trpc-provider";
 import "./globals.css";
 
@@ -34,7 +35,9 @@ export default function RootLayout({
       <body
         className={`${sans.variable} ${geistMono.variable} ${serif.variable} font-sans antialiased`}
       >
-        <TRPCProviders>{children}</TRPCProviders>
+        <TRPCProviders>
+          <AudioPlayerProvider>{children}</AudioPlayerProvider>
+        </TRPCProviders>
       </body>
     </html>
   );

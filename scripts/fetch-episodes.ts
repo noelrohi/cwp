@@ -2,6 +2,7 @@
 
 import { openai } from "@ai-sdk/openai";
 import { embed, embedMany } from "ai";
+import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { episode, podcast, transcriptChunk } from "@/db/schema/podcast";
 
@@ -164,6 +165,38 @@ async function fetchEpisodes(
 
     console.log(`Found ${data.episodes.length} episodes`);
 
+    // Ensure podcast record exists and get the internal ID
+    let podcastInternalId: string | null = null;
+    try {
+      const insertedPodcast = await db
+        .insert(podcast)
+        .values({
+          id: `podcast_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
+          podcastId: podcastId,
+          title: `Podcast ${podcastId}`, // TODO: Get real podcast title from API
+          description: null,
+        })
+        .onConflictDoNothing()
+        .returning({ id: podcast.id });
+
+      podcastInternalId = insertedPodcast[0]?.id ?? null;
+    } catch (podcastError) {
+      console.warn(
+        `Failed to create podcast record for ${podcastId}:`,
+        podcastError,
+      );
+    }
+
+    // Get podcast internal ID if not created above
+    if (!podcastInternalId) {
+      const [existingPodcast] = await db
+        .select({ id: podcast.id })
+        .from(podcast)
+        .where(eq(podcast.podcastId, podcastId))
+        .limit(1);
+      podcastInternalId = existingPodcast?.id ?? null;
+    }
+
     for (const ep of data.episodes) {
       try {
         const insertedEpisode = await db
@@ -171,7 +204,8 @@ async function fetchEpisodes(
           .values({
             id: `ep_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
             episodeId: ep.episode_id,
-            series: podcastId,
+            podcastId: podcastInternalId,
+            series: null, // Clear series field as it should contain actual series name, not podcast ID
             title: ep.episode_title,
             audioUrl: ep.episode_audio_url,
             thumbnailUrl: ep.episode_image_url ?? undefined,
@@ -184,7 +218,8 @@ async function fetchEpisodes(
           .onConflictDoUpdate({
             target: episode.episodeId,
             set: {
-              series: podcastId,
+              podcastId: podcastInternalId,
+              series: null,
               title: ep.episode_title,
               audioUrl: ep.episode_audio_url,
               ...(ep.episode_image_url
@@ -310,19 +345,22 @@ async function fetchAllEpisodes(
         `Found ${data.episodes.length} episodes on page ${currentPage}/${totalPages}`,
       );
 
-      // Ensure podcast record exists (only on first page)
+      // Ensure podcast record exists and get the internal ID
+      let podcastInternalId: string | null = null;
       if (currentPage === 1) {
         try {
-          await db
+          const insertedPodcast = await db
             .insert(podcast)
             .values({
               id: `podcast_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
               podcastId: podcastId,
-              title: `Podcast ${podcastId}`,
+              title: `Podcast ${podcastId}`, // TODO: Get real podcast title from API
               description: null,
             })
-            .onConflictDoNothing();
+            .onConflictDoNothing()
+            .returning({ id: podcast.id });
 
+          podcastInternalId = insertedPodcast[0]?.id ?? null;
           console.log(`✓ Ensured podcast record exists for ${podcastId}`);
         } catch (podcastError) {
           console.warn(
@@ -332,16 +370,27 @@ async function fetchAllEpisodes(
         }
       }
 
+      // Get podcast internal ID if not created on this page
+      if (!podcastInternalId) {
+        const [existingPodcast] = await db
+          .select({ id: podcast.id })
+          .from(podcast)
+          .where(eq(podcast.podcastId, podcastId))
+          .limit(1);
+        podcastInternalId = existingPodcast?.id ?? null;
+      }
+
       // Process episodes on this page
       for (const ep of data.episodes) {
         try {
-          // Insert/update episode
+          // Insert/update episode with proper foreign key
           const insertedEpisode = await db
             .insert(episode)
             .values({
               id: `ep_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
               episodeId: ep.episode_id,
-              series: podcastId,
+              podcastId: podcastInternalId,
+              series: null, // Clear series field as it should contain actual series name, not podcast ID
               title: ep.episode_title,
               audioUrl: ep.episode_audio_url,
               thumbnailUrl: ep.episode_image_url ?? undefined,
@@ -351,7 +400,8 @@ async function fetchAllEpisodes(
             .onConflictDoUpdate({
               target: episode.episodeId,
               set: {
-                series: podcastId,
+                podcastId: podcastInternalId,
+                series: null,
                 title: ep.episode_title,
                 audioUrl: ep.episode_audio_url,
                 ...(ep.episode_image_url

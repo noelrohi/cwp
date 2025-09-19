@@ -10,7 +10,13 @@ import {
   PlusIcon,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { memo, useEffect, useRef, useState } from "react";
+import {
+  type MouseEventHandler,
+  memo,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import type { MyUIMessage } from "@/ai/schema";
 import {
   Conversation,
@@ -35,6 +41,13 @@ import {
   PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
 import { Response } from "@/components/ai-elements/response";
+import {
+  Source,
+  Sources,
+  SourcesContent,
+  SourcesTrigger,
+} from "@/components/ai-elements/sources";
+import { useAudioPlayer } from "@/components/providers/audio-player-provider";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -65,6 +78,7 @@ import {
 } from "./chat-suggestions";
 
 export function ChatPanel({ className }: { className?: string }) {
+  const { play } = useAudioPlayer();
   const [input, setInput] = useState("");
   const [model, setModel] = useLocalStorage<string>(
     "chat-model",
@@ -181,15 +195,59 @@ export function ChatPanel({ className }: { className?: string }) {
               </div>
             </ConversationEmptyState>
           ) : (
-            messages.map((message) => (
-              <Message from={message.role} key={message.id}>
-                <MessageContent variant="flat">
-                  {message.parts.map((part, i) => {
-                    return <MessagePart part={part} key={i} partIndex={i} />;
-                  })}
-                </MessageContent>
-              </Message>
-            ))
+            messages.map((message) => {
+              const sourceParts = message.parts.filter(
+                (p) => p.type === "source-url",
+              ) as Array<{ type: "source-url"; url?: string; title?: string }>;
+              const sourceCount = sourceParts.length;
+              return (
+                <Message from={message.role} key={message.id}>
+                  <MessageContent variant="flat">
+                    {message.parts.map((part, i) => {
+                      return <MessagePart part={part} key={i} partIndex={i} />;
+                    })}
+                    {message.role === "assistant" && sourceCount > 0 ? (
+                      <Sources>
+                        <SourcesTrigger count={sourceCount} />
+                        <SourcesContent>
+                          {sourceParts.map((p, i) => {
+                            const href = p.url ?? "";
+                            const title = p.title ?? href;
+                            const onClick: MouseEventHandler<
+                              HTMLAnchorElement
+                            > = (e) => {
+                              if (!href) return;
+                              // Attempt to play via audio player at the timestamp
+                              try {
+                                const [base, hash] = href.split("#");
+                                const m = /(?:[?#]|^)t=(\d+)/.exec(hash ?? "");
+                                const sec = m ? Number(m[1]) : 0;
+                                e.preventDefault();
+                                void play({
+                                  url: base,
+                                  title,
+                                  startAtSec: sec,
+                                });
+                              } catch {
+                                // fallback to default navigation
+                              }
+                            };
+                            return (
+                              <Source
+                                key={`${message.id}-src-${i}`}
+                                href={href}
+                                title={title}
+                                onClick={onClick}
+                              />
+                            );
+                          })}
+                        </SourcesContent>
+                      </Sources>
+                    ) : null}
+                  </MessageContent>
+                </Message>
+              );
+            })
           )}
         </ConversationContent>
         <ConversationScrollButton />
@@ -342,11 +400,22 @@ export const MessagePart = memo(function MessagePart({
   isStreaming,
 }: Props) {
   if (part.type === "data-vector-search") {
+    const data = part.data;
     return (
       <Task>
-        <TaskTrigger title={part.data.text} />
+        <TaskTrigger title={data.text} />
         <TaskContent>
-          <TaskItem>Found {part.data.items?.length} segments.</TaskItem>
+          {data.query && (
+            <TaskItem>
+              <strong>Query:</strong> "{data.query}"
+              {data.episodeId && " (scoped to episode)"}
+              {data.limit && ` • Limit: ${data.limit}`}
+            </TaskItem>
+          )}
+          <TaskItem>
+            Found {data.items?.length || 0} segments
+            {data.duration && ` in ${data.duration}ms`}
+          </TaskItem>
         </TaskContent>
       </Task>
     );
@@ -428,7 +497,7 @@ function LatestSuggestions({
           <span className="tracking-tight">Suggested questions</span>
         </div>
         <div className="divide-y">
-          {latest.suggestions.map((s, idx) => (
+          {latest?.suggestions.map((s, idx) => (
             <div key={`${idx}-${s}`} className="flex items-center px-4 py-3">
               <div className="flex-1 text-sm text-foreground/90">{s}</div>
               <Button

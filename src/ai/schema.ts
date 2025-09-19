@@ -1,6 +1,19 @@
 import type { UIMessage } from "ai";
 import { z } from "zod";
 
+export const citationSchema = z.object({
+  content: z.string(),
+  citations: z.array(
+    z.object({
+      number: z.string(),
+      title: z.string(),
+      url: z.string(),
+      description: z.string().optional(),
+      quote: z.string().optional(),
+    }),
+  ),
+});
+
 // Metadata attached to assistant messages (optional)
 export const messageMetadataSchema = z.object({
   createdAt: z.number().optional(),
@@ -24,11 +37,23 @@ export type MyUIMessage = UIMessage<
       status: "processing" | "complete" | "error";
       text: string;
       items?: unknown[];
+      query?: string;
+      limit?: number;
+      episodeId?: string;
+      podcastExternalId?: string;
+      duration?: number;
+      totalResults?: number;
     };
     "episode-details": {
       status: "processing" | "complete" | "error";
       text: string;
       results?: unknown;
+    };
+    // A single source/citation URL to show in the UI
+    // Rendered via <Sources /> in the chat UI
+    "source-url": {
+      url: string;
+      title?: string;
     };
     // Follow-up suggestions streamed from the model.
     // This will be written with UIMessageStream type: 'data-suggestions'

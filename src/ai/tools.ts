@@ -38,13 +38,19 @@ export const createSearchTool = ({
     }),
     execute: async ({ query, limit = 16, episodeId, podcastExternalId }) => {
       const id = generateId();
+      const startTime = Date.now();
+      const effectiveEpisodeId = episodeId ?? defaultEpisodeId;
 
       writer.write({
         id,
         type: "data-vector-search",
         data: {
           status: "processing",
-          text: `Searching for ${query}`,
+          text: `🔍 Searching for: "${query}"`,
+          query,
+          limit,
+          episodeId: effectiveEpisodeId,
+          podcastExternalId,
         },
       });
 
@@ -61,25 +67,23 @@ export const createSearchTool = ({
       )})`;
 
       const filters: SQL<unknown>[] = [];
-      const effectiveEpisodeId = episodeId ?? defaultEpisodeId;
       if (effectiveEpisodeId) {
         filters.push(eq(transcriptChunk.episodeId, effectiveEpisodeId));
       }
 
-      const needJoin = Boolean(podcastExternalId);
-      const base = db
+      // Always join episode to enrich results with metadata (title, audio url)
+      const qb = db
         .select({
           text: transcriptChunk.text,
           startSec: transcriptChunk.startSec,
           endSec: transcriptChunk.endSec,
           episodeId: transcriptChunk.episodeId,
           similarity,
+          episodeTitle: episode.title,
+          audioUrl: episode.audioUrl,
         })
-        .from(transcriptChunk);
-
-      const qb = needJoin
-        ? base.leftJoin(episode, eq(episode.id, transcriptChunk.episodeId))
-        : base;
+        .from(transcriptChunk)
+        .leftJoin(episode, eq(episode.id, transcriptChunk.episodeId));
       if (podcastExternalId) {
         filters.push(eq(episode.series, podcastExternalId));
       }
@@ -95,17 +99,51 @@ export const createSearchTool = ({
         startMs: r.startSec ? Number(r.startSec) * 1000 : 0,
         endMs: r.endSec ? Number(r.endSec) * 1000 : 0,
         episodeId: r.episodeId,
+        episodeTitle: r.episodeTitle ?? undefined,
+        audioUrl: r.audioUrl ?? undefined,
       }));
+
+      const duration = Date.now() - startTime;
 
       writer.write({
         id,
         type: "data-vector-search",
         data: {
           status: "complete",
-          text: `Searched for ${query}`,
+          text: `Found ${results.length} relevant segments (${duration}ms)`,
           items: results,
+          query,
+          limit,
+          episodeId: effectiveEpisodeId,
+          podcastExternalId,
+          duration,
+          totalResults: results.length,
         },
       });
+
+      // Emit a few source URLs for UI consumption (if we have audio URLs)
+      const toMMSS = (ms: number) => {
+        const sec = Math.max(0, Math.floor(ms / 1000));
+        const m = Math.floor(sec / 60)
+          .toString()
+          .padStart(2, "0");
+        const s = (sec % 60).toString().padStart(2, "0");
+        return `${m}:${s}`;
+      };
+      for (const r of results.slice(0, Math.min(results.length, 5))) {
+        if (r.audioUrl) {
+          const seconds = Math.floor((r.startMs ?? 0) / 1000);
+          const url = `${r.audioUrl}#t=${seconds}`;
+          writer.write({
+            type: "source-url",
+            sourceId: generateId(),
+            url,
+            title: r.episodeTitle
+              ? `${r.episodeTitle} — ${toMMSS(r.startMs ?? 0)}`
+              : undefined,
+          });
+        }
+      }
 
       return { results };
     },
@@ -140,7 +178,7 @@ export const createEpisodeDetailsTool = ({
         type: "data-episode-details",
         data: {
           status: "processing",
-          text: "Getting episode details...",
+          text: "📡 Getting episode details...",
         },
       });
 
@@ -159,8 +197,8 @@ export const createEpisodeDetailsTool = ({
         podcastName?: string;
         highlights?: Array<{
           text: string;
-          startMs: string | number;
-          endMs: string | number;
+          startMs: number;
+          endMs: number;
           score: number;
         }>;
       };
@@ -184,6 +222,7 @@ export const createEpisodeDetailsTool = ({
           durationSec: episode.durationSec,
           publishedAt: episode.publishedAt,
           thumbnailUrl: episode.thumbnailUrl,
+          audioUrl: episode.audioUrl,
           podcastExternalId: episode.series,
           podcastName: podcast.title,
         })
@@ -234,6 +273,36 @@ export const createEpisodeDetailsTool = ({
         }
 
         results.push(summary);
+      }
+
+      // Before writing details, also emit source URLs for top highlights
+      const toMMSS = (ms: number) => {
+        const sec = Math.max(0, Math.floor(ms / 1000));
+        const m = Math.floor(sec / 60)
+          .toString()
+          .padStart(2, "0");
+        const s = (sec % 60).toString().padStart(2, "0");
+        return `${m}:${s}`;
+      };
+      for (let i = 0; i < epRows.length; i++) {
+        const row = epRows[i]!;
+        const episodeTitle = row.title ?? undefined;
+        const audioUrl = row.audioUrl ?? undefined;
+        if (!audioUrl) continue;
+        const hls = results[i]?.highlights;
+        if (!hls || hls.length === 0) continue;
+        for (const h of hls.slice(0, Math.min(hls.length, 5))) {
+          const seconds = Math.floor((h.startMs ?? 0) / 1000);
+          const url = `${audioUrl}#t=${seconds}`;
+          writer.write({
+            type: "source-url",
+            sourceId: generateId(),
+            url,
+            title: episodeTitle
+              ? `${episodeTitle} — ${toMMSS(h.startMs ?? 0)}`
+              : undefined,
+          });
+        }
       }
 
       writer.write({
