@@ -9,21 +9,13 @@ import {
   InlineCitationCard,
   InlineCitationCardBody,
   InlineCitationCardTrigger,
-  InlineCitationCarousel,
-  InlineCitationCarouselContent,
-  InlineCitationCarouselHeader,
-  InlineCitationCarouselIndex,
-  InlineCitationCarouselItem,
-  InlineCitationCarouselNext,
-  InlineCitationCarouselPrev,
   InlineCitationQuote,
   InlineCitationSource,
-  InlineCitationText,
 } from "@/components/ai-elements/inline-citation";
 import { useAudioPlayer } from "@/components/providers/audio-player-provider";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { RouterOutput, useTRPC } from "@/lib/trpc/client";
+import { type RouterOutput, useTRPC } from "@/lib/trpc/client";
 
 export default function QuestionPage({ params }: PageProps<"/question/[id]">) {
   const { id } = use(params);
@@ -171,7 +163,7 @@ function formatMMSS(start?: number, end?: number | null): string {
 function snippet(text: string, max = 220): string {
   const t = text.replace(/\s+/g, " ").trim();
   if (t.length <= max) return t;
-  return t.slice(0, max - 1).trimEnd() + "…";
+  return `${t.slice(0, max - 1).trimEnd()}…`;
 }
 
 function CitationPlayButton({
@@ -225,7 +217,7 @@ type FeedbackCounts = { answerId: string; helpful: number; unhelpful: number };
 type GetById = NonNullable<RouterOutput["questions"]["getById"]>;
 
 function AnswerCard({
-  queryId,
+  queryId: _queryId,
   answerId,
   text,
   citations,
@@ -246,7 +238,7 @@ function AnswerCard({
   }) => void;
 }) {
   const { play } = useAudioPlayer();
-  const [activeIndex, setActiveIndex] = useState<number | undefined>(undefined);
+  const [, setActiveIndex] = useState<number | undefined>(undefined);
   const items = useMemo(
     () =>
       citations.map((c) => ({
@@ -308,10 +300,15 @@ function AnswerCard({
     [items, onPlayback, play],
   );
 
-  const parsed = useMemo(
+  const _parsed = useMemo(
     () => parseAnswerWithTimestamps(text, playNearest),
     [text, playNearest],
   );
+
+  // Build per-citation items used for inline triggers
+  const sections = useMemo(() => {
+    return buildAnswerSections({ text, items, playNearest });
+  }, [text, items, playNearest]);
 
   const { helpful, unhelpful } = feedbackAgg;
   const [voted, setVoted] = useState<"helpful" | "unhelpful" | null>(() => {
@@ -331,51 +328,48 @@ function AnswerCard({
 
   return (
     <article className="mb-4 rounded-md border p-3">
-      <div className="text-sm leading-relaxed">
-        <InlineCitation>
-          <InlineCitationText>{parsed}</InlineCitationText>
-          {items.length > 0 && (
-            <InlineCitationCard>
-              <InlineCitationCardTrigger sources={items.map((i) => i.label)} />
-              <InlineCitationCardBody>
-                <InlineCitationCarousel activeIndex={activeIndex}>
-                  <InlineCitationCarouselHeader>
-                    <InlineCitationCarouselPrev />
-                    <InlineCitationCarouselNext />
-                    <InlineCitationCarouselIndex />
-                  </InlineCitationCarouselHeader>
-                  <InlineCitationCarouselContent>
-                    {items.map((citation, index) => (
-                      <InlineCitationCarouselItem key={index}>
+      <div className="text-sm leading-relaxed space-y-3">
+        {/* Per-citation sections: summary + block quote + inline trigger */}
+        {sections.map((sec, idx) => (
+          <div key={`sec-${idx}`} className="space-y-2">
+            {sec.summary && <p>{sec.summary}</p>}
+            {sec.quote && (
+              <div className="flex items-start gap-2">
+                <InlineCitation className="flex-1">
+                  <InlineCitationQuote className="mb-0">
+                    {sec.quote}
+                  </InlineCitationQuote>
+                  {sec.item && (
+                    <InlineCitationCard>
+                      <InlineCitationCardTrigger sources={[sec.item.label]} />
+                      <InlineCitationCardBody className="p-4">
                         <InlineCitationSource
-                          title={citation.title}
-                          url={citation.url}
-                          description={citation.label}
+                          title={sec.item.title}
+                          description={sec.item.label}
                         />
-                        {citation.quote && (
-                          <InlineCitationQuote>
-                            {citation.quote}
+                        {sec.item.quote && (
+                          <InlineCitationQuote className="mt-2">
+                            {sec.item.quote}
                           </InlineCitationQuote>
                         )}
                         <CitationPlayButton
-                          title={citation.title}
-                          series={citation.series}
-                          audioUrl={citation.audioUrl ?? undefined}
-                          startSec={citation.startSec}
-                          endSec={citation.endSec}
-                          thumbnailUrl={citation.thumbnailUrl}
+                          title={sec.item.title}
+                          series={sec.item.series}
+                          audioUrl={sec.item.audioUrl ?? undefined}
+                          startSec={sec.item.startSec}
+                          endSec={sec.item.endSec}
+                          thumbnailUrl={sec.item.thumbnailUrl}
                           onPlay={(args) => onPlayback?.(args)}
                         />
-                      </InlineCitationCarouselItem>
-                    ))}
-                  </InlineCitationCarouselContent>
-                </InlineCitationCarousel>
-              </InlineCitationCardBody>
-            </InlineCitationCard>
-          )}
-        </InlineCitation>
+                      </InlineCitationCardBody>
+                    </InlineCitationCard>
+                  )}
+                </InlineCitation>
+              </div>
+            )}
+          </div>
+        ))}
       </div>
-      {/* Feedback */}
       <div className="mt-3 flex items-center gap-2">
         <Button
           size="sm"
@@ -405,8 +399,8 @@ function parseAnswerWithTimestamps(
   const re = /(\(|\[)(\d{1,2}):(\d{2})(\)|\])/g;
   const nodes: React.ReactNode[] = [];
   let lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text))) {
+  let m: RegExpExecArray | null = re.exec(text);
+  while (m) {
     const [full, , mmStr, ssStr] = m;
     const start = m.index;
     const end = start + full.length;
@@ -425,7 +419,129 @@ function parseAnswerWithTimestamps(
       </button>,
     );
     lastIndex = end;
+    m = re.exec(text);
   }
   if (lastIndex < text.length) nodes.push(text.slice(lastIndex));
   return nodes;
+}
+
+// Build markdown-like sections from an LLM answer text.
+// Pattern expected from system prompt: summary line(s) followed by a quoted line
+// with a [mm:ss] or (mm:ss) timestamp. We extract the quote and pair it with
+// the nearest citation item, rendering the quote as a blockquote with an
+// inline trigger.
+function buildAnswerSections({
+  text,
+  items,
+  playNearest,
+}: {
+  text: string;
+  items: Array<{
+    label: string;
+    title?: string;
+    series?: string;
+    url?: string;
+    quote?: string;
+    startSec?: number;
+    endSec?: number;
+    audioUrl?: string | undefined;
+    thumbnailUrl?: string | null;
+  }>;
+  playNearest: (mm: number, ss: number) => void;
+}) {
+  const tsRe = /(\(|\[)(\d{1,2}):(\d{2})(\)|\])/g;
+  const sections: Array<{
+    summary?: React.ReactNode;
+    quote?: string;
+    item?: (typeof items)[number];
+  }> = [];
+
+  let cursor = 0;
+  let m: RegExpExecArray | null = tsRe.exec(text);
+  while (m) {
+    const start = m.index;
+    const end = start + m[0].length;
+    const mm = Number(m[2]);
+    const ss = Number(m[3]);
+    const sec = mm * 60 + ss;
+
+    // Summary: everything since last cursor up to the start of the surrounding quote (if found)
+    const quoteInfo = extractQuoteBeforeIndex(text, start);
+    const summaryStart = cursor;
+    const summaryEnd = quoteInfo?.start ?? start;
+    const rawSummary = text.slice(summaryStart, summaryEnd).trim();
+    const summaryNode = rawSummary
+      ? parseAnswerWithTimestamps(rawSummary, playNearest)
+      : undefined;
+
+    // Quote: prefer explicit quoted text; fallback to nearest citation chunk
+    const nearest = findNearestItemBySec(items, sec);
+    const quote = quoteInfo?.text || nearest?.quote || undefined;
+
+    if (summaryNode || quote) {
+      sections.push({ summary: summaryNode, quote, item: nearest });
+    }
+
+    cursor = end; // move past timestamp
+    m = tsRe.exec(text);
+  }
+
+  // Tail summary after the last timestamp
+  const tail = text.slice(cursor).trim();
+  if (tail) {
+    sections.push({ summary: parseAnswerWithTimestamps(tail, playNearest) });
+  }
+
+  return sections;
+}
+
+function extractQuoteBeforeIndex(
+  text: string,
+  idx: number,
+): { text: string; start: number; end: number } | null {
+  // Try smart quotes first
+  const closeSmart = text.lastIndexOf("”", idx);
+  if (closeSmart !== -1) {
+    const openSmart = text.lastIndexOf("“", closeSmart - 1);
+    if (openSmart !== -1 && openSmart < closeSmart) {
+      return {
+        text: text.slice(openSmart + 1, closeSmart).trim(),
+        start: openSmart,
+        end: closeSmart + 1,
+      };
+    }
+  }
+  // Fallback to straight quotes
+  const close = text.lastIndexOf('"', idx);
+  if (close !== -1) {
+    const open = text.lastIndexOf('"', close - 1);
+    if (open !== -1 && open < close) {
+      return {
+        text: text.slice(open + 1, close).trim(),
+        start: open,
+        end: close + 1,
+      };
+    }
+  }
+  return null;
+}
+
+function findNearestItemBySec(
+  items: Array<{
+    startSec?: number;
+  }>,
+  targetSec: number,
+) {
+  if (!items.length) return undefined;
+  let best = items[0];
+  let bestDelta = Number.POSITIVE_INFINITY;
+  for (const it of items) {
+    const s = Number(it.startSec ?? 0);
+    const d = Math.abs(s - targetSec);
+    if (d < bestDelta) {
+      bestDelta = d;
+      best = it;
+    }
+  }
+  return best;
 }
