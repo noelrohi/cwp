@@ -19,11 +19,6 @@ const items = [
     icon: BookOpenIcon,
     url: "/library",
   },
-  {
-    title: "Pricing",
-    icon: CreditCardIcon,
-    url: "/pricing",
-  },
 ] as const;
 
 export function NavMain() {
