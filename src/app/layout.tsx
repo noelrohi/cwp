@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist_Mono, Manrope, Merriweather } from "next/font/google";
+import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { AudioPlayerProvider } from "@/components/providers/audio-player-provider";
 import { TRPCProviders } from "@/components/providers/trpc-provider";
 import "./globals.css";
@@ -36,7 +37,9 @@ export default function RootLayout({
         className={`${sans.variable} ${geistMono.variable} ${serif.variable} font-sans antialiased`}
       >
         <TRPCProviders>
-          <AudioPlayerProvider>{children}</AudioPlayerProvider>
+          <AudioPlayerProvider>
+            <NuqsAdapter>{children}</NuqsAdapter>
+          </AudioPlayerProvider>
         </TRPCProviders>
       </body>
     </html>

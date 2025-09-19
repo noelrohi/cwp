@@ -9,7 +9,8 @@ import {
   LayersIcon,
   PlusIcon,
 } from "lucide-react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
+import { useQueryState } from "nuqs";
 import {
   type MouseEventHandler,
   memo,
@@ -92,7 +93,8 @@ export function ChatPanel({ className }: { className?: string }) {
   const [searchPickerOpen, setSearchPickerOpen] = useState(false);
 
   // Read URL params for contextual hints (e.g., episodeId)
-  const searchParams = useSearchParams();
+  const [episodeId] = useQueryState("episodeId");
+  const [q, setQ] = useQueryState("q");
 
   const { messages, sendMessage, status, stop } = useChat<MyUIMessage>({
     transport: new DefaultChatTransport({
@@ -105,7 +107,7 @@ export function ChatPanel({ className }: { className?: string }) {
             model,
             searchMode,
             // Forward contextual episodeId so the server can narrow tools
-            episodeId: searchParams.get("episodeId") ?? undefined,
+            episodeId: episodeId ?? undefined,
           },
         };
       },
@@ -113,19 +115,16 @@ export function ChatPanel({ className }: { className?: string }) {
   });
 
   // Seed initial query from ?q=...
-  const router = useRouter();
+  const _router = useRouter();
   const seededRef = useRef<string | null>(null);
   useEffect(() => {
-    const q = searchParams.get("q");
     if (!q) return;
     if (seededRef.current === q) return;
     seededRef.current = q;
     sendMessage({ text: q });
     // Remove q from the URL to avoid re-sending on back/forward
-    const params = new URLSearchParams(Array.from(searchParams.entries()));
-    params.delete("q");
-    router.replace(`/?${params.toString()}`);
-  }, [router, searchParams, sendMessage]);
+    setQ(null);
+  }, [q, sendMessage, setQ]);
 
   const [category, setCategory] = useState<CategoryKey>("growth");
 
