@@ -29,27 +29,27 @@ export const tabs: { key: CategoryKey; label: string; icon: ReactNode }[] = [
 
 export const suggestionsByCategory: Record<CategoryKey, string[]> = {
   consulting: [
-    "Episodes where consultants discuss pricing and packaging for B2B services",
-    "Summarize frameworks for scoping, proposals, and SOWs from podcasts",
-    "Case‑study episodes on turning expertise into productized services",
-    "Tips on discovery calls from consulting podcasts—share links and notes",
+    "How does Lee use slash commands in Cursor for code reviews?",
+    "What are Lee's tips for getting the most out of AI agents in Cursor?",
+    "How does Lee structure his apps to work better with AI agents?",
+    "What are Lee's banned words list and writing guidelines for AI?",
   ],
   ai: [
-    "Find podcasts that explain RAG in production—include links and timestamps",
-    "Summarize takeaways on AI evaluation and LLM metrics from recent episodes",
-    "Interviews with founders shipping AI copilots—share lessons and resources",
-    "Pull quotes about prompt engineering pitfalls from top AI podcasts",
+    "How does Lee use Cursor agents for bug fixing and security?",
+    "What is BugBot and how does it automate code reviews?",
+    "How can you run Cursor agents headlessly in CI/CD pipelines?",
+    "What are Lee's thoughts on context window management with AI agents?",
   ],
   product: [
-    "Episodes on PMF and early user research for developer tools",
-    "Discussions about roadmap prioritization with real product examples",
-    "Podcast teardowns covering onboarding flows—include timestamps",
-    "Monetization experiments for SaaS: find and summarize key episodes",
+    "How does the Cursor team build Cursor with Cursor?",
+    "What are Lee's rules and commands for his project setup?",
+    "How does Lee handle linter errors and self-correction with AI?",
+    "What are Lee's tips for starting new chats for each task?",
   ],
   growth: [
-    "Growth loops and retention for SaaS—round up the best episodes",
-    "Content‑driven growth tactics discussed by podcast hosts and guests",
-    "Episodes on SEO for developers and technical marketing",
-    "PLG onboarding examples from growth podcasts—share quotes and links",
+    "How can you use Cursor agents to fix bugs from Slack reports?",
+    "What is Lee's advice for avoiding context window overload?",
+    "How does Lee use AI agents for documentation and content creation?",
+    "What are Lee's thoughts on personal software and distribution engineering?",
   ],
 };

@@ -22,6 +22,12 @@ import { createEpisodeDetailsTool, createSearchTool } from "@/ai/tools";
 import { db } from "@/db";
 import { chatSession } from "@/db/schema/chat";
 import { auth } from "@/lib/auth";
+import {
+  createPodcastSystemPrompt,
+  createFollowupPrompt,
+  createTranscriptCitationPrompt,
+  createQualityAssurancePrompt,
+} from "@/lib/prompt-utils";
 
 const openrouter = createOpenRouter({
   apiKey: process.env.OPENROUTER_API_KEY,
@@ -47,51 +53,14 @@ function getSystemPrompt({
   includeSimilarityTool: boolean;
   episodeId?: string;
 }) {
-  const lines: string[] = [
-    "You are opencode — an expert AI programming assistant specialized in podcast discovery and episode insights.",
-    "Keep answers short, direct, and impersonal.",
-    "",
-    "Goal:",
-    "- Provide helpful, sourced answers by blending a brief summary with direct transcript quotes and timestamps.",
-    "",
-    "Core behaviors:",
-    "- Always reason about what information is needed to answer clearly.",
-    "- If the user asks to go deeper on specific episodes, call the episode_details tool with episode IDs you have or discover.",
-    "- When uncertain or lacking sufficient context, ask a concise clarifying question.",
-    "- Cite episode titles whenever you reference them. Do not expose internal identifiers (database ids).",
-    "",
-    "Answer format (strict):",
-    "- If your answer has multiple distinct points, use a bulleted list (3–7 items). If there is only one key point, write a single concise paragraph (no bullets).",
-    "- For each point: write one–two sentences summarizing the claim. On the next line, include one direct quote from the transcript in quotes with a [mm:ss] timestamp. Do not fabricate quotes.",
-    "- Convert timestamps from milliseconds to [mm:ss]. Include the episode title if known; include speaker names when available.",
-    "- Prefer the current episode if provided; otherwise, search across available episodes.",
-    "- If no relevant segments are found, output exactly: 'No direct quote found.' and then one brief clarifying question.",
-    "- Do not prepend with phrases like 'According to'. Keep wording neutral.",
-    "- Do not inline URLs or footnote-style citations; sources are provided separately.",
-    "",
-    "Tone and extras:",
-    "- Be concise and impersonal. Avoid hedging (e.g., 'it seems').",
-    "- After the answer, optionally propose one next action (e.g., 'Want highlights from another episode?').",
-    "",
-    "Tool usage notes:",
-  ];
-  if (includeSimilarityTool) {
-    lines.push(
-      "- search_similarity: ALWAYS call this first with the user's query to fetch transcript chunks (returns text, startMs/endMs, episodeId). Use these to produce the summary + quote pairs.",
-    );
-  }
-  lines.push(
-    "- episode_details: Call with unique episodeIds from search results when you need episode titles, podcast names, or durations. If the user wants deeper analysis for a specific query, you may pass 'query' to retrieve top highlights.",
-    "- Never reveal internal ids. Only surface human-readable titles and timestamps.",
-  );
-  if (episodeId) {
-    lines.push(
-      "",
-      "Context:",
-      `- The current conversation is scoped to one episode (internal id: ${episodeId}). When needed, call episode_details with this id. Do NOT reveal or mention this id in responses. When performing similarity search, restrict results to this episode when possible.`,
-    );
-  }
-  return lines.join("\n");
+  const basePrompt = createPodcastSystemPrompt({
+    includeSimilarityTool,
+    episodeId,
+  });
+  const citationPrompt = createTranscriptCitationPrompt();
+  const qualityPrompt = createQualityAssurancePrompt();
+
+  return `${basePrompt}\n\n${citationPrompt}\n\n${qualityPrompt}`;
 }
 
 export async function POST(req: NextRequest) {
@@ -106,6 +75,12 @@ export async function POST(req: NextRequest) {
 
   const stream = createUIMessageStream<MyUIMessage>({
     execute: async ({ writer }) => {
+      const dataPartId = crypto.randomUUID();
+
+      writer.write({
+        id: dataPartId,
+        type: "reasoning-start",
+      })
       const modelMessages = convertToModelMessages(messages);
       const effectiveSearchMode =
         searchMode ?? (webSearch ? "sonar" : undefined);
@@ -113,6 +88,8 @@ export async function POST(req: NextRequest) {
         modelId: selectedModelId,
         searchMode: effectiveSearchMode,
       });
+      console.log("Streaming initial messages.");
+      console.log("Using model" + model.modelId);
       const messagesFromResponse = await streamInitialMessages({
         writer,
         modelMessages,
@@ -211,6 +188,10 @@ async function streamInitialMessages({
     system,
     messages: modelMessages,
     tools,
+    prepareStep: (step) => {
+      console.log(JSON.stringify(step))
+      return step
+    },
     stopWhen: stepCountIs(10),
     experimental_transform: smoothStream({
       delayInMs: 20,
@@ -227,13 +208,14 @@ async function streamInitialMessages({
           return { totalUsage: part.totalUsage };
         }
       },
-      onFinish({ messages }) {
-        console.log(JSON.stringify(messages, null, 2));
+      onFinish({ messages,  }) {
+        // console.log(JSON.stringify(messages, null, 2));
       },
     }),
   );
   // Wait for the model response to complete and return the response messages
   const response = await result.response;
+  console.log(JSON.stringify(result.steps, null, 2))
   return response.messages as ModelMessage[];
 }
 
@@ -244,6 +226,15 @@ function resolveModel({
   modelId?: string;
   searchMode?: "similarity" | "sonar";
 }): LanguageModelV2 {
+  if (process.env.NODE_ENV !== "production") {
+    return openrouter.chat("openrouter/sonoma-dusk-alpha", {
+      reasoning: {
+        enabled: true,
+        effort: "high",
+      },
+      // plugins: [{ id: "web" }],
+    });
+  }
   // If Sonar search is selected, use Perplexity Sonar model.
   if (searchMode === "sonar") {
     return openrouter.chat("perplexity/sonar");
@@ -260,6 +251,7 @@ function resolveModel({
 
     return openrouter.chat("openai/gpt-5", {
       reasoning: { enabled: true, effort },
+      plugins: [{ id: "web" }],
     });
   }
 
@@ -271,7 +263,8 @@ function resolveModel({
   }
 
   // Fallback to requested model without extra options
-  return openrouter.chat(id);
+  return openrouter.chat(id, {
+  });
 }
 
 // Create and stream follow-up suggestions (array of strings)
@@ -282,14 +275,15 @@ function generateFollowupSuggestions({
   modelMessages: ModelMessage[];
   model: LanguageModelV2;
 }) {
+  const followupPrompt = createFollowupPrompt();
+
   return streamObject({
     model,
     messages: [
       ...modelMessages,
       {
         role: "user",
-        content:
-          "What question should I ask next? Return an array of suggested questions. Make it not too long.",
+        content: followupPrompt,
       },
     ],
     schema: z.object({

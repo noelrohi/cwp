@@ -412,7 +412,7 @@ export const MessagePart = memo(function MessagePart({
             </TaskItem>
           )}
           <TaskItem>
-            Found {data.items?.length || 0} segments
+            Found {JSON.stringify(part.data.items, null, 2)} segments
             {data.duration && ` in ${data.duration}ms`}
           </TaskItem>
         </TaskContent>
