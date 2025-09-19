@@ -4,7 +4,7 @@ import { openai } from "@ai-sdk/openai";
 import { openrouter } from "@openrouter/ai-sdk-provider";
 import { embed, streamObject } from "ai";
 import { and, cosineDistance, desc, eq, type SQL, sql } from "drizzle-orm";
-import { z } from "zod";
+
 import { citationSchema } from "@/ai/schema";
 import { db } from "@/db";
 import { episode, transcriptChunk } from "@/db/schema";

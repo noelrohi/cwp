@@ -2,6 +2,7 @@
 import {
   IconDotsVertical,
   IconLogout,
+  IconSettings,
   IconUserCircle,
 } from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
@@ -97,9 +98,17 @@ export function NavUser() {
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => router.push("/settings/profile")}
+              >
                 <IconUserCircle />
                 Account
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => router.push("/settings/billing")}
+              >
+                <IconSettings />
+                Settings
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />

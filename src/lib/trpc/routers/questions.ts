@@ -4,7 +4,6 @@ import { after } from "next/server";
 import { z } from "zod";
 import {
   episode,
-  podcast,
   qaAnswer,
   qaCitation,
   qaQuery,
@@ -117,7 +116,7 @@ export const questionsRouter = createTRPCRouter({
 
       if (answers.length === 0) {
         logger.info("No answers found for query", { queryId: input.queryId });
-        return { answers: [], citations: [] as any[] };
+        return { answers: [], citations: [] as Array<unknown> };
       }
 
       logger.debug("Answers retrieved", {
@@ -201,7 +200,7 @@ export const questionsRouter = createTRPCRouter({
   getById: publicProcedure
     .input(z.object({ queryId: z.string() }))
     .query(async ({ ctx, input }) => {
-      const startTime = Date.now();
+      const _startTime = Date.now();
 
       logger.debug("Fetching query by ID", { queryId: input.queryId });
 
@@ -282,6 +281,7 @@ export const questionsRouter = createTRPCRouter({
         .object({
           limit: z.number().int().min(1).max(50).optional(),
           sort: z.enum(["newest", "active"]).optional().default("newest"),
+          cursor: z.string().optional(),
         })
         .optional(),
     )
@@ -289,24 +289,37 @@ export const questionsRouter = createTRPCRouter({
       const startTime = Date.now();
       const limit = input?.limit ?? 20;
       const sort = input?.sort ?? "newest";
+      const cursor = input?.cursor;
 
       logger.debug("Listing queries", {
         limit,
         sort,
+        cursor,
         userId: ctx.user?.id ?? "anonymous",
       });
 
-      const query = ctx.db
-        .select({
-          queryId: qaQuery.queryId,
-          queryText: qaQuery.queryText,
-          createdAt: qaQuery.createdAt,
-          answersCount: sql<number>`count(${qaAnswer.answerId})`,
-        })
-        .from(qaQuery)
-        .leftJoin(qaAnswer, eq(qaAnswer.queryId, qaQuery.queryId))
-        .groupBy(qaQuery.queryId)
-        .limit(limit);
+      const queryBuilder = () => {
+        const query = ctx.db
+          .select({
+            queryId: qaQuery.queryId,
+            queryText: qaQuery.queryText,
+            createdAt: qaQuery.createdAt,
+            answersCount: sql<number>`count(${qaAnswer.answerId})`,
+          })
+          .from(qaQuery)
+          .leftJoin(qaAnswer, eq(qaAnswer.queryId, qaQuery.queryId))
+          .groupBy(qaQuery.queryId);
+
+        if (cursor) {
+          return query.where(
+            sql`${qaQuery.createdAt} < ${new Date(cursor).toISOString()}`,
+          );
+        }
+
+        return query;
+      };
+
+      const query = queryBuilder().limit(limit + 1); // Fetch one extra to check if there are more
 
       const rows = await (sort === "active"
         ? query.orderBy(
@@ -315,20 +328,28 @@ export const questionsRouter = createTRPCRouter({
           )
         : query.orderBy(desc(qaQuery.createdAt)));
 
+      const hasMore = rows.length > limit;
+      const items = hasMore ? rows.slice(0, limit) : rows;
+      const nextCursor = hasMore ? items[items.length - 1]?.createdAt : null;
+
       const totalDuration = Date.now() - startTime;
-      const totalAnswers = rows.reduce(
+      const totalAnswers = items.reduce(
         (sum, row) => sum + Number(row.answersCount),
         0,
       );
 
       logger.info("Query list retrieval completed", {
-        queriesReturned: rows.length,
+        queriesReturned: items.length,
         requestedLimit: limit,
         sort,
+        hasMore,
         totalAnswersInSet: totalAnswers,
         totalDurationMs: totalDuration,
       });
 
-      return rows;
+      return {
+        items,
+        nextCursor,
+      };
     }),
 });

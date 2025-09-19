@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
-import Link from "next/link";
+
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -43,10 +43,9 @@ export default function LibraryPage() {
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-8">
       <header className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight">Episode Explorer</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Library</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          Browse episodes and try a suggested starter question. This page
-          follows the onboarding guidance in docs/chats/onboarding.md.
+          Ask question from these episodes
         </p>
         <div className="mt-4">
           <Input

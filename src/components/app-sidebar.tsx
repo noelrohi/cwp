@@ -2,7 +2,7 @@
 
 import { motion } from "motion/react";
 import type * as React from "react";
-import { NavRecents } from "@/components/nav-recents";
+
 import { NavUser } from "@/components/nav-user";
 import {
   Sidebar,
@@ -21,11 +21,8 @@ import { NavMain } from "./nav-main";
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { open, isMobile } = useSidebar();
   const { data } = useSession();
-  const isSignedIn = !!data?.user.id;
-  const chats = [] satisfies {
-    url: string;
-    title: string;
-  }[];
+  const _isSignedIn = !!data?.user.id;
+
   return (
     <>
       {/* Floating trigger at top-left of the app */}
@@ -53,7 +50,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   className="data-[slot=sidebar-menu-button]:!p-1.5"
                 >
                   <span className="font-bold font-serif text-base">
-                    ChatWithPodcast
+                    Learn with Podcasts
                   </span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -62,7 +59,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </SidebarHeader>
         <SidebarContent>
           <NavMain />
-          {isSignedIn ? <NavRecents items={chats} /> : null}
         </SidebarContent>
         <SidebarFooter>
           <NavUser />

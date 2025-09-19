@@ -1,3 +1,4 @@
+import { AutumnProvider } from "autumn-js/react";
 import type { Metadata } from "next";
 import { Geist_Mono, Manrope, Merriweather } from "next/font/google";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
@@ -37,9 +38,11 @@ export default function RootLayout({
         className={`${sans.variable} ${geistMono.variable} ${serif.variable} font-sans antialiased`}
       >
         <TRPCProviders>
-          <AudioPlayerProvider>
-            <NuqsAdapter>{children}</NuqsAdapter>
-          </AudioPlayerProvider>
+          <AutumnProvider betterAuthUrl={process.env.NEXT_PUBLIC_APP_URL}>
+            <AudioPlayerProvider>
+              <NuqsAdapter>{children}</NuqsAdapter>
+            </AudioPlayerProvider>
+          </AutumnProvider>
         </TRPCProviders>
       </body>
     </html>

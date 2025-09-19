@@ -285,7 +285,7 @@ export const createEpisodeDetailsTool = ({
         return `${m}:${s}`;
       };
       for (let i = 0; i < epRows.length; i++) {
-        const row = epRows[i]!;
+        const row = epRows[i];
         const episodeTitle = row.title ?? undefined;
         const audioUrl = row.audioUrl ?? undefined;
         if (!audioUrl) continue;

@@ -1,5 +1,7 @@
+import { autumn } from "autumn-js/better-auth";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { lastLoginMethod } from "better-auth/plugins";
 import { db } from "@/db";
 
 export const auth = betterAuth({
@@ -21,4 +23,5 @@ export const auth = betterAuth({
       clientSecret: process.env.LINKEDIN_CLIENT_SECRET as string,
     },
   },
+  plugins: [lastLoginMethod(), autumn()],
 });

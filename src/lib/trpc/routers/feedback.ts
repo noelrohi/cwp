@@ -1,4 +1,4 @@
-import { and, count, eq } from "drizzle-orm";
+import { count, eq } from "drizzle-orm";
 import { z } from "zod";
 import { qaAnswer, qaFeedback } from "@/db/schema/podcast";
 import { createTRPCRouter, publicProcedure } from "../init";

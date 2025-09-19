@@ -41,7 +41,7 @@ export default function SignUpPage() {
           <Link href="/terms" className="underline underline-offset-4">
             Terms
           </Link>{" "}
-          and acknowledge our{" "}
+          and{" "}
           <Link href="/privacy" className="underline underline-offset-4">
             Privacy Policy
           </Link>

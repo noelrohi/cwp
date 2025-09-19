@@ -1,5 +1,5 @@
 import { IconCirclePlusFilled } from "@tabler/icons-react";
-import { BookOpenIcon, HelpCircleIcon, MessageCircleIcon } from "lucide-react";
+import { BookOpenIcon, HelpCircleIcon, CreditCardIcon } from "lucide-react";
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -10,11 +10,6 @@ import {
 
 const items = [
   {
-    title: "Chats",
-    icon: MessageCircleIcon,
-    url: "/",
-  },
-  {
     title: "Questions",
     icon: HelpCircleIcon,
     url: "/questions",
@@ -23,6 +18,11 @@ const items = [
     title: "Library",
     icon: BookOpenIcon,
     url: "/library",
+  },
+  {
+    title: "Pricing",
+    icon: CreditCardIcon,
+    url: "/pricing",
   },
 ] as const;
 
@@ -34,12 +34,12 @@ export function NavMain() {
           <SidebarMenuItem className="flex items-center gap-2">
             <SidebarMenuButton
               asChild
-              tooltip="New Chat"
+              tooltip="Ask a Question"
               className="min-w-8 bg-primary text-primary-foreground duration-200 ease-linear hover:bg-primary/90 hover:text-primary-foreground active:bg-primary/90 active:text-primary-foreground"
             >
-              <a href="/">
+              <a href="/library">
                 <IconCirclePlusFilled />
-                <span>New Chat</span>
+                <span>Ask a Question</span>
               </a>
             </SidebarMenuButton>
           </SidebarMenuItem>

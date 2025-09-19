@@ -1,10 +1,12 @@
 "use client";
 import { IconBrandGoogle, IconBrandLinkedin } from "@tabler/icons-react";
 import Link from "next/link";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { signIn } from "@/lib/auth-client";
+import { authClient, signIn } from "@/lib/auth-client";
 
 export default function SignInPage() {
+  const lastMethod = authClient.getLastUsedLoginMethod();
   return (
     <div className="w-full max-w-sm">
       <div className="flex flex-col gap-6">
@@ -19,18 +21,24 @@ export default function SignInPage() {
           <Button
             variant="outline"
             onClick={() => signIn.social({ provider: "google" })}
-            className="justify-start"
+            className="justify-start relative"
           >
             <IconBrandGoogle className="size-4" />
             Continue with Google
+            {lastMethod === "google" && (
+              <Badge className="absolute -top-2 -right-2">Last used</Badge>
+            )}
           </Button>
           <Button
             variant="outline"
             onClick={() => signIn.social({ provider: "linkedin" })}
-            className="justify-start"
+            className="justify-start relative"
           >
             <IconBrandLinkedin className="size-4" />
             Continue with LinkedIn
+            {lastMethod === "linkedin" && (
+              <Badge className="absolute -top-2 -right-2">Last used</Badge>
+            )}
           </Button>
         </div>
 
@@ -39,7 +47,7 @@ export default function SignInPage() {
           <Link href="/terms" className="underline underline-offset-4">
             Terms
           </Link>{" "}
-          and acknowledge our{" "}
+          and{" "}
           <Link href="/privacy" className="underline underline-offset-4">
             Privacy Policy
           </Link>

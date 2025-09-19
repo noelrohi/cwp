@@ -1,10 +1,14 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { ArrowUpIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import {
   PromptInput,
   PromptInputBody,
@@ -23,13 +27,6 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { useTRPC } from "@/lib/trpc/client";
 
-type ListItem = {
-  queryId: string;
-  queryText: string | null;
-  createdAt: string | Date | null;
-  answersCount: number | null;
-};
-
 export default function QuestionsPage() {
   const trpc = useTRPC();
   const qc = useQueryClient();
@@ -38,9 +35,14 @@ export default function QuestionsPage() {
   const router = useRouter();
 
   const createQuestion = useMutation(trpc.questions.create.mutationOptions());
-  const listQuery = useQuery(
-    trpc.questions.list.queryOptions({ limit: 20, sort }),
-  );
+  const listQuery = useInfiniteQuery({
+    ...trpc.questions.list.infiniteQueryOptions(
+      { limit: 20, sort },
+      {
+        getNextPageParam: (lastPage) => lastPage.nextCursor,
+      },
+    ),
+  });
 
   async function handleAsk({ text }: { text?: string }) {
     const raw = (text ?? "").trim();
@@ -49,9 +51,9 @@ export default function QuestionsPage() {
     try {
       const res = await createQuestion.mutateAsync({ question: raw });
       router.push(`/question/${res.queryId}`);
-    } catch (err) {}
+    } catch (_err) {}
     qc.invalidateQueries({
-      queryKey: trpc.questions.list.queryKey({ limit: 20, sort }),
+      queryKey: trpc.questions.list.infiniteQueryKey({ limit: 20, sort }),
     });
   }
 
@@ -87,6 +89,7 @@ export default function QuestionsPage() {
                     viewBox="0 0 24 24"
                     fill="none"
                     xmlns="http://www.w3.org/2000/svg"
+                    aria-label="Loading"
                   >
                     <circle
                       className="opacity-25"
@@ -114,7 +117,11 @@ export default function QuestionsPage() {
       {/* Toolbar */}
       <section className="mb-3 flex items-center justify-between gap-3">
         <div className="text-sm text-muted-foreground">
-          {listQuery.data?.length ?? 0} questions
+          {listQuery.data?.pages.reduce(
+            (total, page) => total + page.items.length,
+            0,
+          ) ?? 0}{" "}
+          questions
         </div>
         <div className="flex items-center gap-2">
           <Label className="text-xs">Sort by</Label>
@@ -134,46 +141,61 @@ export default function QuestionsPage() {
 
       {/* List */}
       <section className="grid grid-cols-1 gap-4">
-        {(listQuery.data ?? []).map((q) => {
-          const raw = (q.queryText ?? "").trim();
-          const firstSentence = raw.split(/(?<=[.!?])\s+/)[0] ?? raw;
-          const title = firstSentence.slice(0, 80);
-          const body = raw.length > title.length ? raw : `${raw}\n\n`;
-          return (
-            <article
-              key={q.queryId}
-              className="grid grid-cols-[96px_1fr] gap-4 rounded-lg border bg-background p-4 shadow-xs"
-            >
-              <div className="text-muted-foreground flex flex-col items-center justify-center gap-2 text-xs">
-                <Stat
-                  label="answers"
-                  value={Number(q.answersCount ?? 0)}
-                  highlighted={(q.answersCount ?? 0) > 0}
-                />
-              </div>
-              <div>
-                <h3 className="mb-1 text-base font-semibold">
-                  <Link
-                    href={`/question/${q.queryId}`}
-                    className="hover:underline"
-                  >
-                    {title}
-                  </Link>
-                </h3>
-                <p className="text-muted-foreground line-clamp-2 text-sm">
-                  {body}
-                </p>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <div className="text-muted-foreground ml-auto text-xs">
-                    asked{" "}
-                    {timeAgo(String(q.createdAt ?? new Date().toISOString()))}
+        {listQuery.data?.pages.map((page, pageIndex) => (
+          <Fragment key={pageIndex}>
+            {page.items.map((q) => {
+              const raw = (q.queryText ?? "").trim();
+              const title = raw.slice(0, 80);
+              return (
+                <article
+                  key={q.queryId}
+                  className="grid grid-cols-[auto_1fr] gap-4 rounded-lg border bg-background p-4 shadow-xs items-center"
+                >
+                  <div className="text-muted-foreground flex flex-col items-center justify-center gap-2 text-xs min-w-[60px]">
+                    <Stat
+                      label="answers"
+                      value={Number(q.answersCount ?? 0)}
+                      highlighted={(q.answersCount ?? 0) > 0}
+                    />
                   </div>
-                </div>
-              </div>
-            </article>
-          );
-        })}
+                  <div className="flex-1">
+                    <h3 className="text-base font-semibold">
+                      <Link
+                        href={`/question/${q.queryId}`}
+                        className="hover:underline"
+                      >
+                        {title}
+                      </Link>
+                    </h3>
+                    <div className="mt-2 flex items-center justify-between">
+                      <div className="text-muted-foreground text-xs">
+                        asked{" "}
+                        {timeAgo(
+                          String(q.createdAt ?? new Date().toISOString()),
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </Fragment>
+        ))}
       </section>
+
+      {/* Load More Button */}
+      {listQuery.hasNextPage && (
+        <div className="flex justify-center mt-6">
+          <button
+            type="button"
+            onClick={() => listQuery.fetchNextPage()}
+            disabled={listQuery.isFetchingNextPage}
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {listQuery.isFetchingNextPage ? "Loading..." : "Load More"}
+          </button>
+        </div>
+      )}
     </main>
   );
 }

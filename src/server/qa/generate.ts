@@ -1,7 +1,7 @@
 import { openai } from "@ai-sdk/openai";
 import { openrouter } from "@openrouter/ai-sdk-provider";
 import { embed, generateObject } from "ai";
-import { and, cosineDistance, desc, eq, gt, sql, type SQL } from "drizzle-orm";
+import { and, cosineDistance, desc, eq, gt, type SQL, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import type { db as dbInstance } from "@/db";
@@ -421,7 +421,7 @@ export async function findRelevantChunks(args: {
 
 function truncate(s: string, max: number) {
   if (s.length <= max) return s;
-  return s.slice(0, max - 1) + "…";
+  return `${s.slice(0, max - 1)}…`;
 }
 
 export function formatTimestamp(sec: number) {

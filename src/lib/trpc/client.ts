@@ -2,9 +2,9 @@
 
 import { QueryClient } from "@tanstack/react-query";
 import { createTRPCClient, httpBatchLink } from "@trpc/client";
+import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
 import { createTRPCContext } from "@trpc/tanstack-react-query";
 import type { AppRouter } from "./root";
-import { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
 
 function getBaseUrl() {
   if (typeof window !== "undefined") return "";
