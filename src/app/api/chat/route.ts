@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
       writer.write({
         id: dataPartId,
         type: "reasoning-start",
-      })
+      });
       const modelMessages = convertToModelMessages(messages);
       const effectiveSearchMode =
         searchMode ?? (webSearch ? "sonar" : undefined);
@@ -189,8 +189,8 @@ async function streamInitialMessages({
     messages: modelMessages,
     tools,
     prepareStep: (step) => {
-      console.log(JSON.stringify(step))
-      return step
+      console.log(JSON.stringify(step));
+      return step;
     },
     stopWhen: stepCountIs(10),
     experimental_transform: smoothStream({
@@ -208,14 +208,14 @@ async function streamInitialMessages({
           return { totalUsage: part.totalUsage };
         }
       },
-      onFinish({ messages,  }) {
+      onFinish({ messages }) {
         // console.log(JSON.stringify(messages, null, 2));
       },
     }),
   );
   // Wait for the model response to complete and return the response messages
   const response = await result.response;
-  console.log(JSON.stringify(result.steps, null, 2))
+  console.log(JSON.stringify(result.steps, null, 2));
   return response.messages as ModelMessage[];
 }
 
@@ -227,7 +227,7 @@ function resolveModel({
   searchMode?: "similarity" | "sonar";
 }): LanguageModelV2 {
   if (process.env.NODE_ENV !== "production") {
-    return openrouter.chat("openrouter/sonoma-dusk-alpha", {
+    return openrouter.chat("x-ai/grok-4-fast:free", {
       reasoning: {
         enabled: true,
         effort: "high",
@@ -240,7 +240,7 @@ function resolveModel({
     return openrouter.chat("perplexity/sonar");
   }
 
-  const id = modelId ?? "openrouter/sonoma-dusk-alpha";
+  const id = modelId ?? "x-ai/grok-4-fast:free";
 
   // Map GPT-5 variants to reasoning efforts
   if (id.startsWith("openai/gpt-5")) {
@@ -255,16 +255,15 @@ function resolveModel({
     });
   }
 
-  // Default model: Sonoma Dusk with higher reasoning by default
-  if (id === "openrouter/sonoma-dusk-alpha") {
+  // Default model: Grok 4 Fast with higher reasoning by default
+  if (id === "x-ai/grok-4-fast:free") {
     return openrouter.chat(id, {
       reasoning: { enabled: true, effort: "high" },
     });
   }
 
   // Fallback to requested model without extra options
-  return openrouter.chat(id, {
-  });
+  return openrouter.chat(id, {});
 }
 
 // Create and stream follow-up suggestions (array of strings)
