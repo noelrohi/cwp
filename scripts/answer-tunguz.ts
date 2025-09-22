@@ -100,7 +100,7 @@ function buildSourcesBlock(
       (c, i) =>
         `(${i + 1}) [${formatTimestamp(c.startSec)}] ${
           c.episodeTitle ? `${c.episodeTitle}: ` : ""
-        }${(c.text ?? "").replaceAll("\n", " ").slice(0, 450)}`,
+        }${(c.text ?? "").replaceAll("\n", " ").slice(0, 900)}`,
     )
     .join("\n\n");
 }
@@ -163,7 +163,7 @@ async function main() {
   console.log(`❓ Question: ${QUESTION}`);
 
   console.log("\n📚 Running vector search for relevant transcript chunks…");
-  const chunks = await findRelevantChunks({
+  let chunks = await findRelevantChunks({
     db,
     text: QUESTION,
     episodeId: ep.id,
@@ -175,6 +175,31 @@ async function main() {
     console.error("No relevant chunks found above threshold.");
     process.exit(1);
   }
+
+  // Augment with a targeted search for the distinctive term mentioned by the user
+  try {
+    const extra = await findRelevantChunks({
+      db,
+      text: "parakeet podcast processor",
+      episodeId: ep.id,
+      limit: 4,
+      threshold: 0.0,
+    });
+    if (extra.length > 0) {
+      const seen = new Set(chunks.map((c) => c.chunkId));
+      const merged = chunks.concat(extra.filter((c) => !seen.has(c.chunkId)));
+      // Keep the original ranking first, then extras by their similarity
+      const originalIds = new Set(chunks.map((c) => c.chunkId));
+      merged.sort((a, b) => {
+        const aOrig = originalIds.has(a.chunkId) ? 1 : 0;
+        const bOrig = originalIds.has(b.chunkId) ? 1 : 0;
+        if (aOrig !== bOrig) return bOrig - aOrig; // originals first
+        return (b.similarity ?? 0) - (a.similarity ?? 0);
+      });
+      // Cap the list to a reasonable size for the prompt
+      chunks = merged.slice(0, 12);
+    }
+  } catch {}
 
   await logTopChunks(chunks);
 
@@ -201,16 +226,16 @@ async function main() {
     }),
     schema,
     system:
-      "You extract key phrases and quotes from podcast transcripts that are relevant to the question. Focus on finding the most impactful and direct statements from speakers.",
+      "You extract quotes from podcast transcripts that are relevant to the question. IMPORTANT: Always copy quotes verbatim as contiguous spans that appear in the provided Sources. Do NOT paraphrase, summarize, or add words that aren't present in the Sources. Do NOT merge multiple speakers into one quote.",
     prompt:
       `Question: ${QUESTION}\n\n` +
       `Sources:\n${sourcesBlock}\n\n` +
       `Instructions:\n` +
-      `- Extract 1-3 key quotes from different speakers (guest/host) that best address the question.\n` +
-      `- Select phrases that are directly relevant and impactful from the transcript.\n` +
-      `- Clean up filler words but preserve the authentic voice and meaning.\n` +
+      `- Extract 1-3 quotes from different speakers (guest/host) that best address the question.\n` +
+      `- Quotes must be exact, verbatim substrings from the Sources text above. No rewording, trimming, or added context.\n` +
+      `- If the phrase 'parakeet podcast processor' appears, prefer including it exactly as said.\n` +
       `- Include the speaker's name and episode title from the sources.\n` +
-      `- Focus on actionable insights or key points related to the question.`,
+      `- Do not combine words from different speakers into one quote.`,
     temperature: 0.2,
     maxRetries: 2,
   });
@@ -218,23 +243,82 @@ async function main() {
   type Quote = z.infer<typeof schema>["quotes"][number];
   const quotes: Quote[] = object.quotes;
 
-  // Process quotes and match them to chunks for basic timestamps
+  // Post-process to enforce verbatim quotes against the matched chunk text
+  function normalize(s: string): string {
+    return (s ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+  }
+
+  function splitSentences(text: string): string[] {
+    const t = (text ?? "").replace(/\n+/g, " ").trim();
+    if (!t) return [];
+    // naive sentence split; good enough for transcript spans
+    const parts = t.split(/(?<=[.!?])\s+/g);
+    return parts.filter((p) => p && p.trim().length > 0);
+  }
+
+  function pickBestSentenceFrom(text: string, target: string): string {
+    const sentences = splitSentences(text);
+    if (sentences.length === 0) return (text ?? "").trim();
+
+    const targetTokens = new Set(
+      normalize(target)
+        .split(/[^a-z0-9']+/g)
+        .filter((w) => w.length > 3),
+    );
+
+    let best = sentences[0];
+    let bestScore = -1;
+    for (const s of sentences) {
+      const sTokens = new Set(
+        normalize(s)
+          .split(/[^a-z0-9']+/g)
+          .filter((w) => w.length > 3),
+      );
+      let overlap = 0;
+      for (const w of targetTokens) if (sTokens.has(w)) overlap++;
+
+      // Small bonus if sentence contains the distinctive term "parakeet"
+      if (/\bparakeet\b/i.test(s)) overlap += 3;
+
+      if (overlap > bestScore) {
+        bestScore = overlap;
+        best = s.trim();
+      }
+    }
+    return best.trim();
+  }
+
+  // Validate/repair quotes and match them to chunks for basic timestamps
   const quoteData: Array<{
     quote: Quote;
     chunk: (typeof chunks)[number];
   }> = [];
 
   for (let i = 0; i < quotes.length; i++) {
-    const quote = quotes[i];
+    const q = quotes[i];
     // Use different chunks for each quote to avoid duplicate key constraint
     // Fall back to first chunk if we don't have enough chunks
     const bestChunk = chunks[i] || chunks[0];
-    if (bestChunk) {
-      quoteData.push({
-        quote,
-        chunk: bestChunk,
-      });
+    if (!bestChunk) continue;
+
+    const chunkText = bestChunk.text ?? "";
+    const qNorm = normalize(q.quote);
+    const cNorm = normalize(chunkText);
+
+    let fixedQuote = q.quote.trim();
+    if (!cNorm.includes(qNorm)) {
+      // Not verbatim; try to pick best matching sentence from the chunk
+      fixedQuote = pickBestSentenceFrom(chunkText, q.quote);
+      console.warn(
+        `⚠️ Adjusted non-verbatim quote to transcript sentence: "${fixedQuote.slice(0, 120)}${
+          fixedQuote.length > 120 ? "…" : ""
+        }"`,
+      );
     }
+
+    const repaired: Quote = { ...q, quote: fixedQuote };
+    quotes[i] = repaired;
+    quoteData.push({ quote: repaired, chunk: bestChunk });
   }
 
   console.log("===== Key Quotes =====\n");

@@ -4,14 +4,12 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { ThumbsDown, ThumbsUp } from "lucide-react";
 import type React from "react";
 import { use, useCallback, useMemo, useState } from "react";
-import { streamdown } from "streamdown";
 import {
   InlineCitation,
   InlineCitationCard,
   InlineCitationCardBody,
   InlineCitationCardTrigger,
   InlineCitationQuote,
-  InlineCitationSource,
 } from "@/components/ai-elements/inline-citation";
 import { useAudioPlayer } from "@/components/providers/audio-player-provider";
 import { Button } from "@/components/ui/button";
@@ -24,18 +22,19 @@ export default function QuestionPage({ params }: PageProps<"/question/[id]">) {
   const baseOptions = trpc.questions.getById.queryOptions({
     queryId: id,
   });
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch } = useQuery({
     ...baseOptions,
     refetchInterval: (q) => {
-      const hasAnswers = (q.state.data?.answers?.length ?? 0) > 0;
+      const answerCount = q.state.data?.answers?.length ?? 0;
       const status = q.state.data?.status as
         | "queued"
         | "running"
         | "succeeded"
         | "failed"
         | undefined;
-      const done = status === "succeeded" || status === "failed";
-      return hasAnswers || done ? false : 2000;
+      const done = status === "failed"; // allow polling even after 'succeeded' until we reach 3
+      // Keep polling until we have at least 3 answers or we fail
+      return answerCount < 3 && !done ? 1500 : false;
     },
   });
   const feedbackAggQuery = useQuery(
@@ -47,6 +46,25 @@ export default function QuestionPage({ params }: PageProps<"/question/[id]">) {
     }),
   );
   const logPlayback = useMutation(trpc.feedback.logPlayback.mutationOptions());
+  const generateMore = useMutation(
+    trpc.questions.generateMore.mutationOptions({
+      onSuccess: () => {
+        // ensure UI refreshes to catch new answers
+        void refetch();
+      },
+    }),
+  );
+
+  // Ensure at least 3 answers by requesting more when needed (repeatable)
+  const answerCount = data?.answers?.length ?? 0;
+  const [autoRequestedCount, setAutoRequestedCount] = useState(0);
+  if (answerCount > 0 && answerCount < 3 && !generateMore.isPending) {
+    // Try again up to 3 times to reach the minimum
+    if (autoRequestedCount < 3) {
+      setAutoRequestedCount((n) => n + 1);
+      generateMore.mutate({ queryId: id });
+    }
+  }
 
   if (isLoading) {
     return (
@@ -276,6 +294,8 @@ function AnswerCard({
             ? `${c.chunk.episode.audioUrl}#t=${Math.floor(Number(c.startSec ?? 0))}`
             : undefined,
         quote: snippet(c.chunk.text ?? ""),
+        speakerName:
+          (c as { speakerName?: string | null }).speakerName ?? undefined,
         startSec: Number(c.startSec ?? 0),
         endSec: typeof c.endSec === "number" ? Number(c.endSec) : undefined,
         audioUrl:
@@ -341,8 +361,8 @@ function AnswerCard({
 
   // Parse answer text with inline citations
   const parsedAnswer = useMemo(() => {
-    return parseAnswerWithInlineCitations(text, items, onPlayback);
-  }, [text, items, onPlayback]);
+    return parseAnswerWithInlineCitations(text);
+  }, [text]);
 
   // Build per-citation items used for inline triggers (keeping for potential future use)
   const _sections = useMemo(() => {
@@ -372,37 +392,46 @@ function AnswerCard({
         <div className="space-y-3">{parsedAnswer}</div>
       </div>
 
-      {/* Citations section */}
+      {/* Footnotes using InlineCitation hover card */}
       {items.length > 0 && (
-        <div className="mt-6 space-y-3">
-          <h3 className="text-sm font-semibold text-muted-foreground">
-            Citations
-          </h3>
-          <div className="space-y-2">
-            {items.map((item, index) => (
-              <div
-                key={index}
-                className="flex items-start gap-3 p-3 rounded-md bg-muted/30"
-              >
-                <div className="flex-shrink-0 text-xs font-mono text-muted-foreground">
-                  {item.label}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs text-muted-foreground mb-1">
-                    {item.title} • {item.series}
-                  </div>
-                  <div className="text-sm">{item.quote}</div>
-                  <CitationPlayButton
-                    title={item.title}
-                    series={item.series}
-                    audioUrl={item.audioUrl}
-                    startSec={item.startSec}
-                    endSec={item.endSec}
-                    thumbnailUrl={item.thumbnailUrl}
-                    onPlay={(args) => onPlayback?.(args)}
+        <div className="mt-3">
+          <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">
+            Sources
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {items.map((it, idx) => (
+              <InlineCitation key={`fn-${answerId}-${idx}`}>
+                <InlineCitationCard>
+                  <InlineCitationCardTrigger
+                    sources={[it.label]}
+                    className="cursor-default"
                   />
-                </div>
-              </div>
+                  <InlineCitationCardBody>
+                    <div className="space-y-2 p-3 text-left">
+                      <div className="text-xs font-medium leading-tight">
+                        {it.title || "Episode"}
+                      </div>
+                      {it.speakerName && (
+                        <div className="text-[11px] text-muted-foreground">
+                          Speaker: {it.speakerName}
+                        </div>
+                      )}
+                      {it.quote && (
+                        <InlineCitationQuote>“{it.quote}”</InlineCitationQuote>
+                      )}
+                      <CitationPlayButton
+                        title={it.title}
+                        series={it.series}
+                        audioUrl={it.audioUrl}
+                        startSec={it.startSec}
+                        endSec={it.endSec}
+                        thumbnailUrl={it.thumbnailUrl}
+                        onPlay={(args) => onPlayback?.(args)}
+                      />
+                    </div>
+                  </InlineCitationCardBody>
+                </InlineCitationCard>
+              </InlineCitation>
             ))}
           </div>
         </div>
@@ -463,25 +492,7 @@ function parseAnswerWithTimestamps(
   return nodes;
 }
 
-function parseAnswerWithInlineCitations(
-  text: string,
-  items: Array<{
-    label: string;
-    title?: string;
-    series?: string;
-    url?: string;
-    quote?: string;
-    startSec?: number;
-    endSec?: number;
-    audioUrl?: string | undefined;
-    thumbnailUrl?: string | null;
-  }>,
-  onPlayback?: (args: {
-    startSec?: number;
-    endSec?: number;
-    audioUrl?: string;
-  }) => void,
-): React.ReactNode[] {
+function parseAnswerWithInlineCitations(text: string): React.ReactNode[] {
   const result: React.ReactNode[] = [];
 
   // Split by lines to handle block quotes and attributions
@@ -497,34 +508,13 @@ function parseAnswerWithInlineCitations(
       if (attrMatch) {
         const [, speakerName, episodeTitle, timestamp] = attrMatch;
 
-        // Find the corresponding citation item by index or timestamp
-        const citationItem =
-          items[quoteIndex] ||
-          items.find(
-            (item) =>
-              item.title?.includes(episodeTitle) || item.label === timestamp,
-          );
-
         result.push(
           <div key={`quote-${quoteIndex}`} className="mb-4">
             <blockquote className="border-l-4 border-primary/30 pl-4 italic text-muted-foreground bg-muted/20 rounded-r-md p-3">
               {currentBlockQuote.join(" ")}
             </blockquote>
-            <div className="mt-2 flex items-center justify-between">
-              <div className="text-sm text-muted-foreground">
-                — <strong>{speakerName}</strong>, {episodeTitle} ({timestamp})
-              </div>
-              {citationItem && (
-                <CitationPlayButton
-                  title={citationItem.title}
-                  series={citationItem.series}
-                  audioUrl={citationItem.audioUrl}
-                  startSec={citationItem.startSec}
-                  endSec={citationItem.endSec}
-                  thumbnailUrl={citationItem.thumbnailUrl}
-                  onPlay={(args) => onPlayback?.(args)}
-                />
-              )}
+            <div className="mt-2 text-sm text-muted-foreground">
+              — <strong>{speakerName}</strong>, {episodeTitle} ({timestamp})
             </div>
           </div>,
         );
@@ -547,8 +537,6 @@ function parseAnswerWithInlineCitations(
       currentAttribution = trimmedLine;
       flushBlockQuote();
     } else if (trimmedLine === "") {
-      // Empty line - continue processing
-      continue;
     } else {
       // Regular text line
       flushBlockQuote();
