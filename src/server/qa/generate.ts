@@ -135,12 +135,58 @@ export async function generateAnswersForQuery(args: {
     episodeId: query.episodeId,
   });
 
-  const chunks = await findRelevantChunks({
-    db,
-    text: query.queryText,
-    episodeId: query.episodeId ?? undefined,
-    limit: 6,
-  });
+  // Mark query as running so the UI can stop relying on answer count only
+  try {
+    await db
+      .update(qaQuery)
+      .set({ status: "running", updatedAt: new Date() })
+      .where(eq(qaQuery.queryId, queryId));
+  } catch (e) {
+    logger.warn("Failed to update status to running", { queryId });
+  }
+
+  let chunks: Array<{
+    chunkId: string;
+    episodeId: string | null;
+    startSec: number;
+    endSec: number;
+    text: string | null;
+    episodeTitle?: string;
+    audioUrl?: string;
+    similarity: number;
+  }> = [];
+  try {
+    chunks = await findRelevantChunks({
+      db,
+      text: query.queryText,
+      episodeId: query.episodeId ?? undefined,
+      limit: 6,
+    });
+  } catch (err) {
+    logger.error("Relevant chunk search failed", err, {
+      queryId,
+      episodeId: query.episodeId ?? null,
+    });
+    // Provide a graceful user-facing fallback so the UI stops polling
+    const answerId = nanoid();
+    await db.insert(qaAnswer).values({
+      answerId,
+      queryId,
+      answerText:
+        "We’re setting things up to answer your question. Please retry in a moment.",
+    });
+    logger.info("Fallback answer stored after search failure", {
+      queryId,
+      answerId,
+    });
+    try {
+      await db
+        .update(qaQuery)
+        .set({ status: "failed", updatedAt: new Date() })
+        .where(eq(qaQuery.queryId, queryId));
+    } catch {}
+    return;
+  }
 
   logger.info("Retrieved relevant chunks", {
     queryId,
@@ -149,6 +195,20 @@ export async function generateAnswersForQuery(args: {
   });
 
   if (chunks.length === 0) {
+    // No matches above threshold — provide a graceful terminal state.
+    const answerId = nanoid();
+    await db.insert(qaAnswer).values({
+      answerId,
+      queryId,
+      answerText:
+        "No direct quote found. Want me to search all episodes or a specific one?",
+    });
+    try {
+      await db
+        .update(qaQuery)
+        .set({ status: "succeeded", updatedAt: new Date() })
+        .where(eq(qaQuery.queryId, queryId));
+    } catch {}
     return [];
   }
 
@@ -193,11 +253,11 @@ export async function generateAnswersForQuery(args: {
       .max(5),
   });
 
-  const model = openrouter.chat("openrouter/sonoma-dusk-alpha");
+  const model = openrouter.chat("x-ai/grok-4-fast:free");
 
   logger.debug("Generating AI response", {
     queryId,
-    model: "openrouter/sonoma-dusk-alpha",
+    model: "x-ai/grok-4-fast:free",
     sourcesCount: numbered.length,
     requestedAnswers: numAnswers,
   });
@@ -301,6 +361,12 @@ export async function generateAnswersForQuery(args: {
       totalDurationMs: totalDuration,
       answersStored: generated.length,
     });
+    try {
+      await db
+        .update(qaQuery)
+        .set({ status: "succeeded", updatedAt: new Date() })
+        .where(eq(qaQuery.queryId, queryId));
+    } catch {}
   } catch (err) {
     const totalDuration = Date.now() - startTime;
     logger.error("Answer generation failed", err, {
@@ -319,6 +385,12 @@ export async function generateAnswersForQuery(args: {
     });
 
     logger.info("Fallback answer stored", { queryId, answerId });
+    try {
+      await db
+        .update(qaQuery)
+        .set({ status: "failed", updatedAt: new Date() })
+        .where(eq(qaQuery.queryId, queryId));
+    } catch {}
   }
 }
 

@@ -42,6 +42,10 @@ interface Episode {
   episode_word_count: number;
   episode_has_guests: boolean;
   episode_has_sponsors: boolean;
+  episode_categories?: {
+    category_id: string;
+    category_name: string;
+  };
   episode_transcript?: string;
   episode_transcript_word_level_timestamps?: {
     segments: Array<{
@@ -63,6 +67,55 @@ interface Episode {
   };
   episode_description?: string;
   episode_permalink?: string;
+  podcast: {
+    podcast_id: string;
+    podcast_name: string;
+    podcast_url: string;
+  };
+  metadata: {
+    hosts?: {
+      host_name: string;
+      host_company: string;
+      host_social_media_links?: {
+        platform: string;
+        url: string;
+      };
+      speaker_label: string;
+    };
+    guests?: {
+      guest_name: string;
+      guest_company: string;
+      guest_social_media_links?: {
+        platform: string;
+        url: string;
+      };
+      guest_industry: string;
+      guest_occupation: string;
+      speaker_label: string;
+    };
+    sponsors?: Array<{
+      sponsor_url: string;
+      sponsor_name: string;
+      sponsor_is_commercial: boolean;
+      sponsor_product_mentioned: string;
+      speaker_label: string;
+    }>;
+    has_hosts: boolean;
+    has_guests: boolean;
+    has_sponsors: boolean;
+    is_branded: boolean;
+    is_branded_confidence_score: number;
+    is_branded_confidence_reason: string;
+    summary_keywords: string[];
+    summary_long: string;
+    summary_short: string;
+    speakers: Record<string, unknown>;
+  };
+  topics: Array<{
+    topic_id: string;
+    topic_name: string;
+    topic_name_normalized: string;
+  }>;
   created_at: string;
   updated_at: string;
   posted_at: string;
@@ -168,12 +221,17 @@ async function fetchEpisodes(
     // Ensure podcast record exists and get the internal ID
     let podcastInternalId: string | null = null;
     try {
+      // Get the first episode to extract podcast information
+      const firstEpisode = data.episodes[0];
+      const podcastName =
+        firstEpisode?.podcast?.podcast_name || `Podcast ${podcastId}`;
+
       const insertedPodcast = await db
         .insert(podcast)
         .values({
           id: `podcast_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
           podcastId: podcastId,
-          title: `Podcast ${podcastId}`, // TODO: Get real podcast title from API
+          title: podcastName,
           description: null,
         })
         .onConflictDoNothing()
@@ -212,7 +270,12 @@ async function fetchEpisodes(
             durationSec: ep.episode_duration,
             publishedAt: new Date(ep.posted_at),
             language: undefined,
-            guest: ep.episode_has_guests ? "" : undefined,
+            guest:
+              ep.metadata?.guests?.guest_name ||
+              (ep.episode_has_guests ? "" : undefined),
+            // Host information
+            hostName: ep.metadata?.hosts?.host_name,
+
             transcriptUrl: undefined,
           })
           .onConflictDoUpdate({
@@ -227,6 +290,8 @@ async function fetchEpisodes(
                 : {}),
               durationSec: ep.episode_duration,
               publishedAt: new Date(ep.posted_at),
+              // Host information
+              hostName: ep.metadata?.hosts?.host_name,
               updatedAt: new Date(),
             },
           })
@@ -396,6 +461,11 @@ async function fetchAllEpisodes(
               thumbnailUrl: ep.episode_image_url ?? undefined,
               durationSec: ep.episode_duration,
               publishedAt: new Date(ep.posted_at),
+              guest:
+                ep.metadata?.guests?.guest_name ||
+                (ep.episode_has_guests ? "" : undefined),
+              // Host information
+              hostName: ep.metadata?.hosts?.host_name,
             })
             .onConflictDoUpdate({
               target: episode.episodeId,
@@ -409,6 +479,11 @@ async function fetchAllEpisodes(
                   : {}),
                 durationSec: ep.episode_duration,
                 publishedAt: new Date(ep.posted_at),
+                guest:
+                  ep.metadata?.guests?.guest_name ||
+                  (ep.episode_has_guests ? "" : undefined),
+                // Host information
+                hostName: ep.metadata?.hosts?.host_name,
                 updatedAt: new Date(),
               },
             })

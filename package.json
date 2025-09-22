@@ -23,6 +23,9 @@
     "fetch-entities": "tsx scripts/fetch-entities.ts",
     "generate-starter-questions": "tsx scripts/generate-starter-questions.ts",
     "fill-thumbnails": "tsx scripts/fill-thumbnails.ts",
+    "answer-tunguz": "tsx scripts/answer-tunguz.ts",
+    "podscan:get-episode": "tsx scripts/podscan-get-episode.ts",
+    "find-tunguz-episode": "tsx scripts/find-tunguz-episode.ts",
     "ui": "pnpm dlx shadcn@latest"
   },
   "dependencies": {
@@ -60,7 +63,10 @@
     "dotenv": "^17.2.2",
     "drizzle-orm": "^0.44.5",
     "embla-carousel-react": "^8.6.0",
+    "execa": "^9.6.0",
+    "ffmpeg-static": "^5.2.0",
     "lucide-react": "^0.544.0",
+    "mediabunny": "^1.18.1",
     "motion": "^12.23.13",
     "nanoid": "^5.1.5",
     "next": "15.5.3",

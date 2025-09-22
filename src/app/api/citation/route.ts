@@ -63,7 +63,7 @@ export async function POST(req: Request) {
   }));
 
   const result = streamObject({
-    model: openrouter("openrouter/sonoma-dusk-alpha"),
+    model: openrouter("x-ai/grok-4-fast:free"),
     schema: citationSchema,
     system: `You are an asisstant.
 

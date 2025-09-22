@@ -31,7 +31,9 @@ export default function LibraryPage() {
         question,
         episodeId,
       });
-      router.push(`/question/${res.queryId}`);
+      router.push(
+        `/?episodeId=${res.queryId}&q=${encodeURIComponent(question)}`,
+      );
     } catch (err) {
       console.error("Failed to create question:", err);
     }

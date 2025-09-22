@@ -13,7 +13,6 @@ import {
 export default function BillingPage() {
   const { customer, openBillingPortal } = useCustomer();
 
-
   return (
     <div className="container mx-auto py-8 space-y-6">
       <div>

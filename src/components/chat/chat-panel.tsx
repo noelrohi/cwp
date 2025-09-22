@@ -3,7 +3,6 @@
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { ArrowUpIcon } from "lucide-react";
-
 import { useQueryState } from "nuqs";
 import { type MouseEventHandler, useEffect, useRef, useState } from "react";
 import type { MyUIMessage } from "@/ai/schema";
@@ -39,24 +38,23 @@ import {
   suggestionsByCategory,
   tabs,
 } from "./chat-suggestions";
-import { MessagePart } from "./message-part";
 import { LatestSuggestions } from "./latest-suggestions";
-import { SearchModeSelector } from "./search-mode-selector";
+import { MessagePart } from "./message-part";
 import { ModelSelector } from "./model-selector";
+import { SearchModeSelector } from "./search-mode-selector";
 
 export function ChatPanel({ className }: { className?: string }) {
   const { play } = useAudioPlayer();
   const [input, setInput] = useState("");
   const [model, setModel] = useLocalStorage<string>(
     "chat-model",
-    "openrouter/sonoma-dusk-alpha",
+    "x-ai/grok-4-fast:free",
   );
   // searchMode picker is always available; button is the trigger
   const [searchMode, setSearchMode] = useLocalStorage<"similarity" | "sonar">(
     "chat-search-mode",
     "similarity",
   );
-  const [_searchPickerOpen, setSearchPickerOpen] = useState(false);
 
   // Read URL params for contextual hints (e.g., episodeId)
   const [episodeId] = useQueryState("episodeId");

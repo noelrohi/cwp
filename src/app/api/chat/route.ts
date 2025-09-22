@@ -18,15 +18,17 @@ import { headers } from "next/headers";
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 import type { MyUIMessage } from "@/ai/schema";
-import { createEpisodeDetailsTool, createSearchTool } from "@/ai/tools";
+import {
+  createAnswersTool,
+  createEpisodeDetailsTool,
+  createSearchTool,
+} from "@/ai/tools";
 import { db } from "@/db";
 import { chatSession } from "@/db/schema/chat";
 import { auth } from "@/lib/auth";
 import {
-  createPodcastSystemPrompt,
   createFollowupPrompt,
-  createTranscriptCitationPrompt,
-  createQualityAssurancePrompt,
+  createPodcastSystemPrompt,
 } from "@/lib/prompt-utils";
 
 const openrouter = createOpenRouter({
@@ -41,7 +43,6 @@ const BodySchema = z.object({
   messages: z.any(),
   model: z.string().optional(),
   webSearch: z.boolean().optional(),
-  searchMode: z.enum(["similarity", "sonar"]).optional(),
   episodeId: z.string().optional(),
 });
 
@@ -53,14 +54,10 @@ function getSystemPrompt({
   includeSimilarityTool: boolean;
   episodeId?: string;
 }) {
-  const basePrompt = createPodcastSystemPrompt({
+  return createPodcastSystemPrompt({
     includeSimilarityTool,
     episodeId,
   });
-  const citationPrompt = createTranscriptCitationPrompt();
-  const qualityPrompt = createQualityAssurancePrompt();
-
-  return `${basePrompt}\n\n${citationPrompt}\n\n${qualityPrompt}`;
 }
 
 export async function POST(req: NextRequest) {
@@ -69,27 +66,18 @@ export async function POST(req: NextRequest) {
     messages,
     model: selectedModelId,
     webSearch,
-    searchMode,
     episodeId,
   } = BodySchema.parse(json);
 
   const stream = createUIMessageStream<MyUIMessage>({
     execute: async ({ writer }) => {
-      const dataPartId = crypto.randomUUID();
-
-      writer.write({
-        id: dataPartId,
-        type: "reasoning-start",
-      });
       const modelMessages = convertToModelMessages(messages);
-      const effectiveSearchMode =
-        searchMode ?? (webSearch ? "sonar" : undefined);
       const model = resolveModel({
         modelId: selectedModelId,
-        searchMode: effectiveSearchMode,
+        webSearchEnabled: webSearch,
       });
       console.log("Streaming initial messages.");
-      console.log("Using model" + model.modelId);
+      console.log(`Using model: ${model.modelId}`);
       const messagesFromResponse = await streamInitialMessages({
         writer,
         modelMessages,
@@ -103,8 +91,6 @@ export async function POST(req: NextRequest) {
         model,
         modelMessages: [...modelMessages, ...messagesFromResponse],
       });
-
-      console.log({ followupSuggestions });
 
       await streamFollowupSuggestionsToFrontend({
         followupSuggestionsResult: followupSuggestions,
@@ -171,13 +157,20 @@ async function streamInitialMessages({
   // Always include the similarity tool so answers can quote transcripts
   const includeSimilarityTool = true;
   const system = getSystemPrompt({ includeSimilarityTool, episodeId });
+  // Include tools. Add the answers tool only when the user asked a question.
+  const lastUserText = getLastUserText(modelMessages);
+  const includeAnswersTool = lastUserText ? isQuestion(lastUserText) : false;
+
   const tools = {
-    // Provide transcript similarity search in all modes (including Sonar)
     search_similarity: createSearchTool({
       writer,
       defaultEpisodeId: episodeId,
     }),
     episode_details: createEpisodeDetailsTool({
+      writer,
+      defaultEpisodeId: episodeId,
+    }),
+    answer: createAnswersTool({
       writer,
       defaultEpisodeId: episodeId,
     }),
@@ -189,12 +182,23 @@ async function streamInitialMessages({
     messages: modelMessages,
     tools,
     prepareStep: (step) => {
-      console.log(JSON.stringify(step));
+      console.log({ step });
+      console.log({ includeAnswersTool });
+      if (step.stepNumber === 1) {
+        return {
+          activeTools: ["episode_details", "search_similarity"],
+        };
+      }
+      if (step.stepNumber === 2 && includeAnswersTool) {
+        return {
+          activeTools: ["answer"],
+        };
+      }
       return step;
     },
     stopWhen: stepCountIs(10),
     experimental_transform: smoothStream({
-      delayInMs: 20,
+      delayInMs: 0,
       chunking: /[^-]*---/,
     }),
   });
@@ -208,7 +212,7 @@ async function streamInitialMessages({
           return { totalUsage: part.totalUsage };
         }
       },
-      onFinish({ messages }) {
+      onFinish() {
         // console.log(JSON.stringify(messages, null, 2));
       },
     }),
@@ -219,12 +223,65 @@ async function streamInitialMessages({
   return response.messages as ModelMessage[];
 }
 
+function getLastUserText(messages: ModelMessage[]): string | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role !== "user") continue;
+    const content = (m as { content?: unknown }).content;
+    if (typeof content === "string") return content;
+    if (Array.isArray(content)) {
+      const textParts = content
+        .filter((p): p is { type: "text"; text: string } => {
+          if (typeof p !== "object" || p === null) return false;
+          const maybe = p as { type?: unknown; text?: unknown };
+          return maybe.type === "text" && typeof maybe.text === "string";
+        })
+        .map((p) => p.text);
+      if (textParts.length) return textParts.join("\n");
+    }
+    return null;
+  }
+  return null;
+}
+
+function isQuestion(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  if (t.includes("?")) return true;
+  const first = t.split(/\s+/)[0]?.toLowerCase() ?? "";
+  const qWords = new Set([
+    "who",
+    "what",
+    "where",
+    "when",
+    "why",
+    "how",
+    "which",
+    "whom",
+    "whose",
+    "do",
+    "does",
+    "did",
+    "can",
+    "could",
+    "should",
+    "would",
+    "will",
+    "is",
+    "are",
+    "am",
+    "was",
+    "were",
+  ]);
+  return qWords.has(first);
+}
+
 function resolveModel({
   modelId,
-  searchMode,
+  webSearchEnabled = false,
 }: {
   modelId?: string;
-  searchMode?: "similarity" | "sonar";
+  webSearchEnabled?: boolean;
 }): LanguageModelV2 {
   if (process.env.NODE_ENV !== "production") {
     return openrouter.chat("x-ai/grok-4-fast:free", {
@@ -236,8 +293,14 @@ function resolveModel({
     });
   }
   // If Sonar search is selected, use Perplexity Sonar model.
-  if (searchMode === "sonar") {
-    return openrouter.chat("perplexity/sonar");
+  if (webSearchEnabled) {
+    return openrouter.chat("x-ai/grok-4-fast:free", {
+      reasoning: {
+        enabled: true,
+        effort: "high",
+      },
+      plugins: [{ id: "web" }],
+    });
   }
 
   const id = modelId ?? "x-ai/grok-4-fast:free";
@@ -251,11 +314,9 @@ function resolveModel({
 
     return openrouter.chat("openai/gpt-5", {
       reasoning: { enabled: true, effort },
-      plugins: [{ id: "web" }],
     });
   }
 
-  // Default model: Grok 4 Fast with higher reasoning by default
   if (id === "x-ai/grok-4-fast:free") {
     return openrouter.chat(id, {
       reasoning: { enabled: true, effort: "high" },
@@ -263,7 +324,12 @@ function resolveModel({
   }
 
   // Fallback to requested model without extra options
-  return openrouter.chat(id, {});
+  return openrouter.chat(id, {
+    reasoning: {
+      enabled: true,
+      effort: "high",
+    },
+  });
 }
 
 // Create and stream follow-up suggestions (array of strings)

@@ -34,6 +34,7 @@ export const episode = pgTable("episode", {
   series: text("series"),
   title: text("title").notNull(),
   guest: text("guest"),
+  hostName: text("host_name"),
   publishedAt: timestamp("published_at", { withTimezone: true }),
   language: text("language"),
   durationSec: integer("duration_sec"),
@@ -96,8 +97,16 @@ export const qaQuery = pgTable("qa_query", {
   mode: text("mode").$type<"global" | "episode">(),
   episodeId: text("episode_id"),
   queryText: text("query_text").notNull(),
+  status: text("status")
+    .$type<"queued" | "running" | "succeeded" | "failed">()
+    .default("queued")
+    .notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .$onUpdate(() => new Date())
     .notNull(),
 });
 
@@ -126,6 +135,9 @@ export const qaCitation = pgTable(
     startSec: numeric("start_sec"),
     endSec: numeric("end_sec"),
     rank: integer("rank"),
+    clipUrl: text("clip_url"),
+    // Optional: who said the quoted line — store the resolved human-readable name
+    speakerName: text("speaker_name"),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.answerId, t.chunkId] }),

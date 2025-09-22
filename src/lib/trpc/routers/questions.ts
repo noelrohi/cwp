@@ -44,6 +44,50 @@ const logger = {
   },
 };
 
+// Run a task after the HTTP response is flushed. If Next.js
+// request context is unavailable (e.g., within tRPC adapter quirks),
+// fall back to a detached microtask so generation still happens.
+function runAfterResponse(label: string, task: () => Promise<void> | void) {
+  const scheduledAt = Date.now();
+  try {
+    after(async () => {
+      const startedAt = Date.now();
+      logger.info(`after() started: ${label}`, {
+        scheduledDelayMs: startedAt - scheduledAt,
+      });
+      try {
+        await task();
+        logger.info(`after() finished: ${label}`, {
+          durationMs: Date.now() - startedAt,
+        });
+      } catch (err) {
+        logger.error(`after() error: ${label}`, err, {
+          durationMs: Date.now() - startedAt,
+        });
+      }
+    });
+    logger.debug("Task scheduled with next/server after()", { label });
+  } catch (err) {
+    logger.warn("after() unavailable, falling back to setTimeout(0)", {
+      label,
+    });
+    setTimeout(async () => {
+      const startedAt = Date.now();
+      logger.info(`fallback started: ${label}`);
+      try {
+        await task();
+        logger.info(`fallback finished: ${label}`, {
+          durationMs: Date.now() - startedAt,
+        });
+      } catch (e) {
+        logger.error(`fallback error: ${label}`, e, {
+          durationMs: Date.now() - startedAt,
+        });
+      }
+    }, 0);
+  }
+}
+
 export const questionsRouter = createTRPCRouter({
   create: publicProcedure
     .input(
@@ -71,6 +115,7 @@ export const questionsRouter = createTRPCRouter({
         mode: input.episodeId ? "episode" : input.mode,
         episodeId: input.episodeId ?? null,
         queryText: input.question,
+        status: "queued",
       });
 
       const insertDuration = Date.now() - startTime;
@@ -79,17 +124,8 @@ export const questionsRouter = createTRPCRouter({
         insertDurationMs: insertDuration,
       });
 
-      after(async () => {
-        try {
-          logger.info("Starting background answer generation", { queryId });
-          await generateAnswersForQuery({
-            db: ctx.db,
-            queryId,
-          });
-          logger.info("Background answer generation completed", { queryId });
-        } catch (err) {
-          logger.error("Failed to generate answers", err, { queryId });
-        }
+      runAfterResponse("generate answers (create)", async () => {
+        await generateAnswersForQuery({ db: ctx.db, queryId });
       });
 
       const totalDuration = Date.now() - startTime;
@@ -248,23 +284,8 @@ export const questionsRouter = createTRPCRouter({
       logger.info("Generating additional answers", { queryId: input.queryId });
 
       // Generate additional answers without deleting existing ones
-      after(async () => {
-        try {
-          logger.info("Starting background generation of additional answers", {
-            queryId: input.queryId,
-          });
-          await generateAnswersForQuery({
-            db: ctx.db,
-            queryId: input.queryId,
-          });
-          logger.info("Additional answer generation completed", {
-            queryId: input.queryId,
-          });
-        } catch (err) {
-          logger.error("Failed to generate additional answers", err, {
-            queryId: input.queryId,
-          });
-        }
+      runAfterResponse("generate answers (generateMore)", async () => {
+        await generateAnswersForQuery({ db: ctx.db, queryId: input.queryId });
       });
 
       logger.debug("Additional answer generation request queued", {

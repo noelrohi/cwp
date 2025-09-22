@@ -27,7 +27,14 @@ export default function QuestionPage({ params }: PageProps<"/question/[id]">) {
     ...baseOptions,
     refetchInterval: (q) => {
       const hasAnswers = (q.state.data?.answers?.length ?? 0) > 0;
-      return hasAnswers ? false : 2000;
+      const status = q.state.data?.status as
+        | "queued"
+        | "running"
+        | "succeeded"
+        | "failed"
+        | undefined;
+      const done = status === "succeeded" || status === "failed";
+      return hasAnswers || done ? false : 2000;
     },
   });
   const feedbackAggQuery = useQuery(
@@ -61,6 +68,12 @@ export default function QuestionPage({ params }: PageProps<"/question/[id]">) {
   }
 
   const title = (data?.queryText ?? "").slice(0, 200);
+  const status = data?.status as
+    | "queued"
+    | "running"
+    | "succeeded"
+    | "failed"
+    | undefined;
   const answers = data?.answers ?? [];
 
   console.log("[ Answers ]", answers);
@@ -92,7 +105,11 @@ export default function QuestionPage({ params }: PageProps<"/question/[id]">) {
 
         {answers.length === 0 ? (
           <div className="rounded-lg border bg-background p-4 text-sm">
-            Generating answers… this may take a few seconds.
+            {status === "failed"
+              ? "We couldn’t generate an answer. Please try again."
+              : status === "succeeded"
+                ? "No answer available for this question. Try rephrasing or broadening the scope."
+                : "Generating answers… this may take a few seconds."}
           </div>
         ) : (
           answers.map((answer) => (
@@ -195,12 +212,19 @@ function CitationPlayButton({
         size="sm"
         onClick={() => {
           onPlay?.({ startSec, endSec, audioUrl });
+          const isClip = audioUrl?.startsWith("/mp3/") ?? false;
+          const clipDur =
+            typeof startSec === "number" && typeof endSec === "number"
+              ? Math.max(0, endSec - startSec)
+              : undefined;
+          const startAt = isClip ? 0 : startSec;
+          const endAt = isClip ? clipDur : endSec;
           void play({
             url: audioUrl,
             title,
             series,
-            startAtSec: startSec,
-            endAtSec: endSec,
+            startAtSec: startAt,
+            endAtSec: endAt,
             artworkUrl: thumbnailUrl,
           });
         }}
@@ -245,13 +269,15 @@ function AnswerCard({
         label: formatMMSS(Number(c.startSec ?? 0), Number(c.endSec ?? null)),
         title: c.chunk.episode?.title ?? "Episode",
         series: c.chunk.episode?.podcast?.title ?? "Series",
-        url: c.chunk.episode?.audioUrl
-          ? `${c.chunk.episode.audioUrl}#t=${Math.floor(Number(c.startSec ?? 0))}`
-          : undefined,
+        url: (c as { clipUrl?: string }).clipUrl
+          ? (c as { clipUrl?: string }).clipUrl
+          : c.chunk.episode?.audioUrl
+            ? `${c.chunk.episode.audioUrl}#t=${Math.floor(Number(c.startSec ?? 0))}`
+            : undefined,
         quote: snippet(c.chunk.text ?? ""),
         startSec: Number(c.startSec ?? 0),
         endSec: typeof c.endSec === "number" ? Number(c.endSec) : undefined,
-        audioUrl: c.chunk.episode?.audioUrl,
+        audioUrl: (c as { clipUrl?: string }).clipUrl ?? c.chunk.episode?.audioUrl,
         thumbnailUrl: c.chunk.episode?.thumbnailUrl,
       })),
     [citations],
@@ -287,12 +313,16 @@ function AnswerCard({
           audioUrl: item.audioUrl,
         });
 
+        const isClip = item.audioUrl.startsWith("/mp3/");
+        const clipDur = Math.max(0, (item.endSec ?? 0) - (item.startSec ?? 0));
+        const startAt = isClip ? 0 : start;
+        const endAt = isClip ? (clipDur || undefined) : end;
         void play({
           url: item.audioUrl,
           title: item.title,
           series: item.series,
-          startAtSec: start,
-          endAtSec: end,
+          startAtSec: startAt,
+          endAtSec: endAt,
           artworkUrl: item.thumbnailUrl,
         });
       }

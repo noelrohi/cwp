@@ -49,6 +49,23 @@ export type MyUIMessage = UIMessage<
       text: string;
       results?: unknown;
     };
+    // A compact list of quoted answers for a user question
+    // Streamed via UIMessageStream type: 'data-answers'
+    answers: {
+      status: "processing" | "complete" | "error";
+      text: string;
+      items?: Array<{
+        id: string;
+        quote: string;
+        guestName?: string | null;
+        episodeTitle?: string | null;
+        audioUrl?: string | null;
+        startMs?: number | null;
+        endMs?: number | null;
+      }>;
+      query?: string;
+      total?: number;
+    };
     // A single source/citation URL to show in the UI
     // Rendered via <Sources /> in the chat UI
     "source-url": {
