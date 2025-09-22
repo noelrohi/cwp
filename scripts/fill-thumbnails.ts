@@ -3,6 +3,7 @@ import "dotenv/config";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { episode } from "@/db/schema/podcast";
+import { createPodscanClient } from "@/lib/podscan";
 
 interface EpisodeApiItem {
   episode_id: string;
@@ -31,23 +32,12 @@ async function fetchEpisodesForPodcast(
   let totalPages = 1;
 
   do {
-    const url = new URL(
-      `https://podscan.fm/api/v1/podcasts/${podcastId}/episodes`,
-    );
-    url.searchParams.set("page", String(page));
-    url.searchParams.set("show_full_podcast", "true");
-    url.searchParams.set("word_level_timestamps", "false");
-
-    const res = await fetch(url.toString(), {
-      headers: {
-        Authorization: `Bearer ${bearerToken}`,
-        "Content-Type": "application/json",
-      },
-    });
-    if (!res.ok) {
-      throw new Error(`Podscan error ${res.status} ${res.statusText}`);
-    }
-    const data: EpisodesPage = await res.json();
+    const client = createPodscanClient(bearerToken);
+    const data = (await client.getPodcastEpisodes(podcastId, {
+      page,
+      showFullPodcast: true,
+      wordLevelTimestamps: false,
+    })) as EpisodesPage;
     totalPages = parseInt(data.pagination.last_page, 10) || 1;
     for (const ep of data.episodes) {
       if (ep.episode_image_url) {

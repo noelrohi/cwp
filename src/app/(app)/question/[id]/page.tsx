@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { ThumbsDown, ThumbsUp } from "lucide-react";
 import type React from "react";
 import { use, useCallback, useMemo, useState } from "react";
+import { streamdown } from "streamdown";
 import {
   InlineCitation,
   InlineCitationCard,
@@ -277,7 +278,10 @@ function AnswerCard({
         quote: snippet(c.chunk.text ?? ""),
         startSec: Number(c.startSec ?? 0),
         endSec: typeof c.endSec === "number" ? Number(c.endSec) : undefined,
-        audioUrl: (c as { clipUrl?: string }).clipUrl ?? c.chunk.episode?.audioUrl,
+        audioUrl:
+          (c as { clipUrl?: string }).clipUrl ??
+          c.chunk.episode?.audioUrl ??
+          undefined,
         thumbnailUrl: c.chunk.episode?.thumbnailUrl,
       })),
     [citations],
@@ -316,7 +320,7 @@ function AnswerCard({
         const isClip = item.audioUrl.startsWith("/mp3/");
         const clipDur = Math.max(0, (item.endSec ?? 0) - (item.startSec ?? 0));
         const startAt = isClip ? 0 : start;
-        const endAt = isClip ? (clipDur || undefined) : end;
+        const endAt = isClip ? clipDur || undefined : end;
         void play({
           url: item.audioUrl,
           title: item.title,
@@ -335,8 +339,13 @@ function AnswerCard({
     [text, playNearest],
   );
 
-  // Build per-citation items used for inline triggers
-  const sections = useMemo(() => {
+  // Parse answer text with inline citations
+  const parsedAnswer = useMemo(() => {
+    return parseAnswerWithInlineCitations(text, items, onPlayback);
+  }, [text, items, onPlayback]);
+
+  // Build per-citation items used for inline triggers (keeping for potential future use)
+  const _sections = useMemo(() => {
     return buildAnswerSections({ text, items, playNearest });
   }, [text, items, playNearest]);
 
@@ -359,47 +368,46 @@ function AnswerCard({
   return (
     <article className="mb-4 rounded-md border p-3">
       <div className="text-sm leading-relaxed space-y-3">
-        {/* Per-citation sections: summary + block quote + inline trigger */}
-        {sections.map((sec, idx) => (
-          <div key={`sec-${idx}`} className="space-y-2">
-            {sec.summary && <p>{sec.summary}</p>}
-            {sec.quote && (
-              <div className="flex items-start gap-2">
-                <InlineCitation className="flex-1">
-                  <InlineCitationQuote className="mb-0">
-                    {sec.quote}
-                  </InlineCitationQuote>
-                  {sec.item && (
-                    <InlineCitationCard>
-                      <InlineCitationCardTrigger sources={[sec.item.label]} />
-                      <InlineCitationCardBody className="p-4">
-                        <InlineCitationSource
-                          title={sec.item.title}
-                          description={sec.item.label}
-                        />
-                        {sec.item.quote && (
-                          <InlineCitationQuote className="mt-2">
-                            {sec.item.quote}
-                          </InlineCitationQuote>
-                        )}
-                        <CitationPlayButton
-                          title={sec.item.title}
-                          series={sec.item.series}
-                          audioUrl={sec.item.audioUrl ?? undefined}
-                          startSec={sec.item.startSec}
-                          endSec={sec.item.endSec}
-                          thumbnailUrl={sec.item.thumbnailUrl}
-                          onPlay={(args) => onPlayback?.(args)}
-                        />
-                      </InlineCitationCardBody>
-                    </InlineCitationCard>
-                  )}
-                </InlineCitation>
-              </div>
-            )}
-          </div>
-        ))}
+        {/* Render parsed answer with inline citations */}
+        <div className="space-y-3">{parsedAnswer}</div>
       </div>
+
+      {/* Citations section */}
+      {items.length > 0 && (
+        <div className="mt-6 space-y-3">
+          <h3 className="text-sm font-semibold text-muted-foreground">
+            Citations
+          </h3>
+          <div className="space-y-2">
+            {items.map((item, index) => (
+              <div
+                key={index}
+                className="flex items-start gap-3 p-3 rounded-md bg-muted/30"
+              >
+                <div className="flex-shrink-0 text-xs font-mono text-muted-foreground">
+                  {item.label}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs text-muted-foreground mb-1">
+                    {item.title} • {item.series}
+                  </div>
+                  <div className="text-sm">{item.quote}</div>
+                  <CitationPlayButton
+                    title={item.title}
+                    series={item.series}
+                    audioUrl={item.audioUrl}
+                    startSec={item.startSec}
+                    endSec={item.endSec}
+                    thumbnailUrl={item.thumbnailUrl}
+                    onPlay={(args) => onPlayback?.(args)}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="mt-3 flex items-center gap-2">
         <Button
           size="sm"
@@ -453,6 +461,111 @@ function parseAnswerWithTimestamps(
   }
   if (lastIndex < text.length) nodes.push(text.slice(lastIndex));
   return nodes;
+}
+
+function parseAnswerWithInlineCitations(
+  text: string,
+  items: Array<{
+    label: string;
+    title?: string;
+    series?: string;
+    url?: string;
+    quote?: string;
+    startSec?: number;
+    endSec?: number;
+    audioUrl?: string | undefined;
+    thumbnailUrl?: string | null;
+  }>,
+  onPlayback?: (args: {
+    startSec?: number;
+    endSec?: number;
+    audioUrl?: string;
+  }) => void,
+): React.ReactNode[] {
+  const result: React.ReactNode[] = [];
+
+  // Split by lines to handle block quotes and attributions
+  const lines = text.split("\n");
+  let currentBlockQuote: string[] = [];
+  let currentAttribution: string | null = null;
+  let quoteIndex = 0;
+
+  const flushBlockQuote = () => {
+    if (currentBlockQuote.length > 0 && currentAttribution) {
+      // Parse attribution: "- Speaker Name, Episode Title (timestamp)"
+      const attrMatch = currentAttribution.match(/^- (.+?), (.+?) \((.+?)\)$/);
+      if (attrMatch) {
+        const [, speakerName, episodeTitle, timestamp] = attrMatch;
+
+        // Find the corresponding citation item by index or timestamp
+        const citationItem =
+          items[quoteIndex] ||
+          items.find(
+            (item) =>
+              item.title?.includes(episodeTitle) || item.label === timestamp,
+          );
+
+        result.push(
+          <div key={`quote-${quoteIndex}`} className="mb-4">
+            <blockquote className="border-l-4 border-primary/30 pl-4 italic text-muted-foreground bg-muted/20 rounded-r-md p-3">
+              {currentBlockQuote.join(" ")}
+            </blockquote>
+            <div className="mt-2 flex items-center justify-between">
+              <div className="text-sm text-muted-foreground">
+                — <strong>{speakerName}</strong>, {episodeTitle} ({timestamp})
+              </div>
+              {citationItem && (
+                <CitationPlayButton
+                  title={citationItem.title}
+                  series={citationItem.series}
+                  audioUrl={citationItem.audioUrl}
+                  startSec={citationItem.startSec}
+                  endSec={citationItem.endSec}
+                  thumbnailUrl={citationItem.thumbnailUrl}
+                  onPlay={(args) => onPlayback?.(args)}
+                />
+              )}
+            </div>
+          </div>,
+        );
+        quoteIndex++;
+      }
+
+      currentBlockQuote = [];
+      currentAttribution = null;
+    }
+  };
+
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+
+    if (trimmedLine.startsWith("> ")) {
+      // Start or continue a block quote
+      currentBlockQuote.push(trimmedLine.slice(2));
+    } else if (trimmedLine.startsWith("- ") && currentBlockQuote.length > 0) {
+      // Attribution line following a block quote
+      currentAttribution = trimmedLine;
+      flushBlockQuote();
+    } else if (trimmedLine === "") {
+      // Empty line - continue processing
+      continue;
+    } else {
+      // Regular text line
+      flushBlockQuote();
+      if (trimmedLine) {
+        result.push(
+          <p key={`text-${result.length}`} className="mb-3 leading-relaxed">
+            {trimmedLine}
+          </p>,
+        );
+      }
+    }
+  }
+
+  // Flush any remaining block quote
+  flushBlockQuote();
+
+  return result;
 }
 
 // Build markdown-like sections from an LLM answer text.
@@ -558,7 +671,15 @@ function extractQuoteBeforeIndex(
 
 function findNearestItemBySec(
   items: Array<{
+    label: string;
+    title?: string;
+    series?: string;
+    url?: string;
+    quote?: string;
     startSec?: number;
+    endSec?: number;
+    audioUrl?: string | undefined;
+    thumbnailUrl?: string | null;
   }>,
   targetSec: number,
 ) {

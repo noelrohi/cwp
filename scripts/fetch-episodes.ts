@@ -5,6 +5,7 @@ import { embed, embedMany } from "ai";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { episode, podcast, transcriptChunk } from "@/db/schema/podcast";
+import { createPodscanClient } from "@/lib/podscan";
 
 const generateEmbeddings = async (values: string[]): Promise<number[][]> => {
   if (values.length === 0) return [];
@@ -191,30 +192,12 @@ async function fetchEpisodes(
   try {
     console.log(`Fetching episodes for podcast: ${podcastId}`);
 
-    const url = new URL(
-      `https://podscan.fm/api/v1/podcasts/${podcastId}/episodes`,
-    );
-    if (page > 1) {
-      url.searchParams.set("page", page.toString());
-    }
-    // Include full transcript and word-level timestamps
-    url.searchParams.set("show_full_podcast", "true");
-    url.searchParams.set("word_level_timestamps", "true");
-
-    const response = await fetch(url.toString(), {
-      headers: {
-        Authorization: `Bearer ${bearerToken}`,
-        "Content-Type": "application/json",
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(
-        `API request failed: ${response.status} ${response.statusText}`,
-      );
-    }
-
-    const data: PodcastEpisodesResponse = await response.json();
+    const client = createPodscanClient(bearerToken);
+    const data = (await client.getPodcastEpisodes(podcastId, {
+      page,
+      showFullPodcast: true,
+      wordLevelTimestamps: true,
+    })) as PodcastEpisodesResponse;
 
     console.log(`Found ${data.episodes.length} episodes`);
 
@@ -382,28 +365,12 @@ async function fetchAllEpisodes(
     do {
       console.log(`\n📄 Fetching page ${currentPage}...`);
 
-      const url = new URL(
-        `https://podscan.fm/api/v1/podcasts/${podcastId}/episodes`,
-      );
-      url.searchParams.set("page", currentPage.toString());
-      // Include full transcript and word-level timestamps
-      url.searchParams.set("show_full_podcast", "true");
-      url.searchParams.set("word_level_timestamps", "true");
-
-      const response = await fetch(url.toString(), {
-        headers: {
-          Authorization: `Bearer ${bearerToken}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(
-          `API request failed: ${response.status} ${response.statusText}`,
-        );
-      }
-
-      const data: PodcastEpisodesResponse = await response.json();
+      const client = createPodscanClient(bearerToken);
+      const data = (await client.getPodcastEpisodes(podcastId, {
+        page: currentPage,
+        showFullPodcast: true,
+        wordLevelTimestamps: true,
+      })) as PodcastEpisodesResponse;
       totalPages = parseInt(data.pagination.last_page, 10);
 
       console.log(

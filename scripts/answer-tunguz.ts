@@ -1,12 +1,12 @@
 #!/usr/bin/env tsx
 
 import "dotenv/config";
-import { spawn } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { execSync } from "node:child_process";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { generateObject } from "ai";
 import { desc, sql } from "drizzle-orm";
-import ffmpegPath from "ffmpeg-static";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { db } from "@/db";
@@ -48,21 +48,6 @@ type EpisodeRow = {
   audioUrl?: string | null;
   guest?: string | null;
   hostName?: string | null;
-};
-type Word = { start: number; end: number; word: string };
-type Segment = {
-  id: number;
-  start: number;
-  end: number;
-  text: string;
-  words?: Word[];
-};
-type PodscanEpisode = {
-  episode?: {
-    episode_title?: string;
-    episode_audio_url?: string;
-    episode_transcript_word_level_timestamps?: { segments?: Segment[] } | false;
-  };
 };
 
 async function findEpisodeByTitle(): Promise<EpisodeRow | null> {
@@ -120,101 +105,35 @@ function buildSourcesBlock(
     .join("\n\n");
 }
 
-async function fetchPodscanSegments(
-  episodeId: string,
-  token: string,
-): Promise<Segment[]> {
-  const url = new URL(`https://podscan.fm/api/v1/episodes/${episodeId}`);
-  url.searchParams.set("show_full_podcast", "true");
-  url.searchParams.set("word_level_timestamps", "true");
+async function generateAudioClip(
+  audioUrl: string,
+  startSec: number,
+  endSec: number,
+  outputFilename: string,
+): Promise<string> {
+  const publicDir = path.join(process.cwd(), "public", "mp3");
+  const outputPath = path.join(publicDir, outputFilename);
+  const clipUrl = `/mp3/${outputFilename}`;
 
-  const res = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-  });
-  if (!res.ok)
-    throw new Error(`Podscan request failed: ${res.status} ${res.statusText}`);
-  const data = (await res.json()) as PodscanEpisode;
-  const segs = data.episode?.episode_transcript_word_level_timestamps;
-  if (!segs || !Array.isArray(segs.segments)) return [];
-  return segs.segments as Segment[];
-}
-
-function normalize(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/[\u2018\u2019]/g, "'")
-    .replace(/[^a-z0-9'\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function splitSentences(s: string): string[] {
-  const parts = s
-    .split(/[.!?]\s+/)
-    .map((p) => p.trim())
-    .filter(Boolean);
-  return parts.length ? parts : [s.trim()];
-}
-
-function findQuoteStartSec(
-  quote: string,
-  segments: Segment[],
-): number | undefined {
-  const sentences = splitSentences(quote);
-  for (const sent of sentences) {
-    const norm = normalize(sent);
-    if (!norm || norm.length < 6) continue;
-    for (const seg of segments) {
-      const segNorm = normalize(seg.text ?? "");
-      if (segNorm.includes(norm)) return seg.start;
+  try {
+    // Ensure the public/mp3 directory exists
+    if (!fs.existsSync(publicDir)) {
+      fs.mkdirSync(publicDir, { recursive: true });
     }
-    const tokens = norm.split(" ");
-    const n = Math.max(5, Math.min(10, tokens.length));
-    for (let i = 0; i <= tokens.length - n; i++) {
-      const window = tokens.slice(i, i + n).join(" ");
-      for (const seg of segments) {
-        const segNorm = normalize(seg.text ?? "");
-        if (segNorm.includes(window)) return seg.start;
-      }
-    }
-  }
-  return undefined;
-}
 
-function findChunkForQuote(
-  quote: string,
-  chunks: Awaited<ReturnType<typeof findRelevantChunks>>,
-  quoteStartSec?: number,
-) {
-  const normQuote = normalize(quote);
-  // 1) Direct containment
-  const direct = chunks.find((c) =>
-    normalize(c.text ?? "").includes(normQuote),
-  );
-  if (direct) return direct;
+    // Use ffmpeg to clip the audio
+    const ffmpegCommand = `ffmpeg -ss ${startSec} -i "${audioUrl}" -t ${endSec - startSec} -c copy "${outputPath}" -y`;
 
-  // 2) Sliding window token containment (5..10 words)
-  const tokens = normQuote.split(" ").filter(Boolean);
-  const n = Math.max(5, Math.min(10, tokens.length));
-  for (let i = 0; i <= tokens.length - n; i++) {
-    const window = tokens.slice(i, i + n).join(" ");
-    const hit = chunks.find((c) => normalize(c.text ?? "").includes(window));
-    if (hit) return hit;
-  }
-
-  // 3) Time containment if we have a timestamp
-  if (typeof quoteStartSec === "number") {
-    const byTime = chunks.find(
-      (c) => quoteStartSec >= c.startSec && quoteStartSec <= c.endSec,
+    console.log(
+      `🎵 Generating clip: ${outputFilename} (${formatTimestamp(startSec)} - ${formatTimestamp(endSec)})`,
     );
-    if (byTime) return byTime;
-  }
+    execSync(ffmpegCommand, { stdio: "pipe" });
 
-  // 4) Fallback to the best ranked (first) chunk
-  return chunks[0];
+    return clipUrl;
+  } catch (error) {
+    console.error(`Failed to generate clip ${outputFilename}:`, error);
+    return "";
+  }
 }
 
 async function main() {
@@ -261,37 +180,19 @@ async function main() {
 
   const sourcesBlock = buildSourcesBlock(chunks);
 
-  // Fetch exact segments for precise timestamps
-  const podscanToken =
-    process.env.PODSCAN_TOKEN ?? process.env.PODSCAN_API_TOKEN;
-  let segments: Segment[] = [];
-  if (podscanToken) {
-    try {
-      segments = await fetchPodscanSegments(ep.episodeId, podscanToken);
-      console.log(
-        `\n📼 Loaded ${segments.length} word-level segments for alignment.`,
-      );
-    } catch (_e) {
-      console.warn(
-        "Failed to load Podscan segments — falling back to chunk starts.",
-      );
-    }
-  } else {
-    console.warn("PODSCAN_TOKEN not set — falling back to chunk starts.");
-  }
-
   console.log("\n🤖 Generating structured answer with AI SDK…\n");
   const schema = z.object({
-    items: z
+    quotes: z
       .array(
         z.object({
-          bullet: z.string().min(8).max(220),
-          quote: z.string().min(6).max(400),
-          speaker: z.enum(["guest", "host"]).optional().nullable(),
+          speaker: z.enum(["guest", "host"]),
+          speakerName: z.string().min(2).max(100),
+          quote: z.string().min(20).max(500),
+          episodeTitle: z.string().min(5).max(200),
         }),
       )
-      .min(3)
-      .max(5),
+      .min(1)
+      .max(3),
   });
 
   const { object } = await generateObject({
@@ -300,33 +201,54 @@ async function main() {
     }),
     schema,
     system:
-      "You write short, direct answers as bullet points. Use only the provided sources. For each bullet, include exactly one sentence in the field 'quote' copied verbatim from the sources. Also set 'speaker' to 'guest' or 'host' for who said the quote.",
+      "You extract key phrases and quotes from podcast transcripts that are relevant to the question. Focus on finding the most impactful and direct statements from speakers.",
     prompt:
       `Question: ${QUESTION}\n\n` +
-      `Sources (id, start time, text):\n${sourcesBlock}\n\n` +
+      `Sources:\n${sourcesBlock}\n\n` +
       `Instructions:\n` +
-      `- Produce 3–5 bullets summarizing how he manages podcast overload.\n` +
-      `- For each bullet, set 'quote' to an exact sentence from the sources (no paraphrase).\n` +
-      `- Also set 'speaker' to 'guest' or 'host' for who said that exact quote. If truly uncertain, make your best guess.\n` +
-      `- Keep bullets practical and specific.`,
+      `- Extract 1-3 key quotes from different speakers (guest/host) that best address the question.\n` +
+      `- Select phrases that are directly relevant and impactful from the transcript.\n` +
+      `- Clean up filler words but preserve the authentic voice and meaning.\n` +
+      `- Include the speaker's name and episode title from the sources.\n` +
+      `- Focus on actionable insights or key points related to the question.`,
     temperature: 0.2,
     maxRetries: 2,
   });
 
-  type Item = z.infer<typeof schema>["items"][number];
-  const items: Item[] = object.items;
+  type Quote = z.infer<typeof schema>["quotes"][number];
+  const quotes: Quote[] = object.quotes;
 
-  console.log("===== AI Answer (precise timestamps when found) =====\n");
-  for (const it of items) {
-    const t = segments.length
-      ? findQuoteStartSec(it.quote, segments)
-      : undefined;
-    const tag = t !== undefined ? `[${formatTimestamp(t)}]` : "[~]";
-    console.log(`- ${it.bullet}`);
-    const sp = it.speaker ? ` (${it.speaker})` : "";
-    console.log(`  "${it.quote}" ${tag}${sp}`);
+  // Process quotes and match them to chunks for basic timestamps
+  const quoteData: Array<{
+    quote: Quote;
+    chunk: (typeof chunks)[number];
+  }> = [];
+
+  for (let i = 0; i < quotes.length; i++) {
+    const quote = quotes[i];
+    // Use different chunks for each quote to avoid duplicate key constraint
+    // Fall back to first chunk if we don't have enough chunks
+    const bestChunk = chunks[i] || chunks[0];
+    if (bestChunk) {
+      quoteData.push({
+        quote,
+        chunk: bestChunk,
+      });
+    }
   }
-  console.log("\n====================================================\n");
+
+  console.log("===== Key Quotes =====\n");
+
+  for (let i = 0; i < quotes.length; i++) {
+    const quote = quotes[i];
+    const data = quoteData[i];
+    const timestamp = data?.chunk
+      ? `(${formatTimestamp(data.chunk.startSec)}-${formatTimestamp(data.chunk.endSec)})`
+      : "(~)";
+    console.log(`> ${quote.quote}`);
+    console.log(`- ${quote.speakerName}, ${quote.episodeTitle} ${timestamp}\n`);
+  }
+  console.log("====================================================\n");
 
   // Persist question, answer and citations
   console.log("🗄️  Saving question, answer and citations to the database…");
@@ -341,18 +263,20 @@ async function main() {
     status: "queued",
   });
 
-  // 2) Build a single answer text combining bullets + quotes (+ timestamps)
+  // 2) Build answer text with block quotes
   const answerLines: string[] = [];
-  const startTimes: Array<number | undefined> = [];
-  for (const it of items) {
-    const t = segments.length
-      ? findQuoteStartSec(it.quote, segments)
-      : undefined;
-    startTimes.push(t);
-    const tag = t !== undefined ? `[${formatTimestamp(t)}]` : "[~]";
-    answerLines.push(`- ${it.bullet}`);
-    // Keep answer text unchanged (quote + timestamp only)
-    answerLines.push(`  "${it.quote}" ${tag}`);
+
+  // Add quotes in block format
+  for (let i = 0; i < quotes.length; i++) {
+    const quote = quotes[i];
+    const data = quoteData[i];
+    const timestamp = data?.chunk
+      ? `(${formatTimestamp(data.chunk.startSec)}-${formatTimestamp(data.chunk.endSec)})`
+      : "(~)";
+    answerLines.push(`> ${quote.quote}`);
+    answerLines.push(
+      `- ${quote.speakerName}, ${quote.episodeTitle} ${timestamp}`,
+    );
     answerLines.push("");
   }
   const answerText = answerLines.join("\n").trim();
@@ -364,77 +288,38 @@ async function main() {
     answerText,
   });
 
-  // 3) Save citations: map each quote to the best chunk and timestamp range
-  // Use a short clip window when we have exact quote start; otherwise fall back to the chunk range
-  const seenChunkIds = new Set<string>();
-  const clipRanges: Array<{
-    index: number;
-    startSec: number;
-    endSec: number;
-    chunkId: string;
-    clipUrl: string;
-  }> = [];
-  // Determine filename base for clip URLs once
-  const clipBase = (() => {
-    if (ep.episodeId) return ep.episodeId;
-    try {
-      const last =
-        new URL(ep.audioUrl ?? "").pathname.split("/").pop() ?? "audio";
-      return last.replace(/\.[a-z0-9]+$/i, "");
-    } catch {
-      return "audio";
+  // 3) Save citations: map each quote to a chunk for basic timestamp reference
+  console.log("🎵 Generating audio clips for citations...");
+
+  for (let i = 0; i < quotes.length; i++) {
+    const quote = quotes[i];
+    const data = quoteData[i];
+    if (!data?.chunk) continue;
+
+    const startSec = data.chunk.startSec ?? 0;
+    const endSec = data.chunk.endSec ?? startSec + 30; // Use chunk boundaries
+
+    let clipUrl = null;
+
+    // Generate audio clip if audioUrl is available
+    if (ep.audioUrl) {
+      const clipFilename = `${answerId}_citation_${i}.mp3`;
+      clipUrl = await generateAudioClip(
+        ep.audioUrl,
+        startSec,
+        endSec,
+        clipFilename,
+      );
     }
-  })();
-  // Helper to resolve a human-readable speaker name from role
-  function resolveSpeakerName(
-    role: "guest" | "host" | null | undefined,
-    ep: EpisodeRow,
-  ): string | null {
-    if (role === "guest") return ep.guest ?? null;
-    if (role === "host") return ep.hostName ?? null;
-    return ep.guest ?? ep.hostName ?? null;
-  }
-
-  for (let i = 0; i < items.length; i++) {
-    const it = items[i];
-    const quoteStart = startTimes[i];
-    const chosen = findChunkForQuote(it.quote, chunks, quoteStart);
-    if (!chosen) continue;
-
-    // Avoid duplicate (answerId, chunkId) PK conflicts
-    if (seenChunkIds.has(chosen.chunkId)) continue;
-    seenChunkIds.add(chosen.chunkId);
-
-    const startSec =
-      typeof quoteStart === "number" ? quoteStart : (chosen.startSec ?? 0);
-    const defaultClipSeconds = 12;
-    const endSecCandidate =
-      typeof quoteStart === "number"
-        ? quoteStart + defaultClipSeconds
-        : (chosen.endSec ?? startSec + defaultClipSeconds);
-    const endSec = Math.max(
-      Math.min(endSecCandidate, chosen.endSec ?? endSecCandidate),
-      startSec,
-    );
-
-    const clipUrl = `/mp3/${clipBase}-${answerId}-${i + 1}.mp3`;
 
     await db.insert(qaCitation).values({
       answerId,
-      chunkId: chosen.chunkId,
+      chunkId: data.chunk.chunkId,
       startSec: String(startSec),
       endSec: String(endSec),
       rank: i,
       clipUrl,
-      speakerName: resolveSpeakerName(it.speaker ?? null, ep),
-    });
-
-    clipRanges.push({
-      index: i,
-      startSec,
-      endSec,
-      chunkId: chosen.chunkId,
-      clipUrl,
+      speakerName: quote.speakerName,
     });
   }
 
@@ -447,194 +332,6 @@ async function main() {
   } catch {}
 
   console.log(`✅ Stored query ${queryId} with answer ${answerId}.`);
-
-  // 5) Snip the MP3 into mini clips under /public/mp3 using Mediabunny
-  if (!ep.audioUrl) {
-    console.warn("⚠️  Episode has no audioUrl; skipping MP3 clipping.");
-    console.log("💬 Ready for feedback. Tell me what to tweak.");
-    return;
-  }
-
-  try {
-    mkdirSync("public/mp3", { recursive: true });
-  } catch {}
-
-  // Debug: log audio URL and basic headers
-  try {
-    console.log("🎯 Audio URL:", ep.audioUrl);
-    const head = await fetch(ep.audioUrl, { method: "HEAD" });
-    console.log("🔎 HEAD", head.status, head.statusText, {
-      contentType: head.headers.get("content-type"),
-      acceptRanges: head.headers.get("accept-ranges"),
-      contentLength: head.headers.get("content-length"),
-    });
-  } catch (e) {
-    console.warn("HEAD check failed:", e);
-  }
-
-  // Helper to persist the remote audio locally when URL-based parsing fails on some hosts
-  async function ensureLocalAudio(
-    inputUrl: string,
-    baseName: string,
-  ): Promise<string> {
-    const { createWriteStream, existsSync } = await import("node:fs");
-    const fsPromises = await import("node:fs/promises");
-    const path = await import("node:path");
-    const dir = path.join(".cache", "audio");
-    mkdirSync(dir, { recursive: true });
-    let ext = "";
-    try {
-      const u = new URL(inputUrl);
-      const last = u.pathname.split("/").pop() ?? "audio";
-      ext = last.match(/\.[a-z0-9]+$/i)?.[0] ?? "";
-    } catch {}
-    const filePath = path.join(dir, `${baseName}${ext || ".bin"}`);
-    if (existsSync(filePath)) return filePath;
-
-    const res = await fetch(inputUrl);
-    if (!res.ok || !res.body)
-      throw new Error(`Failed to download audio: ${res.status}`);
-    const ws = createWriteStream(filePath);
-    // Pipe Web ReadableStream to Node Writable
-    const reader = res.body.getReader();
-    await new Promise<void>((resolve, reject) => {
-      (async () => {
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            await new Promise<void>((res2, rej2) =>
-              ws.write(value, (e) => (e ? rej2(e) : res2())),
-            );
-          }
-          ws.end(resolve);
-        } catch (e) {
-          ws.destroy();
-          reject(e);
-        }
-      })();
-    });
-    await fsPromises.chmod(filePath, 0o644).catch(() => {});
-    return filePath;
-  }
-
-  // Helper to write a clip using ffmpeg
-  async function writeClip(
-    inputUrl: string,
-    start: number,
-    end: number,
-    outPath: string,
-  ) {
-    const ff = (ffmpegPath as string) || "ffmpeg";
-    const startStr = Math.max(0, start).toFixed(3);
-    const endStr = Math.max(start + 0.1, end).toFixed(3);
-    const run = async (args: string[]) =>
-      await new Promise<void>((resolve, reject) => {
-        const cp = spawn(ff, args, { stdio: ["ignore", "pipe", "pipe"] });
-        let err = "";
-        cp.stderr.on("data", (d) => {
-          err += String(d);
-        });
-        cp.on("error", reject);
-        cp.on("close", (code) => {
-          if (code === 0) resolve();
-          else
-            reject(new Error(err.trim() || `ffmpeg exited with code ${code}`));
-        });
-      });
-    // 1) Try remote URL with stream copy
-    try {
-      await run([
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-ss",
-        startStr,
-        "-to",
-        endStr,
-        "-i",
-        inputUrl,
-        "-map",
-        "0:a:0?",
-        "-c:a",
-        "copy",
-        "-y",
-        outPath,
-      ]);
-      return;
-    } catch {}
-
-    // 2) Fallback: download locally then copy
-    const localBase = clipBase || "audio";
-    const localPath = await ensureLocalAudio(inputUrl, localBase);
-    try {
-      await run([
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-ss",
-        startStr,
-        "-to",
-        endStr,
-        "-i",
-        localPath,
-        "-map",
-        "0:a:0?",
-        "-c:a",
-        "copy",
-        "-y",
-        outPath,
-      ]);
-      return;
-    } catch {}
-
-    // 3) Last resort: re-encode locally
-    await run([
-      "-hide_banner",
-      "-loglevel",
-      "error",
-      "-ss",
-      startStr,
-      "-to",
-      endStr,
-      "-i",
-      localPath,
-      "-map",
-      "0:a:0?",
-      "-vn",
-      "-c:a",
-      "libmp3lame",
-      "-q:a",
-      "3",
-      "-y",
-      outPath,
-    ]);
-  }
-
-  console.log("🎧 Creating MP3 snippets in public/mp3 …");
-  for (const { index, startSec, endSec, clipUrl, chunkId } of clipRanges) {
-    const outPath = `public${clipUrl}`;
-    const label = `${formatTimestamp(startSec)}–${formatTimestamp(endSec)}`;
-    process.stdout.write(`  • [${index + 1}] ${label} → ${outPath} `);
-    try {
-      await writeClip(ep.audioUrl, startSec, endSec, outPath);
-      process.stdout.write("✓\n");
-    } catch (e) {
-      process.stdout.write("✗\n");
-      console.warn(`     Failed to write clip:`, e);
-      // Graceful fallback: point clipUrl at the source audio with a time offset
-      try {
-        const remoteOffsetUrl = `${ep.audioUrl}#t=${Math.floor(startSec)},${Math.floor(endSec)}`;
-        await db
-          .update(qaCitation)
-          .set({ clipUrl: remoteOffsetUrl })
-          .where(
-            sql`${qaCitation.answerId} = ${answerId} and ${qaCitation.chunkId} = ${chunkId}`,
-          );
-      } catch {}
-    }
-  }
-
   console.log("💬 Ready for feedback. Tell me what to tweak.");
 }
 

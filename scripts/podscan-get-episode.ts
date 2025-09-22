@@ -1,5 +1,10 @@
 #!/usr/bin/env tsx
 import "dotenv/config";
+import {
+  createPodscanClient,
+  type Word,
+  type Segment,
+} from "../src/lib/podscan.js";
 
 /**
  * Inspect a single Podscan episode with word-level timestamps.
@@ -20,45 +25,20 @@ async function main() {
     process.exit(1);
   }
 
-  const url = new URL(`https://podscan.fm/api/v1/episodes/${episodeId}`);
-  url.searchParams.set("show_full_podcast", "true");
-  url.searchParams.set("word_level_timestamps", "true");
+  const client = createPodscanClient(token);
 
-  console.log("GET", url.toString());
+  console.log(`Getting episode: ${episodeId}`);
 
-  const res = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-  });
-
-  if (!res.ok) {
-    console.error("Request failed:", res.status, res.statusText);
-    const body = await res.text();
-    console.error(body);
+  let data;
+  try {
+    data = await client.getEpisode(episodeId, {
+      showFullPodcast: true,
+      wordLevelTimestamps: true,
+    });
+  } catch (error) {
+    console.error("Request failed:", error);
     process.exit(1);
   }
-
-  type Word = { start: number; end: number; word: string };
-  type Segment = {
-    id: number;
-    start: number;
-    end: number;
-    text: string;
-    words?: Word[];
-  };
-  type EpisodeResponse = {
-    episode?: {
-      episode_title?: string;
-      episode_audio_url?: string;
-      episode_transcript_word_level_timestamps?:
-        | { segments?: Segment[] }
-        | false;
-    };
-  };
-
-  const data = (await res.json()) as EpisodeResponse;
 
   const title = data?.episode?.episode_title ?? "Untitled";
   const audio = data?.episode?.episode_audio_url ?? "";
@@ -66,7 +46,7 @@ async function main() {
   console.log(`Audio: ${audio}`);
 
   const wlt = data?.episode?.episode_transcript_word_level_timestamps;
-  if (!wlt || !wlt.segments) {
+  if (!wlt || typeof wlt === "boolean" || !wlt.segments) {
     console.log("No word-level timestamps present in response.");
     return;
   }
