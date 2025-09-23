@@ -1,7 +1,14 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { MoreHorizontal, PlusIcon, SearchIcon, TrashIcon } from "lucide-react";
+import {
+  AlertCircle,
+  Loader2,
+  MoreHorizontal,
+  PlusIcon,
+  SearchIcon,
+  TrashIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { useQueryState } from "nuqs";
 import { AddPodcastDialog } from "@/components/blocks/podcasts/add-podcast-dialog";
@@ -20,6 +27,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useDebounce } from "@/hooks/use-debounce";
 import { useTRPC } from "@/server/trpc/client";
 
 export default function Podcasts() {
@@ -31,11 +40,15 @@ export default function Podcasts() {
   });
   const [sortBy, setSortBy] = useQueryState("sort", { defaultValue: "date" });
 
+  // Debounce search query to avoid too many API calls
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
+
   // Get podcasts (saved or filtered by search query)
-  const podcasts = useQuery(
+  const { data, isLoading, error } = useQuery(
     trpc.podcasts.list.queryOptions({
       limit: 50,
-      query: searchQuery.trim() || undefined,
+      query: debouncedSearchQuery.trim() || undefined,
+      sortBy: sortBy as "date" | "title",
     }),
   );
 
@@ -97,8 +110,40 @@ export default function Podcasts() {
 
       {/* Podcasts List */}
       <div className="space-y-3">
-        {podcasts.data?.data && podcasts.data.data.length > 0 ? (
-          podcasts.data.data.map((podcast) => (
+        {isLoading ? (
+          <div className="space-y-3">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <div
+                key={index}
+                className="flex items-center gap-4 rounded-lg border bg-background p-4"
+              >
+                <Skeleton className="h-12 w-12 rounded-lg" />
+                <div className="flex-1">
+                  <Skeleton className="h-4 w-3/4 mb-2" />
+                  <Skeleton className="h-3 w-1/3" />
+                </div>
+                <Skeleton className="h-8 w-8 rounded" />
+              </div>
+            ))}
+          </div>
+        ) : error ? (
+          <div className="text-center py-12">
+            <div className="flex items-center justify-center mb-4">
+              <AlertCircle className="h-8 w-8 text-destructive" />
+            </div>
+            <h3 className="text-lg font-medium mb-2">
+              Failed to load podcasts
+            </h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              {error.message ||
+                "An error occurred while loading your podcasts."}
+            </p>
+            <Button variant="outline" onClick={() => window.location.reload()}>
+              Try again
+            </Button>
+          </div>
+        ) : data?.data && data.data.length > 0 ? (
+          data.data.map((podcast) => (
             <Link
               key={podcast.id}
               href={`/podcast/${podcast.podcastId}`}
@@ -151,7 +196,11 @@ export default function Podcasts() {
                     className="text-destructive"
                   >
                     <TrashIcon className="h-4 w-4 mr-2" />
-                    Remove
+                    {removePodcast.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      "Remove"
+                    )}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -160,11 +209,11 @@ export default function Podcasts() {
         ) : (
           <div className="text-center py-12">
             <div className="text-muted-foreground mb-4">
-              {searchQuery
+              {debouncedSearchQuery
                 ? "No podcasts found."
                 : "No podcasts in your library yet."}
             </div>
-            {!searchQuery && (
+            {!debouncedSearchQuery && (
               <p className="text-sm text-muted-foreground">
                 Add podcasts to your library to get started.
               </p>
@@ -174,11 +223,11 @@ export default function Podcasts() {
       </div>
 
       {/* Pagination */}
-      {podcasts.data?.data && podcasts.data.data.length > 0 && (
+      {data?.data && data.data.length > 0 && (
         <div className="mt-8 flex items-center justify-center gap-4">
           <p className="text-sm text-muted-foreground">
-            Showing 1 to {Math.min(5, podcasts.data.data.length)} of{" "}
-            {podcasts.data.data.length} results
+            Showing 1 to {Math.min(5, data.data.length)} of {data.data.length}{" "}
+            results
           </p>
           <div className="flex gap-1">
             <Button variant="default" size="sm" className="h-8 w-8 p-0">

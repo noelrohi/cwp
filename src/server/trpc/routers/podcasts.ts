@@ -1,5 +1,5 @@
-import { generateId } from "ai";
-import { count, desc, eq, ilike } from "drizzle-orm";
+import { asc, count, desc, eq, ilike } from "drizzle-orm";
+import { nanoid } from "nanoid";
 import { z } from "zod";
 import { episode, podcast } from "@/server/db/schema/podcast";
 import { createTRPCRouter, publicProcedure } from "../init";
@@ -32,15 +32,19 @@ export const podcastsRouter = createTRPCRouter({
           page: z.number().int().min(1).optional().default(1),
           limit: z.number().int().min(1).max(50).optional().default(20),
           query: z.optional(z.string()),
+          sortBy: z.enum(["date", "title"]).optional().default("date"),
         })
         .optional(),
     )
     .query(async ({ ctx, input }) => {
-      const { page = 1, limit = 20, query } = input ?? {};
+      const { page = 1, limit = 20, query, sortBy = "date" } = input ?? {};
+
+      const orderBy =
+        sortBy === "title" ? [asc(podcast.title)] : [desc(podcast.createdAt)];
 
       const results = await ctx.db.query.podcast.findMany({
         where: query ? ilike(podcast.title, `%${query}%`) : undefined,
-        orderBy: [desc(podcast.createdAt)],
+        orderBy,
         limit,
         offset: (page - 1) * limit,
         with: {
@@ -88,7 +92,7 @@ export const podcastsRouter = createTRPCRouter({
         }
 
         const newPodcast = {
-          id: generateId(),
+          id: nanoid(),
           podcastId,
           title,
           description: description || null,
