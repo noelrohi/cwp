@@ -18,18 +18,14 @@ import { headers } from "next/headers";
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 import type { MyUIMessage } from "@/ai/schema";
-import {
-  createAnswersTool,
-  createEpisodeDetailsTool,
-  createSearchTool,
-} from "@/ai/tools";
-import { db } from "@/db";
-import { chatSession } from "@/db/schema/chat";
+import { createEpisodeDetailsTool, createSearchTool } from "@/ai/tools";
 import { auth } from "@/lib/auth";
 import {
   createFollowupPrompt,
   createPodcastSystemPrompt,
 } from "@/lib/prompt-utils";
+import { db } from "@/server/db";
+import { chatSession } from "@/server/db/schema/chat";
 
 const openrouter = createOpenRouter({
   apiKey: process.env.OPENROUTER_API_KEY,
@@ -39,26 +35,20 @@ const openrouter = createOpenRouter({
   },
 });
 
+const baseModel = openrouter.chat("x-ai/grok-4-fast:free", {
+  reasoning: {
+    enabled: true,
+    effort: "high",
+  },
+  // plugins: [{ id: "web" }],
+});
+
 const BodySchema = z.object({
   messages: z.any(),
   model: z.string().optional(),
   webSearch: z.boolean().optional(),
   episodeId: z.string().optional(),
 });
-
-// Build a system prompt that conditionally includes the similarity search tool guidance
-function getSystemPrompt({
-  includeSimilarityTool,
-  episodeId,
-}: {
-  includeSimilarityTool: boolean;
-  episodeId?: string;
-}) {
-  return createPodcastSystemPrompt({
-    includeSimilarityTool,
-    episodeId,
-  });
-}
 
 export async function POST(req: NextRequest) {
   const json = await req.json();
@@ -82,11 +72,9 @@ export async function POST(req: NextRequest) {
         writer,
         modelMessages,
         model,
-        episodeId,
+        episodeId: episodeId ?? "ep_eb98jyg3z4kyjmga",
       });
 
-      // After the initial response is streamed, generate
-      // follow-up question suggestions and stream them too.
       const followupSuggestions = generateFollowupSuggestions({
         model,
         modelMessages: [...modelMessages, ...messagesFromResponse],
@@ -154,12 +142,7 @@ async function streamInitialMessages({
   model: LanguageModelV2;
   episodeId?: string;
 }): Promise<ModelMessage[]> {
-  // Always include the similarity tool so answers can quote transcripts
-  const includeSimilarityTool = true;
-  const system = getSystemPrompt({ includeSimilarityTool, episodeId });
-  // Include tools. Add the answers tool only when the user asked a question.
-  const lastUserText = getLastUserText(modelMessages);
-  const includeAnswersTool = lastUserText ? isQuestion(lastUserText) : false;
+  const system = createPodcastSystemPrompt({ episodeId });
 
   const tools = {
     search_similarity: createSearchTool({
@@ -170,10 +153,6 @@ async function streamInitialMessages({
       writer,
       defaultEpisodeId: episodeId,
     }),
-    answer: createAnswersTool({
-      writer,
-      defaultEpisodeId: episodeId,
-    }),
   } as const;
 
   const result = streamText({
@@ -181,25 +160,9 @@ async function streamInitialMessages({
     system,
     messages: modelMessages,
     tools,
-    prepareStep: (step) => {
-      console.log({ step });
-      console.log({ includeAnswersTool });
-      if (step.stepNumber === 1) {
-        return {
-          activeTools: ["episode_details", "search_similarity"],
-        };
-      }
-      if (step.stepNumber === 2 && includeAnswersTool) {
-        return {
-          activeTools: ["answer"],
-        };
-      }
-      return step;
-    },
     stopWhen: stepCountIs(10),
     experimental_transform: smoothStream({
-      delayInMs: 0,
-      chunking: /[^-]*---/,
+      chunking: "word",
     }),
   });
   writer.merge(
@@ -219,61 +182,7 @@ async function streamInitialMessages({
   );
   // Wait for the model response to complete and return the response messages
   const response = await result.response;
-  console.log(JSON.stringify(result.steps, null, 2));
   return response.messages as ModelMessage[];
-}
-
-function getLastUserText(messages: ModelMessage[]): string | null {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const m = messages[i];
-    if (m.role !== "user") continue;
-    const content = (m as { content?: unknown }).content;
-    if (typeof content === "string") return content;
-    if (Array.isArray(content)) {
-      const textParts = content
-        .filter((p): p is { type: "text"; text: string } => {
-          if (typeof p !== "object" || p === null) return false;
-          const maybe = p as { type?: unknown; text?: unknown };
-          return maybe.type === "text" && typeof maybe.text === "string";
-        })
-        .map((p) => p.text);
-      if (textParts.length) return textParts.join("\n");
-    }
-    return null;
-  }
-  return null;
-}
-
-function isQuestion(text: string): boolean {
-  const t = text.trim();
-  if (!t) return false;
-  if (t.includes("?")) return true;
-  const first = t.split(/\s+/)[0]?.toLowerCase() ?? "";
-  const qWords = new Set([
-    "who",
-    "what",
-    "where",
-    "when",
-    "why",
-    "how",
-    "which",
-    "whom",
-    "whose",
-    "do",
-    "does",
-    "did",
-    "can",
-    "could",
-    "should",
-    "would",
-    "will",
-    "is",
-    "are",
-    "am",
-    "was",
-    "were",
-  ]);
-  return qWords.has(first);
 }
 
 function resolveModel({
@@ -284,13 +193,7 @@ function resolveModel({
   webSearchEnabled?: boolean;
 }): LanguageModelV2 {
   if (process.env.NODE_ENV !== "production") {
-    return openrouter.chat("x-ai/grok-4-fast:free", {
-      reasoning: {
-        enabled: true,
-        effort: "high",
-      },
-      // plugins: [{ id: "web" }],
-    });
+    return baseModel;
   }
   // If Sonar search is selected, use Perplexity Sonar model.
   if (webSearchEnabled) {
@@ -304,24 +207,6 @@ function resolveModel({
   }
 
   const id = modelId ?? "x-ai/grok-4-fast:free";
-
-  // Map GPT-5 variants to reasoning efforts
-  if (id.startsWith("openai/gpt-5")) {
-    let effort: "low" | "medium" | "high" = "high";
-    if (id.endsWith("-low")) effort = "low";
-    else if (id.endsWith("-medium")) effort = "medium";
-    else if (id.endsWith("-high")) effort = "high";
-
-    return openrouter.chat("openai/gpt-5", {
-      reasoning: { enabled: true, effort },
-    });
-  }
-
-  if (id === "x-ai/grok-4-fast:free") {
-    return openrouter.chat(id, {
-      reasoning: { enabled: true, effort: "high" },
-    });
-  }
 
   // Fallback to requested model without extra options
   return openrouter.chat(id, {

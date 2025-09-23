@@ -4,14 +4,14 @@ import { embed, generateObject } from "ai";
 import { and, cosineDistance, desc, eq, gt, type SQL, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
-import type { db as dbInstance } from "@/db";
+import type { db as dbInstance } from "@/server/db";
 import {
   episode,
   qaAnswer,
   qaCitation,
   qaQuery,
   transcriptChunk,
-} from "@/db/schema/podcast";
+} from "@/server/db/schema/podcast";
 
 // Build a system prompt that conditionally includes the similarity search tool guidance
 function getSystemPrompt({ episodeId }: { episodeId?: string }) {

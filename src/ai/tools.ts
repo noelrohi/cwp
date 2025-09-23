@@ -11,8 +11,8 @@ import {
 } from "drizzle-orm";
 import z from "zod/v4";
 import type { MyUIMessage } from "@/ai/schema";
-import { db } from "@/db";
-import { episode, podcast, transcriptChunk } from "@/db/schema/podcast";
+import { db } from "@/server/db";
+import { episode, podcast, transcriptChunk } from "@/server/db/schema/podcast";
 
 export const createSearchTool = ({
   writer,
@@ -92,6 +92,8 @@ export const createSearchTool = ({
         .where(filters.length ? and(...filters) : undefined)
         .orderBy((t) => desc(t.similarity))
         .limit(limit);
+
+      console.log(JSON.stringify({ rows }, null, 2));
 
       const results = rows.map((r) => ({
         text: r.text,
@@ -318,140 +320,6 @@ export const createEpisodeDetailsTool = ({
       });
 
       return { episodes: results };
-    },
-  });
-};
-
-export const createAnswersTool = ({
-  writer,
-  defaultEpisodeId,
-}: {
-  writer: UIMessageStreamWriter<MyUIMessage>;
-  defaultEpisodeId?: string;
-}) => {
-  return tool({
-    description:
-      "Return 3–5 concise quote answers for a user question, including quote text, guest name, and episode title. Prefer clips with available audio URLs.",
-    inputSchema: z.object({
-      question: z.string().min(1, "Provide the user question"),
-      limit: z.number().int().min(3).max(5).optional().default(5),
-      episodeId: z
-        .string()
-        .optional()
-        .describe("Optionally restrict answers to a specific episode id"),
-    }),
-    execute: async ({ question, limit = 5, episodeId }) => {
-      const id = generateId();
-      const effectiveEpisodeId = episodeId ?? defaultEpisodeId;
-
-      writer.write({
-        id,
-        type: "data-answers",
-        data: {
-          status: "processing",
-          text: "🔎 Finding quoted answers…",
-          query: question,
-        },
-      });
-
-      // Embed the question
-      const { embedding: qEmbedding } = await embed({
-        model: openai.textEmbeddingModel("text-embedding-3-small"),
-        value: question.replaceAll("\n", " "),
-      });
-
-      const similarity = sql<number>`1 - (${cosineDistance(
-        transcriptChunk.embedding,
-        qEmbedding,
-      )})`;
-
-      // Search top transcript segments, joined with episode for metadata
-      const filters: SQL<unknown>[] = [];
-      if (effectiveEpisodeId) {
-        filters.push(eq(transcriptChunk.episodeId, effectiveEpisodeId));
-      }
-
-      const rows = await db
-        .select({
-          text: transcriptChunk.text,
-          startSec: transcriptChunk.startSec,
-          endSec: transcriptChunk.endSec,
-          similarity,
-          episodeId: transcriptChunk.episodeId,
-          episodeTitle: episode.title,
-          guestName: episode.guest,
-          audioUrl: episode.audioUrl,
-        })
-        .from(transcriptChunk)
-        .leftJoin(episode, eq(episode.id, transcriptChunk.episodeId))
-        .where(filters.length ? and(...filters) : undefined)
-        .orderBy((t) => desc(t.similarity))
-        .limit(32); // fetch more to allow de-dup + post-filtering
-
-      // Post-process: dedupe by text, prefer items with audioUrl
-      const seen = new Set<string>();
-      const answers: Array<{
-        id: string;
-        quote: string;
-        guestName?: string | null;
-        episodeTitle?: string | null;
-        audioUrl?: string | null;
-        startMs?: number | null;
-        endMs?: number | null;
-      }> = [];
-
-      for (const r of rows) {
-        const key = (r.text ?? "").trim();
-        if (!key || seen.has(key)) continue;
-        seen.add(key);
-        answers.push({
-          id: generateId(),
-          quote: key,
-          guestName: r.guestName ?? null,
-          episodeTitle: r.episodeTitle ?? null,
-          audioUrl: r.audioUrl ?? null,
-          startMs: r.startSec ? Number(r.startSec) * 1000 : 0,
-          endMs: r.endSec ? Number(r.endSec) * 1000 : null,
-        });
-        if (answers.length >= limit) break;
-      }
-
-      // Emit a few source URLs so the Sources panel allows quick playback
-      const toMMSS = (ms: number) => {
-        const sec = Math.max(0, Math.floor(ms / 1000));
-        const m = Math.floor(sec / 60)
-          .toString()
-          .padStart(2, "0");
-        const s = (sec % 60).toString().padStart(2, "0");
-        return `${m}:${s}`;
-      };
-      for (const a of answers) {
-        if (!a.audioUrl) continue;
-        const seconds = Math.floor((a.startMs ?? 0) / 1000);
-        const url = `${a.audioUrl}#t=${seconds}`;
-        writer.write({
-          type: "source-url",
-          sourceId: generateId(),
-          url,
-          title: a.episodeTitle
-            ? `${a.episodeTitle} — ${toMMSS(a.startMs ?? 0)}`
-            : undefined,
-        });
-      }
-
-      writer.write({
-        id,
-        type: "data-answers",
-        data: {
-          status: "complete",
-          text: `Found ${answers.length} answer${answers.length === 1 ? "" : "s"}.`,
-          items: answers,
-          query: question,
-          total: answers.length,
-        },
-      });
-
-      return { answers };
     },
   });
 };

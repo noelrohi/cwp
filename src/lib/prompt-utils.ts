@@ -1,10 +1,8 @@
 import { XmlPrompt } from "./xml-prompt";
 
 export const createPodcastSystemPrompt = ({
-  includeSimilarityTool,
   episodeId,
 }: {
-  includeSimilarityTool: boolean;
   episodeId?: string;
 }) => {
   const lines: string[] = [
@@ -32,11 +30,9 @@ export const createPodcastSystemPrompt = ({
     "Tool usage notes:",
   ];
 
-  if (includeSimilarityTool) {
-    lines.push(
-      "- search_similarity: ALWAYS call this first with the user's query to fetch transcript chunks (returns text, startMs/endMs, episodeId). Use these to produce the summary + quote pairs.",
-    );
-  }
+  lines.push(
+    "- search_similarity: ALWAYS call this first with the user's query to fetch transcript chunks (returns text, startMs/endMs, episodeId). Use these to produce the summary + quote pairs.",
+  );
 
   lines.push(
     "- episode_details: Call with unique episodeIds from search results when you need episode titles, podcast names, or durations. If the user wants deeper analysis for a specific query, you may pass 'query' to retrieve top highlights.",

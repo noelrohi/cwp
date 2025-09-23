@@ -1,9 +1,9 @@
 #!/usr/bin/env tsx
 import "dotenv/config";
 import { and, eq, isNull } from "drizzle-orm";
-import { db } from "@/db";
-import { episode } from "@/db/schema/podcast";
 import { createPodscanClient } from "@/lib/podscan";
+import { db } from "@/server/db";
+import { episode } from "@/server/db/schema/podcast";
 
 interface EpisodeApiItem {
   episode_id: string;

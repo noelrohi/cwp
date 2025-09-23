@@ -4,8 +4,8 @@ import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { generateObject } from "ai";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { db } from "@/db";
-import { starterQuestion } from "@/db/schema/podcast";
+import { db } from "@/server/db";
+import { starterQuestion } from "@/server/db/schema/podcast";
 
 async function main() {
   const apiKey = process.env.OPENROUTER_API_KEY;

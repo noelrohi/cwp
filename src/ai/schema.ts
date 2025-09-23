@@ -14,6 +14,20 @@ export const citationSchema = z.object({
   ),
 });
 
+export const quotesSchema = z.object({
+  quotes: z
+    .array(
+      z.object({
+        speaker: z.enum(["guest", "host"]),
+        speakerName: z.string().min(2).max(100),
+        quote: z.string().min(20).max(1000),
+        episodeTitle: z.string().min(5).max(200),
+      }),
+    )
+    .min(1)
+    .max(3),
+});
+
 // Metadata attached to assistant messages (optional)
 export const messageMetadataSchema = z.object({
   createdAt: z.number().optional(),
@@ -49,32 +63,16 @@ export type MyUIMessage = UIMessage<
       text: string;
       results?: unknown;
     };
-    // A compact list of quoted answers for a user question
-    // Streamed via UIMessageStream type: 'data-answers'
-    answers: {
-      status: "processing" | "complete" | "error";
-      text: string;
-      items?: Array<{
-        id: string;
-        quote: string;
-        guestName?: string | null;
-        episodeTitle?: string | null;
-        audioUrl?: string | null;
-        startMs?: number | null;
-        endMs?: number | null;
-      }>;
-      query?: string;
-      total?: number;
+    "citation-sources": {
+      citation: {
+        number: number;
+        title: string;
+        sources: {
+          url: string;
+        }[];
+      }[];
     };
-    // A single source/citation URL to show in the UI
-    // Rendered via <Sources /> in the chat UI
-    "source-url": {
-      url: string;
-      title?: string;
-    };
-    // Follow-up suggestions streamed from the model.
-    // This will be written with UIMessageStream type: 'data-suggestions'
-    // and contains a simple array of suggestion strings.
+
     suggestions: string[];
   }
 >;

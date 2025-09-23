@@ -1,5 +1,5 @@
 import { IconCirclePlusFilled } from "@tabler/icons-react";
-import { BookOpenIcon, HelpCircleIcon, CreditCardIcon } from "lucide-react";
+import { BookOpenIcon, CreditCardIcon, HelpCircleIcon } from "lucide-react";
 import {
   SidebarGroup,
   SidebarGroupContent,

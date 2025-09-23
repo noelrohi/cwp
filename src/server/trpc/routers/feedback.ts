@@ -1,6 +1,6 @@
 import { count, eq } from "drizzle-orm";
 import { z } from "zod";
-import { qaAnswer, qaFeedback } from "@/db/schema/podcast";
+import { qaAnswer, qaFeedback } from "@/server/db/schema/podcast";
 import { createTRPCRouter, publicProcedure } from "../init";
 
 const logger = {

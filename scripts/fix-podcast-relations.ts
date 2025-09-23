@@ -1,8 +1,8 @@
 #!/usr/bin/env tsx
 
 import { eq, isNull } from "drizzle-orm";
-import { db } from "@/db";
-import { episode, podcast } from "@/db/schema/podcast";
+import { db } from "@/server/db";
+import { episode, podcast } from "@/server/db/schema/podcast";
 
 /**
  * Migration script to fix existing episode-podcast relationships

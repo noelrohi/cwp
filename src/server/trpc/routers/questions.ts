@@ -8,8 +8,10 @@ import {
   qaCitation,
   qaQuery,
   transcriptChunk,
-} from "@/db/schema/podcast";
+} from "@/server/db/schema/podcast";
 import { generateAnswersForQuery } from "@/server/qa/generate";
+import { generateGlobalQuotesAnswer } from "@/server/qa/generate-global-quotes";
+import { generateQuotesAnswer } from "@/server/qa/generate-quotes";
 import { createTRPCRouter, publicProcedure } from "../init";
 
 const logger = {
@@ -67,7 +69,7 @@ function runAfterResponse(label: string, task: () => Promise<void> | void) {
       }
     });
     logger.debug("Task scheduled with next/server after()", { label });
-  } catch (err) {
+  } catch {
     logger.warn("after() unavailable, falling back to setTimeout(0)", {
       label,
     });
@@ -94,7 +96,10 @@ export const questionsRouter = createTRPCRouter({
       z.object({
         question: z.string().min(1, "Question is required"),
         episodeId: z.string().optional(),
-        mode: z.enum(["global", "episode"]).optional().default("global"),
+        mode: z
+          .enum(["global", "episode", "quotes"])
+          .optional()
+          .default("global"),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -112,7 +117,12 @@ export const questionsRouter = createTRPCRouter({
       await ctx.db.insert(qaQuery).values({
         queryId,
         userId: ctx.user?.id ?? null,
-        mode: input.episodeId ? "episode" : input.mode,
+        mode:
+          input.mode === "quotes"
+            ? "quotes"
+            : input.episodeId
+              ? "episode"
+              : input.mode,
         episodeId: input.episodeId ?? null,
         queryText: input.question,
         status: "queued",
@@ -125,7 +135,22 @@ export const questionsRouter = createTRPCRouter({
       });
 
       runAfterResponse("generate answers (create)", async () => {
-        await generateAnswersForQuery({ db: ctx.db, queryId });
+        if (input.mode === "quotes") {
+          await generateQuotesAnswer({
+            db: ctx.db,
+            queryId,
+            question: input.question,
+            episodeId: input.episodeId,
+          });
+        } else if (input.mode === "global") {
+          await generateGlobalQuotesAnswer({
+            db: ctx.db,
+            queryId,
+            question: input.question,
+          });
+        } else {
+          await generateAnswersForQuery({ db: ctx.db, queryId });
+        }
       });
 
       const totalDuration = Date.now() - startTime;

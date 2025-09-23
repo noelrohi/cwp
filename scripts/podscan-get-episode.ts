@@ -2,8 +2,8 @@
 import "dotenv/config";
 import {
   createPodscanClient,
-  type Word,
   type Segment,
+  type Word,
 } from "../src/lib/podscan.js";
 
 /**

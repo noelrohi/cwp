@@ -6,8 +6,8 @@ import { embed, streamObject } from "ai";
 import { and, cosineDistance, desc, eq, type SQL, sql } from "drizzle-orm";
 
 import { citationSchema } from "@/ai/schema";
-import { db } from "@/db";
-import { episode, transcriptChunk } from "@/db/schema";
+import { db } from "@/server/db";
+import { episode, transcriptChunk } from "@/server/db/schema";
 
 // Allow streaming responses up to 30 seconds
 export const maxDuration = 30;

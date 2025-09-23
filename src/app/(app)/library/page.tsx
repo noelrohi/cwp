@@ -6,7 +6,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { useTRPC } from "@/lib/trpc/client";
+import { useTRPC } from "@/server/trpc/client";
 
 export default function LibraryPage() {
   const trpc = useTRPC();

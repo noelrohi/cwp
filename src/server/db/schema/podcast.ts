@@ -94,7 +94,7 @@ export const transcriptChunk = pgTable(
 export const qaQuery = pgTable("qa_query", {
   queryId: text("query_id").primaryKey(),
   userId: text("user_id"),
-  mode: text("mode").$type<"global" | "episode">(),
+  mode: text("mode").$type<"global" | "episode" | "quotes">(),
   episodeId: text("episode_id"),
   queryText: text("query_text").notNull(),
   status: text("status")

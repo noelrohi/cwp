@@ -9,8 +9,13 @@ import { generateObject } from "ai";
 import { desc, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
-import { db } from "@/db";
-import { episode, qaAnswer, qaCitation, qaQuery } from "@/db/schema/podcast";
+import { db } from "@/server/db";
+import {
+  episode,
+  qaAnswer,
+  qaCitation,
+  qaQuery,
+} from "@/server/db/schema/podcast";
 import { findRelevantChunks, formatTimestamp } from "@/server/qa/generate";
 
 // Question and target episode title fragment (can be overridden via -q / --question)

@@ -14,7 +14,7 @@ import {
 import { useAudioPlayer } from "@/components/providers/audio-player-provider";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { type RouterOutput, useTRPC } from "@/lib/trpc/client";
+import { type RouterOutput, useTRPC } from "@/server/trpc/client";
 
 export default function QuestionPage({ params }: PageProps<"/question/[id]">) {
   const { id } = use(params);

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
 import { CheckIcon, GlobeIcon, LayersIcon } from "lucide-react";
+import { useState } from "react";
+import { PromptInputButton } from "@/components/ai-elements/prompt-input";
 import {
   Command,
   CommandEmpty,
@@ -15,7 +16,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { PromptInputButton } from "@/components/ai-elements/prompt-input";
 
 interface SearchModeSelectorProps {
   searchMode: "similarity" | "sonar";

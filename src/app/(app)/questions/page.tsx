@@ -16,6 +16,7 @@ import {
   PromptInputTextarea,
   PromptInputToolbar,
 } from "@/components/ai-elements/prompt-input";
+import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -25,12 +26,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { useTRPC } from "@/lib/trpc/client";
+import { useTRPC } from "@/server/trpc/client";
 
 export default function QuestionsPage() {
   const trpc = useTRPC();
   const qc = useQueryClient();
   const [sort, setSort] = useState<"newest" | "active">("newest");
+  const [searchMode, setSearchMode] = useState<"quotes" | "global">("global");
 
   const router = useRouter();
 
@@ -49,7 +51,10 @@ export default function QuestionsPage() {
     if (!raw) return;
     // Persist query immediately and trigger background answer generation.
     try {
-      const res = await createQuestion.mutateAsync({ question: raw });
+      const res = await createQuestion.mutateAsync({
+        question: raw,
+        mode: searchMode,
+      });
       router.push(`/question/${res.queryId}`);
     } catch (_err) {}
     qc.invalidateQueries({
@@ -68,6 +73,26 @@ export default function QuestionsPage() {
 
       {/* Composer */}
       <section className="mx-auto mb-8 max-w-3xl">
+        {/* Search Mode Selection */}
+        <div className="mb-4 flex justify-center gap-2">
+          <Button
+            variant={searchMode === "global" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setSearchMode("global")}
+            className="h-8"
+          >
+            Global Search
+          </Button>
+          <Button
+            variant={searchMode === "quotes" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setSearchMode("quotes")}
+            className="h-8"
+          >
+            Episode Search
+          </Button>
+        </div>
+
         <PromptInput
           className="rounded-xl border bg-background shadow-sm"
           onSubmit={async (msg, e) => {
@@ -77,7 +102,11 @@ export default function QuestionsPage() {
         >
           <PromptInputBody>
             <PromptInputTextarea
-              placeholder="Ask a question… (Enter to post, Shift+Enter for newline)"
+              placeholder={
+                searchMode === "global"
+                  ? "Ask a question and get quotes from across all episodes…"
+                  : "Ask for quotes from podcast episodes…"
+              }
               disabled={createQuestion.isPending}
             />
             <PromptInputToolbar className="px-2 py-1.5">

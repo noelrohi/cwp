@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import { PlusIcon } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import type { MyUIMessage } from "@/ai/schema";
 import { Button } from "@/components/ui/button";
 

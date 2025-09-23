@@ -1,6 +1,6 @@
 import { desc } from "drizzle-orm";
 import { z } from "zod";
-import { episode } from "@/db/schema";
+import { episode } from "@/server/db/schema";
 import { createTRPCRouter, publicProcedure } from "../init";
 
 export const episodesRouter = createTRPCRouter({

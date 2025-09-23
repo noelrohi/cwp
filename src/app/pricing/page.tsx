@@ -1,5 +1,7 @@
 "use client";
 
+import { CheckoutDialog, useCustomer } from "autumn-js/react";
+import { Check, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -8,8 +10,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { CheckoutDialog, useCustomer } from "autumn-js/react";
-import { Check, Star } from "lucide-react";
 
 interface Subscription {
   productId: string;

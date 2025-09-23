@@ -1,8 +1,8 @@
 #!/usr/bin/env tsx
 import "dotenv/config";
 import { sql } from "drizzle-orm";
-import { db } from "@/db";
-import { episode } from "@/db/schema/podcast";
+import { db } from "@/server/db";
+import { episode } from "@/server/db/schema/podcast";
 
 async function main() {
   const TITLE_MATCH =

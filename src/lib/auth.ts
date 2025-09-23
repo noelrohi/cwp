@@ -2,7 +2,7 @@ import { autumn } from "autumn-js/better-auth";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { lastLoginMethod } from "better-auth/plugins";
-import { db } from "@/db";
+import { db } from "@/server/db";
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, {

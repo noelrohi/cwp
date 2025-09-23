@@ -7,7 +7,7 @@ import {
   createTRPCClientInstance,
   getQueryClient,
   TRPCProvider,
-} from "@/lib/trpc/client";
+} from "@/server/trpc/client";
 
 interface TRPCProvidersProps {
   children: React.ReactNode;

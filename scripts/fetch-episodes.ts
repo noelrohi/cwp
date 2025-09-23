@@ -3,9 +3,9 @@
 import { openai } from "@ai-sdk/openai";
 import { embed, embedMany } from "ai";
 import { eq } from "drizzle-orm";
-import { db } from "@/db";
-import { episode, podcast, transcriptChunk } from "@/db/schema/podcast";
 import { createPodscanClient } from "@/lib/podscan";
+import { db } from "@/server/db";
+import { episode, podcast, transcriptChunk } from "@/server/db/schema/podcast";
 
 const generateEmbeddings = async (values: string[]): Promise<number[][]> => {
   if (values.length === 0) return [];
