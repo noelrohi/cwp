@@ -11,15 +11,16 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
 
         <div className="relative flex flex-col gap-6">
           <Link href="/" className="font-semibold tracking-tight">
-            Chat with Podcasts
+            Framebreak Intelligence
           </Link>
           <p className="text-sm text-white/70 max-w-md">
-            Search, chat, and learn from your favorite podcasts.
+            AI-powered podcast analysis and insights platform.
           </p>
         </div>
 
         <footer className="relative text-xs text-white/70">
-          © {new Date().getFullYear()} Chat with Podcasts. All rights reserved.
+          © {new Date().getFullYear()} Framebreak Intelligence. All rights
+          reserved.
         </footer>
       </aside>
 
