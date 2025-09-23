@@ -11,10 +11,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-interface Subscription {
-  productId: string;
-  status: string;
-}
+// interface Subscription {
+//   productId: string;
+//   status: string;
+// }
 
 export default function PricingPage() {
   const { customer, attach, openBillingPortal } = useCustomer();

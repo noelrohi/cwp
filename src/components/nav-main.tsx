@@ -1,5 +1,9 @@
-import { IconCirclePlusFilled } from "@tabler/icons-react";
-import { BookOpenIcon, CreditCardIcon, HelpCircleIcon } from "lucide-react";
+import {
+  FolderOpenIcon,
+  LayoutDashboardIcon,
+  MicIcon,
+  SettingsIcon,
+} from "lucide-react";
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -10,14 +14,24 @@ import {
 
 const items = [
   {
-    title: "Questions",
-    icon: HelpCircleIcon,
-    url: "/questions",
+    title: "Dashboard",
+    icon: LayoutDashboardIcon,
+    url: "/dashboard",
   },
   {
-    title: "Library",
-    icon: BookOpenIcon,
-    url: "/library",
+    title: "Podcasts",
+    icon: MicIcon,
+    url: "/podcasts",
+  },
+  {
+    title: "Artifacts",
+    icon: FolderOpenIcon,
+    url: "/artifacts",
+  },
+  {
+    title: "Preferences",
+    icon: SettingsIcon,
+    url: "/preferences",
   },
 ] as const;
 
@@ -25,20 +39,6 @@ export function NavMain() {
   return (
     <SidebarGroup>
       <SidebarGroupContent className="flex flex-col gap-2">
-        <SidebarMenu>
-          <SidebarMenuItem className="flex items-center gap-2">
-            <SidebarMenuButton
-              asChild
-              tooltip="Ask a Question"
-              className="min-w-8 bg-primary text-primary-foreground duration-200 ease-linear hover:bg-primary/90 hover:text-primary-foreground active:bg-primary/90 active:text-primary-foreground"
-            >
-              <a href="/library">
-                <IconCirclePlusFilled />
-                <span>Ask a Question</span>
-              </a>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
         <SidebarMenu>
           {items.map((item) => (
             <SidebarMenuItem key={item.title}>

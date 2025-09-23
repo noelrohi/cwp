@@ -1,4 +1,4 @@
-# Agent Guidelines for CWP
+# Agent Guidelines for Framebreak Intelligence
 
 ## Build/Lint/Test Commands
 - `pnpm lint` - Run Biome linter and checker
@@ -46,3 +46,24 @@ export default function UserList() {
   );
 }
 ```
+
+## Next.js Page Props
+- Use `PageProps<"/route/[param]">` for typed page props
+- Use `use` from "react" hook to resolve promise-based params in client components
+
+### Example
+
+```tsx
+"use client";
+
+import { use } from "react";
+import { useTRPC } from "@/server/trpc/client";
+
+export default function Page(props: PageProps<"/podcast/[id]">) {
+  const params = use(props.params);
+  const searchParams = use(props.searchParams)
+
+  return <div>{/* component JSX */}</div>;
+}
+```
+

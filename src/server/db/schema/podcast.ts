@@ -1,36 +1,33 @@
-import { relations, sql } from "drizzle-orm";
-import {
-  index,
-  integer,
-  numeric,
-  pgTable,
-  primaryKey,
-  text,
-  timestamp,
-  vector,
-} from "drizzle-orm/pg-core";
+import { relations } from "drizzle-orm";
+import { index, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
-// Simplified "Learn with Podcast" schema
-// Minimal episode + transcript chunks + QA with citations and feedback
-
-export const podcast = pgTable("podcast", {
-  id: text("id").primaryKey(),
-  podcastId: text("podcast_id").notNull().unique(),
-  title: text("title").notNull(),
-  description: text("description"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .defaultNow()
-    .$onUpdate(() => new Date())
-    .notNull(),
-});
+export const podcast = pgTable(
+  "podcast",
+  {
+    id: text("id").primaryKey(),
+    podcastId: text("podcast_id").notNull(),
+    title: text("title").notNull(),
+    description: text("description"),
+    imageUrl: text("image_url"),
+    feedUrl: text("feed_url"),
+    userId: text("user_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [index().on(table.userId), index().on(table.podcastId)],
+);
 
 export const episode = pgTable("episode", {
   id: text("id").primaryKey(),
   episodeId: text("episode_id").notNull().unique(),
-  podcastId: text("podcast_id").references(() => podcast.id),
+  podcastId: text("podcast_id").references(() => podcast.id, {
+    onDelete: "cascade",
+  }),
   series: text("series"),
   title: text("title").notNull(),
   guest: text("guest"),
@@ -50,170 +47,13 @@ export const episode = pgTable("episode", {
     .notNull(),
 });
 
-// Starter questions for each episode (onboarding chips / prompts)
-export const starterQuestion = pgTable("starter_question", {
-  id: text("id").primaryKey(),
-  episodeId: text("episode_id")
-    .notNull()
-    .references(() => episode.id, { onDelete: "cascade" }),
-  question: text("question").notNull(),
-  rank: integer("rank"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-});
-
-export const transcriptChunk = pgTable(
-  "transcript_chunk",
-  {
-    chunkId: text("chunk_id").primaryKey(),
-    episodeId: text("episode_id").references(() => episode.id, {
-      onDelete: "cascade",
-    }),
-    startSec: numeric("start_sec"),
-    endSec: numeric("end_sec"),
-    text: text("text").notNull(),
-    embedding: vector("embedding", { dimensions: 1536 }),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at")
-      .defaultNow()
-      .$onUpdate(() => new Date())
-      .notNull(),
-  },
-  (t) => [
-    // Vector HNSW index for cosine distance
-    index("embedding_hnsw_idx").using(
-      "hnsw",
-      t.embedding.op("vector_cosine_ops"),
-    ),
-    // FTS index over generated tsvector from text
-    index("text_fts_idx").using("gin", sql`to_tsvector('english', ${t.text})`),
-  ],
-);
-
-export const qaQuery = pgTable("qa_query", {
-  queryId: text("query_id").primaryKey(),
-  userId: text("user_id"),
-  mode: text("mode").$type<"global" | "episode" | "quotes">(),
-  episodeId: text("episode_id"),
-  queryText: text("query_text").notNull(),
-  status: text("status")
-    .$type<"queued" | "running" | "succeeded" | "failed">()
-    .default("queued")
-    .notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .defaultNow()
-    .$onUpdate(() => new Date())
-    .notNull(),
-});
-
-export const qaAnswer = pgTable("qa_answer", {
-  answerId: text("answer_id").primaryKey(),
-  queryId: text("query_id").references(() => qaQuery.queryId, {
-    onDelete: "cascade",
-  }),
-  answerText: text("answer_text").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-});
-
-export const qaCitation = pgTable(
-  "qa_citation",
-  {
-    answerId: text("answer_id")
-      .notNull()
-      .references(() => qaAnswer.answerId, {
-        onDelete: "cascade",
-      }),
-    chunkId: text("chunk_id")
-      .notNull()
-      .references(() => transcriptChunk.chunkId),
-    startSec: numeric("start_sec"),
-    endSec: numeric("end_sec"),
-    rank: integer("rank"),
-    clipUrl: text("clip_url"),
-    // Optional: who said the quoted line — store the resolved human-readable name
-    speakerName: text("speaker_name"),
-  },
-  (t) => ({
-    pk: primaryKey({ columns: [t.answerId, t.chunkId] }),
-  }),
-);
-
-export const qaFeedback = pgTable("qa_feedback", {
-  feedbackId: integer("feedback_id").primaryKey().generatedAlwaysAsIdentity(),
-  queryId: text("query_id").references(() => qaQuery.queryId, {
-    onDelete: "cascade",
-  }),
-  // Optional: attach feedback to a specific answer
-  answerId: text("answer_id").references(() => qaAnswer.answerId, {
-    onDelete: "cascade",
-  }),
-  signal: text("signal").$type<"helpful" | "unhelpful" | "better_clip">(),
-  altChunkId: text("alt_chunk_id").references(() => transcriptChunk.chunkId),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-});
-
-// Relations
 export const podcastRelations = relations(podcast, ({ many }) => ({
   episodes: many(episode),
 }));
 
-export const episodeRelations = relations(episode, ({ one, many }) => ({
+export const episodeRelations = relations(episode, ({ one }) => ({
   podcast: one(podcast, {
     fields: [episode.podcastId],
     references: [podcast.id],
-  }),
-  transcriptChunks: many(transcriptChunk),
-  starterQuestions: many(starterQuestion),
-}));
-
-export const starterQuestionRelations = relations(
-  starterQuestion,
-  ({ one }) => ({
-    episode: one(episode, {
-      fields: [starterQuestion.episodeId],
-      references: [episode.id],
-    }),
-  }),
-);
-
-export const transcriptChunkRelations = relations(
-  transcriptChunk,
-  ({ one, many }) => ({
-    episode: one(episode, {
-      fields: [transcriptChunk.episodeId],
-      references: [episode.id],
-    }),
-    citations: many(qaCitation),
-  }),
-);
-
-export const qaAnswerRelations = relations(qaAnswer, ({ one, many }) => ({
-  query: one(qaQuery, {
-    fields: [qaAnswer.queryId],
-    references: [qaQuery.queryId],
-  }),
-  citations: many(qaCitation),
-}));
-
-export const qaQueryRelations = relations(qaQuery, ({ many }) => ({
-  answers: many(qaAnswer),
-}));
-
-export const qaCitationRelations = relations(qaCitation, ({ one }) => ({
-  answer: one(qaAnswer, {
-    fields: [qaCitation.answerId],
-    references: [qaAnswer.answerId],
-  }),
-  chunk: one(transcriptChunk, {
-    fields: [qaCitation.chunkId],
-    references: [transcriptChunk.chunkId],
   }),
 }));

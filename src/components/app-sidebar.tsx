@@ -50,7 +50,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   className="data-[slot=sidebar-menu-button]:!p-1.5"
                 >
                   <span className="font-bold font-serif text-base">
-                    Learn with Podcasts
+                    Framebreak Intelligence
                   </span>
                 </SidebarMenuButton>
               </SidebarMenuItem>

@@ -1,9 +1,5 @@
-import { ChatPanel } from "@/components/chat/chat-panel";
+import { redirect } from "next/navigation";
 
 export default function Home() {
-  return (
-    <div className="flex h-full w-full flex-col">
-      <ChatPanel className="h-full" />
-    </div>
-  );
+  redirect("/dashboard");
 }
