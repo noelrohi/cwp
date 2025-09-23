@@ -1,5 +1,6 @@
 import { asc, count, desc, eq, ilike } from "drizzle-orm";
 import { nanoid } from "nanoid";
+import Parser from "rss-parser";
 import { z } from "zod";
 import { episode, podcast } from "@/server/db/schema/podcast";
 import { createTRPCRouter, publicProcedure } from "../init";
@@ -9,10 +10,9 @@ export const podcastsRouter = createTRPCRouter({
     .input(z.object({ podcastId: z.string() }))
     .query(async ({ ctx, input }) => {
       const result = await ctx.db.query.podcast.findFirst({
-        where: eq(podcast.podcastId, input.podcastId),
+        where: eq(podcast.id, input.podcastId),
         with: {
           episodes: {
-            orderBy: [desc(episode.createdAt)],
             limit: 50,
           },
         },
@@ -140,4 +140,96 @@ export const podcastsRouter = createTRPCRouter({
       totalEpisodes: Number(totalEpisodes[0]?.count ?? 0),
     };
   }),
+
+  parseFeed: publicProcedure
+    .input(z.object({ podcastId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const { podcastId } = input;
+
+      // Get podcast from database
+      const podcastRecord = await ctx.db.query.podcast.findFirst({
+        where: eq(podcast.id, podcastId),
+      });
+
+      if (!podcastRecord) {
+        throw new Error(`Podcast with id ${podcastId} not found`);
+      }
+
+      if (!podcastRecord.feedUrl) {
+        throw new Error("No feed URL available for this podcast");
+      }
+
+      // Parse RSS feed
+      const parser = new Parser();
+      // biome-ignore lint/suspicious/noExplicitAny: **
+      let feedData: any;
+      try {
+        feedData = await parser.parseURL(podcastRecord.feedUrl);
+      } catch (error) {
+        throw new Error(
+          `Failed to parse RSS feed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        );
+      }
+
+      // Process episodes in batches
+      const batchSize = 10;
+      const totalItems = feedData.items?.length || 0;
+      let processedCount = 0;
+
+      for (let i = 0; i < totalItems; i += batchSize) {
+        const batch = feedData.items.slice(i, i + batchSize);
+
+        // biome-ignore lint/suspicious/noExplicitAny: **
+        const episodesToInsert = batch.map((item: any) => {
+          // Extract duration from itunes:duration or other sources
+          let durationSec: number | null = null;
+          if (item.itunes?.duration) {
+            const duration = item.itunes.duration;
+            if (typeof duration === "string") {
+              const parts = duration.split(":").map(Number);
+              if (parts.length === 3) {
+                durationSec = parts[0] * 3600 + parts[1] * 60 + parts[2];
+              } else if (parts.length === 2) {
+                durationSec = parts[0] * 60 + parts[1];
+              } else if (parts.length === 1) {
+                durationSec = parts[0];
+              }
+            }
+          }
+
+          return {
+            id: nanoid(),
+            episodeId: item.guid || item.link || nanoid(),
+            podcastId: podcastRecord.id,
+            title: item.title || "Untitled Episode",
+            publishedAt: item.pubDate ? new Date(item.pubDate) : null,
+            durationSec,
+            audioUrl: item.enclosure?.url || null,
+            thumbnailUrl: item.itunes?.image || null,
+            series: item.itunes?.season || null,
+            guest: null, // Could be extracted from title or description if needed
+            hostName: null, // Could be extracted from feed metadata
+            language: feedData.language || null,
+            transcriptUrl: null, // Not available in RSS feeds typically
+          };
+        });
+
+        // Insert episodes with conflict handling
+        if (episodesToInsert.length > 0) {
+          await ctx.db
+            .insert(episode)
+            .values(episodesToInsert)
+            .onConflictDoNothing({ target: episode.episodeId });
+        }
+
+        processedCount += batch.length;
+      }
+
+      return {
+        success: true,
+        message: `Successfully processed ${processedCount} episodes`,
+        feedTitle: feedData.title,
+        totalEpisodes: totalItems,
+      };
+    }),
 });

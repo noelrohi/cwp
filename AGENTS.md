@@ -67,3 +67,8 @@ export default function Page(props: PageProps<"/podcast/[id]">) {
 }
 ```
 
+## Background Jobs with Inngest
+- Use Inngest for background jobs, scheduled tasks, and async processing
+- Functions are defined in `/src/inngest/functions.ts`
+- Events trigger background jobs automatically
+

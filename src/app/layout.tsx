@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { Geist_Mono, Inter, Inter_Tight } from "next/font/google";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { TRPCProviders } from "@/components/providers/trpc-provider";
+import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
 const sans = Inter({
@@ -39,6 +40,7 @@ export default function RootLayout({
           <AutumnProvider betterAuthUrl={process.env.NEXT_PUBLIC_APP_URL}>
             <NuqsAdapter>{children}</NuqsAdapter>
           </AutumnProvider>
+          <Toaster />
         </TRPCProviders>
       </body>
     </html>

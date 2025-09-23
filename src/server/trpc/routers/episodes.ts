@@ -1,4 +1,4 @@
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { episode } from "@/server/db/schema";
 import { createTRPCRouter, publicProcedure } from "../init";
@@ -16,13 +16,31 @@ export const episodesRouter = createTRPCRouter({
         limit,
         orderBy: [desc(episode.createdAt)],
         with: {
-          // podcast relation is optional; keep minimal join to avoid unnecessary fetches
-          // starter questions for onboarding chips
-          starterQuestions: true,
+          podcast: true,
         },
       });
-      console.log({ rows });
 
       return rows;
+    }),
+
+  get: publicProcedure
+    .input(
+      z.object({
+        episodeId: z.string(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const episodeData = await ctx.db.query.episode.findFirst({
+        where: eq(episode.id, input.episodeId),
+        with: {
+          podcast: true,
+        },
+      });
+
+      if (!episodeData) {
+        throw new Error("Episode not found");
+      }
+
+      return episodeData;
     }),
 });

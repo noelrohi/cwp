@@ -1,14 +1,16 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Calendar, Clock, ExternalLink } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, Calendar, Clock, ExternalLink, Rss } from "lucide-react";
 import Link from "next/link";
 import { use } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useTRPC } from "@/server/trpc/client";
 
 export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
   const trpc = useTRPC();
+  const queryClient = useQueryClient();
   const params = use(props.params);
 
   const podcast = useQuery(
@@ -16,6 +18,19 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
       podcastId: params.id,
     }),
   );
+
+  const parseFeedMutation = useMutation({
+    ...trpc.podcasts.parseFeed.mutationOptions(),
+    onError: (error) => {
+      toast.error(error.message);
+    },
+    onSuccess: (data) => {
+      toast.success(data.message);
+      queryClient.invalidateQueries({
+        queryKey: trpc.podcasts.get.queryKey({ podcastId: params.id }),
+      });
+    },
+  });
 
   if (podcast.isLoading) {
     return (
@@ -110,19 +125,51 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
           </div>
         </div>
 
-        {podcastData?.feedUrl && (
-          <Button variant="outline" size="sm" asChild>
-            <a
-              href={podcastData.feedUrl}
-              target="_blank"
-              rel="noopener noreferrer"
+        <div className="flex gap-2">
+          {podcastData?.feedUrl && (
+            <Button variant="outline" size="sm" asChild>
+              <a
+                href={podcastData.feedUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <ExternalLink className="h-4 w-4 mr-2" />
+                RSS Feed
+              </a>
+            </Button>
+          )}
+          {podcastData?.feedUrl && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                parseFeedMutation.mutate({
+                  podcastId: params.id,
+                })
+              }
+              disabled={parseFeedMutation.isPending}
             >
-              <ExternalLink className="h-4 w-4 mr-2" />
-              RSS Feed
-            </a>
-          </Button>
-        )}
+              <Rss className="h-4 w-4 mr-2" />
+              {parseFeedMutation.isPending ? "Parsing..." : "Parse Feed"}
+            </Button>
+          )}
+        </div>
       </div>
+
+      {/* Feed Parsing Progress */}
+      {parseFeedMutation.isPending && (
+        <div className="mb-6 rounded-lg border bg-muted/50 p-4">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-sm font-medium">Parsing Feed</span>
+          </div>
+          <div className="mb-2 h-2 rounded-full bg-muted">
+            <div className="h-2 rounded-full bg-primary animate-pulse w-full" />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Processing feed and episodes...
+          </p>
+        </div>
+      )}
 
       {/* Episodes List */}
       <div className="space-y-4">
@@ -131,12 +178,15 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
         {podcastData?.episodes && podcastData.episodes.length > 0 ? (
           <div className="space-y-3">
             {podcastData.episodes.map((episode) => (
-              <div
+              <Link
                 key={episode.id}
-                className="flex items-start gap-4 rounded-lg border bg-background p-4"
+                href={`/episode/${episode.id}`}
+                className="flex items-start gap-4 rounded-lg border bg-background p-4 hover:bg-muted/50 transition-colors"
               >
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-medium text-sm mb-1">{episode.title}</h3>
+                  <h3 className="font-medium text-sm mb-1 hover:text-primary">
+                    {episode.title}
+                  </h3>
                   {episode.guest && (
                     <p className="text-xs text-muted-foreground mb-2">
                       Guest: {episode.guest}
@@ -167,7 +217,7 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
                     )}
                   </div>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         ) : (

@@ -146,7 +146,7 @@ export default function Podcasts() {
           data.data.map((podcast) => (
             <Link
               key={podcast.id}
-              href={`/podcast/${podcast.podcastId}`}
+              href={`/podcast/${podcast.id}`}
               className="flex items-center gap-4 rounded-lg border bg-background p-4 hover:bg-muted/50 transition-colors"
             >
               {/* Podcast Thumbnail */}
