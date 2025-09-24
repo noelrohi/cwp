@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2Icon, SearchIcon, StarIcon } from "lucide-react";
+import { Loader2Icon, SearchIcon, StarIcon, XIcon } from "lucide-react";
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -86,14 +86,14 @@ export function AddPodcastDialog({
 
   const addPodcast = useMutation(trpc.podcasts.add.mutationOptions());
 
-  const handleSearch = () => {
-    if (!searchQuery.trim()) return;
+  const performSearch = (query: string) => {
+    if (!query.trim()) return;
 
     startSearchTransition(async () => {
       try {
         const response = await fetch(
           `https://itunes.apple.com/search?term=${encodeURIComponent(
-            searchQuery,
+            query,
           )}&media=podcast`,
         );
         const data = await response.json();
@@ -102,6 +102,10 @@ export function AddPodcastDialog({
         console.error("Failed to search podcasts:", error);
       }
     });
+  };
+
+  const handleSearch = () => {
+    performSearch(searchQuery);
   };
 
   const handlePodcastSelect = async (podcast: iTunesResult) => {
@@ -153,7 +157,7 @@ export function AddPodcastDialog({
                     size="sm"
                     onClick={() => {
                       setSearchQuery(podcast.query);
-                      setTimeout(() => handleSearch(), 100);
+                      performSearch(podcast.query);
                     }}
                     disabled={isSearching}
                     className="text-xs h-8 justify-start"
@@ -185,6 +189,18 @@ export function AddPodcastDialog({
               }}
               className="flex-1"
             />
+            {searchResults.length > 0 && (
+              <Button
+                onClick={() => {
+                  setSearchQuery("");
+                  setSearchResults([]);
+                }}
+                variant="outline"
+                size="icon"
+              >
+                <XIcon className="h-4 w-4" />
+              </Button>
+            )}
             <Button
               onClick={handleSearch}
               size="icon"
