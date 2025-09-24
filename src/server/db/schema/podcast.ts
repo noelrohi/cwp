@@ -92,6 +92,22 @@ export const episodeRelations = relations(episode, ({ one, many }) => ({
   transcriptChunks: many(transcriptChunk),
 }));
 
+export const savedChunk = pgTable("saved_chunk", {
+  id: text("id").primaryKey(),
+  chunkId: text("chunk_id")
+    .references(() => transcriptChunk.id, { onDelete: "cascade" })
+    .notNull(),
+  userId: text("user_id").notNull(),
+  query: text("query").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
+
 export const transcriptChunkRelations = relations(
   transcriptChunk,
   ({ one }) => ({
@@ -101,3 +117,10 @@ export const transcriptChunkRelations = relations(
     }),
   }),
 );
+
+export const savedChunkRelations = relations(savedChunk, ({ one }) => ({
+  chunk: one(transcriptChunk, {
+    fields: [savedChunk.chunkId],
+    references: [transcriptChunk.id],
+  }),
+}));
