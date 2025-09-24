@@ -60,13 +60,9 @@ export type AddPodcastResult = {
 
 type AddPodcastDialogProps = {
   children: React.ReactNode;
-  onPodcastAdded?: (result: AddPodcastResult) => void;
 };
 
-export function AddPodcastDialog({
-  children,
-  onPodcastAdded,
-}: AddPodcastDialogProps) {
+export function AddPodcastDialog({ children }: AddPodcastDialogProps) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
@@ -84,7 +80,42 @@ export function AddPodcastDialog({
     { name: "The Tim Ferriss Show", query: "Tim Ferriss" },
   ];
 
-  const addPodcast = useMutation(trpc.podcasts.add.mutationOptions());
+  const parseFeed = useMutation({
+    ...trpc.podcasts.parseFeed.mutationOptions(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: trpc.podcasts.list.queryKey(),
+      });
+      queryClient.invalidateQueries({
+        queryKey: trpc.episodes.getUnprocessed.queryKey(),
+      });
+    },
+  });
+
+  const addPodcast = useMutation({
+    ...trpc.podcasts.add.mutationOptions(),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({
+        queryKey: trpc.podcasts.list.queryKey(),
+      });
+      queryClient.invalidateQueries({
+        queryKey: trpc.podcasts.stats.queryKey(),
+      });
+
+      if (result?.success && result.podcast?.id) {
+        parseFeed.mutate({ podcastId: result.podcast.id });
+      }
+
+      setIsOpen(false);
+      setSearchQuery("");
+      setSearchResults([]);
+      setAddingPodcastId(null);
+    },
+    onError: (error) => {
+      console.error("Failed to add podcast:", error);
+      setAddingPodcastId(null);
+    },
+  });
 
   const performSearch = (query: string) => {
     if (!query.trim()) return;
@@ -108,31 +139,17 @@ export function AddPodcastDialog({
     performSearch(searchQuery);
   };
 
-  const handlePodcastSelect = async (podcast: iTunesResult) => {
+  const handlePodcastSelect = (podcast: iTunesResult) => {
+    if (addPodcast.isPending) return;
+
     setAddingPodcastId(podcast.collectionId);
-    try {
-      const result = await addPodcast.mutateAsync({
-        podcastId: podcast.collectionId.toString(),
-        title: podcast.collectionName,
-        description: podcast.primaryGenreName,
-        imageUrl: podcast.artworkUrl600 || podcast.artworkUrl100,
-        feedUrl: podcast.feedUrl,
-      });
-
-      // Invalidate queries to refresh the podcast list
-      queryClient.invalidateQueries({
-        queryKey: trpc.podcasts.list.queryKey(),
-      });
-
-      onPodcastAdded?.(result);
-      setIsOpen(false);
-      setSearchQuery("");
-      setSearchResults([]);
-      setAddingPodcastId(null);
-    } catch (error) {
-      console.error("Failed to add podcast:", error);
-      setAddingPodcastId(null);
-    }
+    addPodcast.mutate({
+      podcastId: podcast.collectionId.toString(),
+      title: podcast.collectionName,
+      description: podcast.primaryGenreName,
+      imageUrl: podcast.artworkUrl600 || podcast.artworkUrl100,
+      feedUrl: podcast.feedUrl,
+    });
   };
 
   return (

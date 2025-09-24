@@ -21,6 +21,7 @@ export const podcastsRouter = createTRPCRouter({
           },
         },
       });
+      console.log({ result });
 
       if (!result) {
         throw new Error("Podcast not found");
@@ -87,7 +88,10 @@ export const podcastsRouter = createTRPCRouter({
 
       try {
         const existing = await ctx.db.query.podcast.findFirst({
-          where: eq(podcast.podcastId, podcastId),
+          where: and(
+            eq(podcast.podcastId, podcastId),
+            eq(podcast.userId, ctx.user.id),
+          ),
         });
 
         if (existing) {
@@ -182,6 +186,94 @@ export const podcastsRouter = createTRPCRouter({
         throw new Error("No feed URL available for this podcast");
       }
 
+      const existingEpisodes = await ctx.db.query.episode.findMany({
+        where: eq(episode.podcastId, podcastRecord.id),
+        columns: {
+          episodeId: true,
+        },
+      });
+
+      const episodeIdPrefix = `${podcastRecord.id}:`;
+      const existingEpisodeIds = new Set<string>();
+
+      for (const existingEpisode of existingEpisodes) {
+        if (!existingEpisode.episodeId) continue;
+
+        existingEpisodeIds.add(existingEpisode.episodeId);
+
+        if (!existingEpisode.episodeId.startsWith(episodeIdPrefix)) {
+          existingEpisodeIds.add(
+            `${episodeIdPrefix}${existingEpisode.episodeId}`,
+          );
+        }
+      }
+
+      const getEpisodeIdentifier = (item: unknown): string => {
+        if (!item || typeof item !== "object") {
+          return nanoid();
+        }
+
+        const candidateFromGuid = (() => {
+          const guid = (item as { guid?: unknown }).guid;
+
+          if (typeof guid === "string" && guid.trim()) {
+            return guid.trim();
+          }
+
+          if (guid && typeof guid === "object") {
+            if (
+              "_" in (guid as Record<string, unknown>) &&
+              typeof (guid as { _: unknown })._ === "string" &&
+              (guid as { _: string })._.trim()
+            ) {
+              return (guid as { _: string })._.trim();
+            }
+
+            if (
+              "text" in (guid as Record<string, unknown>) &&
+              typeof (guid as { text: unknown }).text === "string" &&
+              (guid as { text: string }).text.trim()
+            ) {
+              return (guid as { text: string }).text.trim();
+            }
+          }
+
+          return null;
+        })();
+
+        if (candidateFromGuid) {
+          return candidateFromGuid;
+        }
+
+        const candidateFromLink = (item as { link?: unknown }).link;
+        if (typeof candidateFromLink === "string" && candidateFromLink.trim()) {
+          return candidateFromLink.trim();
+        }
+
+        const candidateFromId = (item as { id?: unknown }).id;
+        if (typeof candidateFromId === "string" && candidateFromId.trim()) {
+          return candidateFromId.trim();
+        }
+
+        const candidateFromTitle = item as {
+          title?: unknown;
+          pubDate?: unknown;
+        };
+        if (
+          candidateFromTitle &&
+          typeof candidateFromTitle.title === "string" &&
+          candidateFromTitle.title.trim()
+        ) {
+          const pubDateValue =
+            typeof candidateFromTitle.pubDate === "string"
+              ? candidateFromTitle.pubDate
+              : "";
+          return `${candidateFromTitle.title.trim()}_${pubDateValue}`;
+        }
+
+        return nanoid();
+      };
+
       // Parse RSS feed
       const parser = new Parser();
       // biome-ignore lint/suspicious/noExplicitAny: **
@@ -203,7 +295,16 @@ export const podcastsRouter = createTRPCRouter({
         const batch = feedData.items.slice(i, i + batchSize);
 
         // biome-ignore lint/suspicious/noExplicitAny: **
-        const episodesToInsert = batch.map((item: any) => {
+        const episodesToInsert = batch.flatMap((item: any) => {
+          const episodeIdentifier = getEpisodeIdentifier(item);
+          const normalizedEpisodeId = `${episodeIdPrefix}${episodeIdentifier}`;
+
+          if (existingEpisodeIds.has(normalizedEpisodeId)) {
+            return [];
+          }
+
+          existingEpisodeIds.add(normalizedEpisodeId);
+
           // Extract duration from itunes:duration or other sources
           let durationSec: number | null = null;
           if (item.itunes?.duration) {
@@ -220,22 +321,24 @@ export const podcastsRouter = createTRPCRouter({
             }
           }
 
-          return {
-            id: nanoid(),
-            episodeId: item.guid || item.link || nanoid(),
-            podcastId: podcastRecord.id,
-            userId: podcastRecord.userId,
-            title: item.title || "Untitled Episode",
-            publishedAt: item.pubDate ? new Date(item.pubDate) : null,
-            durationSec,
-            audioUrl: item.enclosure?.url || null,
-            thumbnailUrl: item.itunes?.image || null,
-            series: item.itunes?.season || null,
-            guest: null, // Could be extracted from title or description if needed
-            hostName: null, // Could be extracted from feed metadata
-            language: feedData.language || null,
-            transcriptUrl: null, // Not available in RSS feeds typically
-          };
+          return [
+            {
+              id: nanoid(),
+              episodeId: normalizedEpisodeId,
+              podcastId: podcastRecord.id,
+              userId: podcastRecord.userId,
+              title: item.title || "Untitled Episode",
+              publishedAt: item.pubDate ? new Date(item.pubDate) : null,
+              durationSec,
+              audioUrl: item.enclosure?.url || null,
+              thumbnailUrl: item.itunes?.image || null,
+              series: item.itunes?.season || null,
+              guest: null, // Could be extracted from title or description if needed
+              hostName: null, // Could be extracted from feed metadata
+              language: feedData.language || null,
+              transcriptUrl: null, // Not available in RSS feeds typically
+            },
+          ];
         });
 
         // Insert episodes with conflict handling
@@ -246,7 +349,7 @@ export const podcastsRouter = createTRPCRouter({
             .onConflictDoNothing({ target: episode.episodeId });
         }
 
-        processedCount += batch.length;
+        processedCount += episodesToInsert.length;
       }
 
       return {

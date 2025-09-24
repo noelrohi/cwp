@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Plus, Podcast } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -76,20 +76,9 @@ function EpisodeCard({
 
 export default function Dashboard() {
   const trpc = useTRPC();
-  const queryClient = useQueryClient();
   const { data: unprocessedEpisodes, isLoading } = useQuery(
     trpc.episodes.getEpisodes.queryOptions({ limit: 50 }),
   );
-
-  const parseFeed = useMutation({
-    ...trpc.podcasts.parseFeed.mutationOptions(),
-    onSuccess: () => {
-      // Refresh the unprocessed episodes list
-      queryClient.invalidateQueries({
-        queryKey: trpc.episodes.getUnprocessed.queryKey(),
-      });
-    },
-  });
 
   const groupedEpisodes = useMemo(() => {
     if (!unprocessedEpisodes) return {};
@@ -176,14 +165,7 @@ export default function Dashboard() {
               Get started by adding your first podcast. We'll automatically
               fetch and process the latest episodes for you to explore.
             </CardDescription>
-            <AddPodcastDialog
-              onPodcastAdded={(result) => {
-                // Call parseFeed mutation when podcast is successfully added
-                if (result?.success && result.podcast?.id) {
-                  parseFeed.mutate({ podcastId: result.podcast.id });
-                }
-              }}
-            >
+            <AddPodcastDialog>
               <Button size="lg" className="gap-2">
                 <Plus className="h-4 w-4" />
                 Add Your First Podcast

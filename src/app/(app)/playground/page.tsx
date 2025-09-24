@@ -23,9 +23,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useTRPC } from "@/server/trpc/client";
-import type { TranscriptData } from "@/types/transcript";
 
 export default function PlaygroundPage() {
   const trpc = useTRPC();
@@ -37,13 +36,12 @@ export default function PlaygroundPage() {
       })
       .withDefault(""),
   );
-  const [minWords, setMinWords] = useState(200);
-  const [maxWords, setMaxWords] = useState(800);
+  const minWords = 200;
+  const maxWords = 800;
   const [searchQuery, setSearchQuery] = useQueryState(
     "q",
     parseAsString.withDefault(""),
   );
-  const [transcript, setTranscript] = useState<TranscriptData | null>(null);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const [similarChunks, setSimilarChunks] = useState<
     Array<{
@@ -147,18 +145,22 @@ export default function PlaygroundPage() {
       if (!response.ok) {
         throw new Error("Failed to fetch transcript");
       }
-      const jsonData = await response.json();
-      setTranscript(jsonData);
+      await response.json();
+      toast.success("Transcript loaded successfully");
     } catch (_error) {
       toast.error("Failed to load transcript");
     }
   }, []);
 
   useEffect(() => {
-    if (transcript && transcriptRef.current) {
+    if (
+      episode?.transcriptChunks &&
+      episode.transcriptChunks.length > 0 &&
+      transcriptRef.current
+    ) {
       transcriptRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [transcript]);
+  }, [episode?.transcriptChunks]);
 
   const handleChunkTranscript = () => {
     if (!isEpisodeLoaded) {
@@ -344,251 +346,246 @@ export default function PlaygroundPage() {
                   : "Generate Transcript"}
               </Button>
             )}
+            {!episodeData?.transcriptChunks ||
+            episodeData.transcriptChunks.length === 0 ? (
+              <Button
+                onClick={handleChunkTranscript}
+                disabled={
+                  chunkTranscript.isPending ||
+                  !episodeData?.transcriptUrl ||
+                  !isEpisodeLoaded
+                }
+                className="whitespace-nowrap"
+              >
+                {chunkTranscript.isPending ? "Chunking..." : "Start Chunking"}
+              </Button>
+            ) : null}
           </div>
         </div>
       </div>
 
-      {/* Chunking Controls */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>Transcript Chunking</CardTitle>
-          <CardDescription>
-            Break down the transcript into manageable chunks for processing and
-            analysis.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col md:flex-row gap-4 items-end">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1">
-              <div>
-                <Label htmlFor="minWords" className="text-sm font-medium">
-                  Minimum Words per Chunk
-                </Label>
-                <Input
-                  id="minWords"
-                  type="number"
-                  value={minWords}
-                  onChange={(e) => setMinWords(Number(e.target.value))}
-                  className="w-full"
-                />
-              </div>
-              <div>
-                <Label htmlFor="maxWords" className="text-sm font-medium">
-                  Maximum Words per Chunk
-                </Label>
-                <Input
-                  id="maxWords"
-                  type="number"
-                  value={maxWords}
-                  onChange={(e) => setMaxWords(Number(e.target.value))}
-                  className="w-full"
-                />
-              </div>
-            </div>
-            <Button
-              onClick={handleChunkTranscript}
-              disabled={
-                chunkTranscript.isPending ||
-                !episodeData?.transcriptUrl ||
-                !isEpisodeLoaded
-              }
-              className="whitespace-nowrap"
-            >
-              {chunkTranscript.isPending ? "Chunking..." : "Start Chunking"}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <Tabs defaultValue="similar" className="mb-8">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="similar">Similar Chunks</TabsTrigger>
+          <TabsTrigger value="saved">Saved Chunks</TabsTrigger>
+          <TabsTrigger value="transcript">Chunked Transcript</TabsTrigger>
+        </TabsList>
 
-      {/* Similarity Search */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>Similarity Search</CardTitle>
-          <CardDescription>
-            Search for specific content within the transcript and find similar
-            segments.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-2">
-            <Input
-              placeholder="Enter search query..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-1"
-            />
-            <Button
-              onClick={handleSearchSimilar}
-              disabled={
-                findSimilarChunks.isPending ||
-                !searchQuery.trim() ||
-                !isEpisodeLoaded
-              }
-            >
-              <Search className="h-4 w-4 mr-2" />
-              {findSimilarChunks.isPending ? "Searching..." : "Search"}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+        <TabsContent value="similar" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Similarity Search</CardTitle>
+              <CardDescription>
+                Search for specific content within the transcript and find
+                similar segments.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Input
+                  placeholder="Enter search query..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="flex-1"
+                />
+                <Button
+                  onClick={handleSearchSimilar}
+                  disabled={
+                    findSimilarChunks.isPending ||
+                    !searchQuery.trim() ||
+                    !isEpisodeLoaded
+                  }
+                  className="sm:w-auto"
+                >
+                  <Search className="h-4 w-4 mr-2" />
+                  {findSimilarChunks.isPending ? "Searching..." : "Search"}
+                </Button>
+              </div>
 
-      {/* Saved Chunks */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>Saved Chunks for Training Context</CardTitle>
-          <CardDescription>
-            Chunks you've saved will be used to improve the model's
-            understanding of your content.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {savedChunksQuery.data && savedChunksQuery.data.length > 0 ? (
-            <div className="space-y-2">
-              {savedChunksQuery.data.map((savedChunk, index) => (
-                <div key={savedChunk.id} className="bg-muted/50 rounded-lg p-3">
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="text-sm font-medium">
-                      Saved Chunk {index + 1}
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleSkipChunk(savedChunk.chunkId, true)}
-                      className="h-7 px-2 text-xs"
+              <div className="space-y-4">
+                {similarChunks.length > 0 ? (
+                  similarChunks.map((chunk) => (
+                    <div
+                      key={chunk.id}
+                      className="rounded-lg border bg-muted/50 p-4"
                     >
-                      Remove
-                    </Button>
+                      <div className="mb-2 flex items-start justify-between">
+                        <div className="text-sm font-medium">
+                          Similarity: {(chunk.similarity * 100).toFixed(1)}%
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {chunk.speaker && (
+                            <div className="text-sm text-muted-foreground">
+                              Speaker: {chunk.speaker}
+                            </div>
+                          )}
+                          <div className="flex gap-1">
+                            {savedChunksQuery.data?.some(
+                              (saved) => saved.chunkId === chunk.id,
+                            ) ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleSkipChunk(chunk.id, true)}
+                                className="h-7 px-2 text-xs"
+                              >
+                                Skip
+                              </Button>
+                            ) : (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() =>
+                                    handleSkipChunk(chunk.id, false)
+                                  }
+                                  className="h-7 px-2 text-xs"
+                                >
+                                  Skip
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleSaveChunk(chunk.id)}
+                                  className="h-7 px-2 text-xs"
+                                >
+                                  Save
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <p className="text-sm">{chunk.content}</p>
+                    </div>
+                  ))
+                ) : searchQuery ? (
+                  <div className="py-8 text-center">
+                    <Search className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">
+                      No similar chunks found for "{searchQuery}". Try a
+                      different search query.
+                    </p>
                   </div>
-                  <p className="text-sm text-muted-foreground mb-1">
-                    Query: {savedChunk.query}
-                  </p>
+                ) : (
+                  <div className="py-8 text-center">
+                    <Search className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">
+                      Enter a search query above to find similar content in the
+                      transcript.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="saved" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Saved Chunks for Training Context</CardTitle>
+              <CardDescription>
+                Chunks you've saved will be used to improve the model's
+                understanding of your content.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {savedChunksQuery.data && savedChunksQuery.data.length > 0 ? (
+                <div className="space-y-2">
+                  {savedChunksQuery.data.map((savedChunk, index) => (
+                    <div
+                      key={savedChunk.id}
+                      className="rounded-lg bg-muted/50 p-3"
+                    >
+                      <div className="mb-2 flex items-start justify-between">
+                        <div className="text-sm font-medium">
+                          Saved Chunk {index + 1}
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            handleSkipChunk(savedChunk.chunkId, true)
+                          }
+                          className="h-7 px-2 text-xs"
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                      <p className="mb-1 text-sm text-muted-foreground">
+                        Query: {savedChunk.query}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {savedChunk.content.substring(0, 150)}...
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-8 text-center">
+                  <FileText className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
                   <p className="text-sm text-muted-foreground">
-                    {savedChunk.content.substring(0, 150)}...
+                    No saved chunks yet. Search for content and save relevant
+                    chunks to build your training context.
                   </p>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8">
-              <FileText className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-              <p className="text-sm text-muted-foreground">
-                No saved chunks yet. Search for content and save relevant chunks
-                to build your training context.
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-      {/* Results */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Similar Chunks</CardTitle>
-          <CardDescription>
-            Search results matching your query. Save relevant chunks to improve
-            the model.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {similarChunks.length > 0 ? (
-            <div className="space-y-4">
-              {similarChunks.map((chunk, index) => (
-                <div key={index} className="bg-muted/50 rounded-lg p-4">
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="text-sm font-medium">
-                      Similarity: {(chunk.similarity * 100).toFixed(1)}%
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {chunk.speaker && (
-                        <div className="text-sm text-muted-foreground">
-                          Speaker: {chunk.speaker}
-                        </div>
-                      )}
-                      <div className="flex gap-1">
-                        {savedChunksQuery.data?.some(
-                          (saved) => saved.chunkId === chunk.id,
-                        ) ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleSkipChunk(chunk.id, true)}
-                            className="h-7 px-2 text-xs"
-                          >
-                            Skip
-                          </Button>
-                        ) : (
-                          <div className="flex gap-1">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleSkipChunk(chunk.id, false)}
-                              className="h-7 px-2 text-xs"
-                            >
-                              Skip
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleSaveChunk(chunk.id)}
-                              className="h-7 px-2 text-xs"
-                            >
-                              Save
-                            </Button>
-                          </div>
+        <TabsContent value="transcript" className="mt-6">
+          <div
+            ref={transcriptRef}
+            className="rounded-lg border bg-muted/30 p-6"
+          >
+            <h2 className="mb-4 text-xl font-semibold">
+              Chunked Transcript Summary
+            </h2>
+            {episodeData?.transcriptChunks &&
+            episodeData.transcriptChunks.length > 0 ? (
+              <div className="space-y-3">
+                {episodeData.transcriptChunks
+                  .slice(0, 5)
+                  .map((chunk, index) => (
+                    <div
+                      key={chunk.id}
+                      className="rounded-lg border bg-background p-3"
+                    >
+                      <div className="mb-2 flex items-center gap-2">
+                        <span className="text-xs font-mono text-muted-foreground">
+                          Chunk {index + 1}
+                        </span>
+                        {chunk.speaker && (
+                          <span className="text-xs font-medium text-muted-foreground">
+                            Speaker {chunk.speaker}
+                          </span>
                         )}
                       </div>
+                      <p className="text-sm line-clamp-2">{chunk.content}</p>
                     </div>
+                  ))}
+                {episodeData.transcriptChunks.length > 5 && (
+                  <div className="py-2 text-center">
+                    <p className="text-xs text-muted-foreground">
+                      Showing first 5 of {episodeData.transcriptChunks.length}{" "}
+                      chunks
+                    </p>
                   </div>
-                  <p className="text-sm">{chunk.content}</p>
-                </div>
-              ))}
-            </div>
-          ) : searchQuery ? (
-            <div className="text-center py-8">
-              <Search className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-              <p className="text-sm text-muted-foreground">
-                No similar chunks found for "{searchQuery}". Try a different
-                search query.
-              </p>
-            </div>
-          ) : (
-            <div className="text-center py-8">
-              <Search className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-              <p className="text-sm text-muted-foreground">
-                Enter a search query above to find similar content in the
-                transcript.
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Transcript Display */}
-      {transcript && (
-        <div ref={transcriptRef} className="mt-8 bg-muted/50 rounded-lg p-6">
-          <h2 className="text-xl font-semibold mb-4">Transcript Preview</h2>
-          <div className="max-h-96 overflow-y-auto space-y-2">
-            {transcript.slice(0, 10).map((utterance, index) => (
-              <div key={index} className="text-sm">
-                <span className="text-xs text-muted-foreground font-mono mr-2">
-                  {Math.floor(utterance.start)}s
-                </span>
-                {utterance.speaker !== undefined && (
-                  <span className="text-xs font-medium text-muted-foreground mr-2">
-                    Speaker {utterance.speaker}:
-                  </span>
                 )}
-                {utterance.transcript}
               </div>
-            ))}
-            {transcript.length > 10 && (
-              <div className="text-xs text-muted-foreground text-center">
-                ... and {transcript.length - 10} more utterances
+            ) : (
+              <div className="py-8 text-center">
+                <FileText className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">
+                  Chunk the transcript to see a summary of the first segments.
+                </p>
               </div>
             )}
           </div>
-        </div>
-      )}
+        </TabsContent>
+      </Tabs>
     </main>
   );
 }

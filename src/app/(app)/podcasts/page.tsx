@@ -11,10 +11,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useQueryState } from "nuqs";
-import {
-  AddPodcastDialog,
-  type AddPodcastResult,
-} from "@/components/blocks/podcasts/add-podcast-dialog";
+import { AddPodcastDialog } from "@/components/blocks/podcasts/add-podcast-dialog";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -57,17 +54,6 @@ export default function Podcasts() {
 
   // Mutations
   const removePodcast = useMutation(trpc.podcasts.remove.mutationOptions());
-  const parseFeed = useMutation({
-    ...trpc.podcasts.parseFeed.mutationOptions(),
-    onSuccess: () => {
-      // Refresh the podcast list and episodes
-      qc.invalidateQueries({ queryKey: trpc.podcasts.list.queryKey() });
-      qc.invalidateQueries({
-        queryKey: trpc.episodes.getUnprocessed.queryKey(),
-      });
-    },
-  });
-
   const handleRemovePodcast = async (podcastId: string) => {
     try {
       await removePodcast.mutateAsync({ podcastId });
@@ -78,23 +64,13 @@ export default function Podcasts() {
     }
   };
 
-  const handlePodcastAdded = (result: AddPodcastResult) => {
-    // Refresh the podcast list
-    qc.invalidateQueries({ queryKey: trpc.podcasts.list.queryKey() });
-
-    // Call parseFeed mutation when podcast is successfully added
-    if (result?.success && result.podcast?.id) {
-      parseFeed.mutate({ podcastId: result.podcast.id });
-    }
-  };
-
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
       {/* Header */}
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-xl font-semibold font-serif">Your Podcast List</h1>
 
-        <AddPodcastDialog onPodcastAdded={handlePodcastAdded}>
+        <AddPodcastDialog>
           <Button>
             <PlusIcon className="h-4 w-4 mr-2" />
             Add Podcast
