@@ -109,6 +109,17 @@ export default function PlaygroundPage() {
     }),
   );
 
+  const skipChunk = useMutation(
+    trpc.playground.skipChunk.mutationOptions({
+      onSuccess: () => {
+        toast.info("Chunk skipped - model will learn from this");
+      },
+      onError: (error) => {
+        toast.error(`Failed to skip chunk: ${error.message}`);
+      },
+    }),
+  );
+
   const savedChunksQuery = useQuery({
     ...trpc.playground.getSavedChunks.queryOptions(),
     enabled: true,
@@ -161,10 +172,17 @@ export default function PlaygroundPage() {
     });
   };
 
-  const handleSkipChunk = (chunkId: string) => {
-    removeSavedChunk.mutate({
-      chunkId,
-    });
+  const handleSkipChunk = (chunkId: string, isSaved: boolean = false) => {
+    if (isSaved) {
+      removeSavedChunk.mutate({
+        chunkId,
+      });
+    } else {
+      skipChunk.mutate({
+        chunkId,
+        query: searchQuery,
+      });
+    }
   };
 
   if (isLoading) {
@@ -337,7 +355,7 @@ export default function PlaygroundPage() {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => handleSkipChunk(savedChunk.chunkId)}
+                    onClick={() => handleSkipChunk(savedChunk.chunkId, true)}
                     className="h-7 px-2 text-xs"
                   >
                     Remove
@@ -381,20 +399,30 @@ export default function PlaygroundPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => handleSkipChunk(chunk.id)}
+                          onClick={() => handleSkipChunk(chunk.id, true)}
                           className="h-7 px-2 text-xs"
                         >
                           Skip
                         </Button>
                       ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleSaveChunk(chunk.id)}
-                          className="h-7 px-2 text-xs"
-                        >
-                          Save
-                        </Button>
+                        <div className="flex gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleSkipChunk(chunk.id, false)}
+                            className="h-7 px-2 text-xs"
+                          >
+                            Skip
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleSaveChunk(chunk.id)}
+                            className="h-7 px-2 text-xs"
+                          >
+                            Save
+                          </Button>
+                        </div>
                       )}
                     </div>
                   </div>

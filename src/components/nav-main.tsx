@@ -6,6 +6,7 @@ import {
   MicIcon,
   SettingsIcon,
 } from "lucide-react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   SidebarGroup,
@@ -54,10 +55,10 @@ export function NavMain() {
                   tooltip={item.title}
                   isActive={isActive}
                 >
-                  <a href={item.url}>
+                  <Link href={item.url}>
                     {item.icon && <item.icon />}
                     <span>{item.title}</span>
-                  </a>
+                  </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             );

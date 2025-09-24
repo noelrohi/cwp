@@ -3,10 +3,10 @@ import { put } from "@vercel/blob";
 import { desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { episode } from "@/server/db/schema";
-import { createTRPCRouter, publicProcedure } from "../init";
+import { createTRPCRouter, protectedProcedure } from "../init";
 
 export const episodesRouter = createTRPCRouter({
-  get: publicProcedure
+  get: protectedProcedure
     .input(
       z.object({
         episodeId: z.string(),
@@ -27,7 +27,7 @@ export const episodesRouter = createTRPCRouter({
       return episodeData;
     }),
 
-  getUnprocessed: publicProcedure
+  getUnprocessed: protectedProcedure
     .input(
       z
         .object({
@@ -52,7 +52,7 @@ export const episodesRouter = createTRPCRouter({
       return rows;
     }),
 
-  generateTranscript: publicProcedure
+  generateTranscript: protectedProcedure
     .input(
       z.object({
         episodeId: z.string(),

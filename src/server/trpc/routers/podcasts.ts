@@ -3,10 +3,10 @@ import { nanoid } from "nanoid";
 import Parser from "rss-parser";
 import { z } from "zod";
 import { episode, podcast } from "@/server/db/schema/podcast";
-import { createTRPCRouter, publicProcedure } from "../init";
+import { createTRPCRouter, protectedProcedure } from "../init";
 
 export const podcastsRouter = createTRPCRouter({
-  get: publicProcedure
+  get: protectedProcedure
     .input(z.object({ podcastId: z.string() }))
     .query(async ({ ctx, input }) => {
       const result = await ctx.db.query.podcast.findFirst({
@@ -26,7 +26,7 @@ export const podcastsRouter = createTRPCRouter({
       return result;
     }),
 
-  list: publicProcedure
+  list: protectedProcedure
     .input(
       z
         .object({
@@ -66,7 +66,7 @@ export const podcastsRouter = createTRPCRouter({
       };
     }),
 
-  add: publicProcedure
+  add: protectedProcedure
     .input(
       z.object({
         podcastId: z.string(),
@@ -114,7 +114,7 @@ export const podcastsRouter = createTRPCRouter({
       }
     }),
 
-  remove: publicProcedure
+  remove: protectedProcedure
     .input(
       z.object({
         podcastId: z.string(),
@@ -132,7 +132,7 @@ export const podcastsRouter = createTRPCRouter({
       }
     }),
 
-  stats: publicProcedure.query(async ({ ctx }) => {
+  stats: protectedProcedure.query(async ({ ctx }) => {
     const totalPodcasts = await ctx.db.select({ count: count() }).from(podcast);
     const totalEpisodes = await ctx.db.select({ count: count() }).from(episode);
 
@@ -142,7 +142,7 @@ export const podcastsRouter = createTRPCRouter({
     };
   }),
 
-  parseFeed: publicProcedure
+  parseFeed: protectedProcedure
     .input(z.object({ podcastId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { podcastId } = input;

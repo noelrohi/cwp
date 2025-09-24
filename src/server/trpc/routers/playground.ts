@@ -6,11 +6,83 @@ import {
   episode as episodeSchema,
   savedChunk,
   transcriptChunk,
+  userCentroid,
 } from "@/server/db/schema";
-import { createTRPCRouter, publicProcedure } from "../init";
+import { createTRPCRouter, protectedProcedure } from "../init";
+
+interface ChunkWithScore {
+  id: string;
+  content: string;
+  speaker: string | null;
+  similarity: number;
+  embedding: number[];
+  finalScore?: number;
+  centroidSimilarity?: number;
+}
+
+// Helper function to update user centroid
+async function updateUserCentroid(
+  db: typeof import("@/server/db").db,
+  userId: string,
+  chunkEmbedding: number[],
+  action: "save" | "skip",
+) {
+  // Get current user centroid
+  const currentCentroid = await db
+    .select()
+    .from(userCentroid)
+    .where(eq(userCentroid.userId, userId))
+    .limit(1);
+
+  if (currentCentroid.length === 0) {
+    // Create new centroid for first-time user
+    await db.insert(userCentroid).values({
+      id: `centroid_${userId}`,
+      userId,
+      centroidEmbedding: chunkEmbedding,
+      savedCount: action === "save" ? 1 : 0,
+      skippedCount: action === "skip" ? 1 : 0,
+    });
+  } else {
+    // Update existing centroid using running average
+    const centroid = currentCentroid[0];
+    const currentEmbedding = centroid.centroidEmbedding as number[];
+    const currentSavedCount = centroid.savedCount;
+    const currentSkippedCount = centroid.skippedCount;
+
+    let newEmbedding: number[];
+    let newSavedCount = currentSavedCount;
+    let newSkippedCount = currentSkippedCount;
+
+    if (action === "save") {
+      newSavedCount = currentSavedCount + 1;
+      // Update centroid to include saved chunk (positive signal)
+      const alpha = 1 / newSavedCount; // Learning rate
+      newEmbedding = currentEmbedding.map(
+        (val, i) => val * (1 - alpha) + chunkEmbedding[i] * alpha,
+      );
+    } else {
+      newSkippedCount = currentSkippedCount + 1;
+      // Move centroid away from skipped chunk (negative signal)
+      const alpha = 0.1; // Smaller learning rate for negative signals
+      newEmbedding = currentEmbedding.map(
+        (val, i) => val * (1 - alpha) - chunkEmbedding[i] * alpha,
+      );
+    }
+
+    await db
+      .update(userCentroid)
+      .set({
+        centroidEmbedding: newEmbedding,
+        savedCount: newSavedCount,
+        skippedCount: newSkippedCount,
+      })
+      .where(eq(userCentroid.userId, userId));
+  }
+}
 
 export const playgroundRouter = createTRPCRouter({
-  chunkTranscript: publicProcedure
+  chunkTranscript: protectedProcedure
     .input(
       z.object({
         episodeId: z.string(),
@@ -100,7 +172,7 @@ export const playgroundRouter = createTRPCRouter({
       return { success: true, chunkCount: chunks.length };
     }),
 
-  findSimilarChunks: publicProcedure
+  findSimilarChunks: protectedProcedure
     .input(
       z.object({
         query: z.string().min(1),
@@ -123,77 +195,114 @@ export const playgroundRouter = createTRPCRouter({
 
       console.log("Existing chunks count:", existingChunks[0]?.count || 0);
 
-      // Get saved chunks content for context from database
-      let enhancedQuery = input.query;
-      if (ctx.user?.id) {
-        const savedChunksData = await ctx.db
-          .select({
-            content: transcriptChunk.content,
-          })
-          .from(savedChunk)
-          .innerJoin(
-            transcriptChunk,
-            eq(savedChunk.chunkId, transcriptChunk.id),
-          )
-          .where(eq(savedChunk.userId, ctx.user.id));
-
-        if (savedChunksData.length > 0) {
-          const contextContent = savedChunksData
-            .map((chunk) => chunk.content)
-            .join(" ");
-          enhancedQuery = `Context: ${contextContent}\n\nQuery: ${input.query}`;
-          console.log("Enhanced query with saved chunks context");
-        }
-      }
-
-      // Generate embedding for the enhanced query
+      // Generate embedding for the clean query (no contamination)
       const { embedding: queryEmbedding } = await embed({
         model: openai.textEmbeddingModel("text-embedding-3-small"),
-        value: enhancedQuery,
+        value: input.query,
       });
 
       console.log("Generated query embedding");
 
-      // Calculate cosine similarity and find similar chunks
+      // Calculate cosine similarity and find similar chunks (first-stage retrieval)
       const similarity = sql<number>`1 - (${cosineDistance(
         transcriptChunk.embedding,
         queryEmbedding,
       )})`;
 
-      // First get all chunks with their similarity scores (no threshold)
+      // Get top chunks with their similarity scores
       const allChunksWithSimilarity = await ctx.db
         .select({
           id: transcriptChunk.id,
           content: transcriptChunk.content,
           speaker: transcriptChunk.speaker,
           similarity,
+          embedding: transcriptChunk.embedding,
         })
         .from(transcriptChunk)
         .where(eq(transcriptChunk.episodeId, input.episodeId))
-        .orderBy((t) => desc(t.similarity));
-
-      console.log("All chunks with similarity scores:");
-      allChunksWithSimilarity.forEach((chunk, index) => {
-        console.log(
-          `${index + 1}. ID: ${chunk.id}, Similarity: ${chunk.similarity}, Content: ${chunk.content.substring(0, 100)}...`,
-        );
-      });
-
-      // Now apply threshold filter
-      const similarChunks = allChunksWithSimilarity
-        .filter((chunk) => chunk.similarity > 0.1)
-        .slice(0, 5);
+        .orderBy((t) => desc(t.similarity))
+        .limit(20); // Get more candidates for re-ranking
 
       console.log(
-        "Found similar chunks above 0.1 threshold:",
-        similarChunks.length,
+        "First-stage retrieval results:",
+        allChunksWithSimilarity.length,
       );
-      console.log("Similar chunks data:", similarChunks);
+
+      // Personalized re-ranking using user centroid
+      let rerankedChunks = allChunksWithSimilarity;
+
+      if (ctx.user?.id) {
+        // Get user centroid
+        const userCentroidData = await ctx.db
+          .select()
+          .from(userCentroid)
+          .where(eq(userCentroid.userId, ctx.user.id))
+          .limit(1);
+
+        if (
+          userCentroidData.length > 0 &&
+          userCentroidData[0].centroidEmbedding
+        ) {
+          const centroidEmbedding = userCentroidData[0]
+            .centroidEmbedding as number[];
+
+          // Re-rank chunks based on similarity to user centroid
+          rerankedChunks = allChunksWithSimilarity
+            .map((chunk) => {
+              const chunkEmbedding = chunk.embedding as number[];
+
+              // Calculate cosine similarity to user centroid
+              const dotProduct = chunkEmbedding.reduce(
+                (sum, val, i) => sum + val * centroidEmbedding[i],
+                0,
+              );
+              const chunkMagnitude = Math.sqrt(
+                chunkEmbedding.reduce((sum, val) => sum + val * val, 0),
+              );
+              const centroidMagnitude = Math.sqrt(
+                centroidEmbedding.reduce((sum, val) => sum + val * val, 0),
+              );
+              const centroidSimilarity =
+                dotProduct / (chunkMagnitude * centroidMagnitude);
+
+              // Combine query similarity and centroid similarity (weighted)
+              const finalScore =
+                chunk.similarity * 0.7 + centroidSimilarity * 0.3;
+
+              return {
+                ...chunk,
+                finalScore,
+                centroidSimilarity,
+              };
+            })
+            .sort((a, b) => (b.finalScore || 0) - (a.finalScore || 0));
+
+          console.log("Applied personalized re-ranking with user centroid");
+        }
+      }
+
+      // Apply threshold and limit results
+      const similarChunks = rerankedChunks
+        .filter((chunk) => {
+          const finalScore = (chunk as ChunkWithScore).finalScore;
+          return finalScore !== undefined
+            ? finalScore > 0.1
+            : chunk.similarity > 0.1;
+        })
+        .slice(0, 5)
+        .map((chunk) => ({
+          id: chunk.id,
+          content: chunk.content,
+          speaker: chunk.speaker,
+          similarity: (chunk as ChunkWithScore).finalScore || chunk.similarity,
+        }));
+
+      console.log("Final re-ranked chunks:", similarChunks.length);
 
       return similarChunks;
     }),
 
-  saveChunk: publicProcedure
+  saveChunk: protectedProcedure
     .input(
       z.object({
         chunkId: z.string(),
@@ -217,6 +326,19 @@ export const playgroundRouter = createTRPCRouter({
         throw new Error("Chunk already saved");
       }
 
+      // Get the chunk embedding to update centroid
+      const chunkData = await ctx.db
+        .select({ embedding: transcriptChunk.embedding })
+        .from(transcriptChunk)
+        .where(eq(transcriptChunk.id, input.chunkId))
+        .limit(1);
+
+      if (chunkData.length === 0) {
+        throw new Error("Chunk not found");
+      }
+
+      const chunkEmbedding = chunkData[0].embedding as number[];
+
       // Save the chunk
       await ctx.db.insert(savedChunk).values({
         id: `saved_${ctx.user.id}_${input.chunkId}`,
@@ -225,10 +347,13 @@ export const playgroundRouter = createTRPCRouter({
         query: input.query,
       });
 
+      // Update user centroid
+      await updateUserCentroid(ctx.db, ctx.user.id, chunkEmbedding, "save");
+
       return { success: true };
     }),
 
-  removeSavedChunk: publicProcedure
+  removeSavedChunk: protectedProcedure
     .input(
       z.object({
         chunkId: z.string(),
@@ -239,16 +364,63 @@ export const playgroundRouter = createTRPCRouter({
         throw new Error("User not authenticated");
       }
 
+      // Get the chunk embedding before removing it
+      const chunkData = await ctx.db
+        .select({ embedding: transcriptChunk.embedding })
+        .from(transcriptChunk)
+        .innerJoin(savedChunk, eq(savedChunk.chunkId, transcriptChunk.id))
+        .where(
+          sql`${savedChunk.chunkId} = ${input.chunkId} AND ${savedChunk.userId} = ${ctx.user.id}`,
+        )
+        .limit(1);
+
       await ctx.db
         .delete(savedChunk)
         .where(
           sql`${savedChunk.chunkId} = ${input.chunkId} AND ${savedChunk.userId} = ${ctx.user.id}`,
         );
 
+      // Update user centroid (treat removal as skip signal)
+      if (chunkData.length > 0) {
+        const chunkEmbedding = chunkData[0].embedding as number[];
+        await updateUserCentroid(ctx.db, ctx.user.id, chunkEmbedding, "skip");
+      }
+
       return { success: true };
     }),
 
-  getSavedChunks: publicProcedure.query(async ({ ctx }) => {
+  skipChunk: protectedProcedure
+    .input(
+      z.object({
+        chunkId: z.string(),
+        query: z.string(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (!ctx.user?.id) {
+        throw new Error("User not authenticated");
+      }
+
+      // Get the chunk embedding to update centroid
+      const chunkData = await ctx.db
+        .select({ embedding: transcriptChunk.embedding })
+        .from(transcriptChunk)
+        .where(eq(transcriptChunk.id, input.chunkId))
+        .limit(1);
+
+      if (chunkData.length === 0) {
+        throw new Error("Chunk not found");
+      }
+
+      const chunkEmbedding = chunkData[0].embedding as number[];
+
+      // Update user centroid with skip signal
+      await updateUserCentroid(ctx.db, ctx.user.id, chunkEmbedding, "skip");
+
+      return { success: true };
+    }),
+
+  getSavedChunks: protectedProcedure.query(async ({ ctx }) => {
     if (!ctx.user?.id) {
       return [];
     }

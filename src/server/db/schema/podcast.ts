@@ -108,6 +108,21 @@ export const savedChunk = pgTable("saved_chunk", {
     .notNull(),
 });
 
+export const userCentroid = pgTable("user_centroid", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().unique(),
+  centroidEmbedding: vector("centroid_embedding", { dimensions: 1536 }),
+  savedCount: integer("saved_count").default(0).notNull(),
+  skippedCount: integer("skipped_count").default(0).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
+
 export const transcriptChunkRelations = relations(
   transcriptChunk,
   ({ one }) => ({
@@ -122,5 +137,12 @@ export const savedChunkRelations = relations(savedChunk, ({ one }) => ({
   chunk: one(transcriptChunk, {
     fields: [savedChunk.chunkId],
     references: [transcriptChunk.id],
+  }),
+}));
+
+export const userCentroidRelations = relations(userCentroid, ({ one }) => ({
+  user: one(savedChunk, {
+    fields: [userCentroid.userId],
+    references: [savedChunk.userId],
   }),
 }));
