@@ -1,28 +1,12 @@
+import { deepgram } from "@ai-sdk/deepgram";
+import { put } from "@vercel/blob";
+import { experimental_transcribe as transcribe } from "ai";
 import { desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { episode } from "@/server/db/schema";
 import { createTRPCRouter, publicProcedure } from "../init";
 
 export const episodesRouter = createTRPCRouter({
-  list: publicProcedure
-    .input(
-      z
-        .object({ limit: z.number().int().min(1).max(50).optional() })
-        .optional(),
-    )
-    .query(async ({ ctx, input }) => {
-      const limit = input?.limit ?? 8;
-      const rows = await ctx.db.query.episode.findMany({
-        limit,
-        orderBy: [desc(episode.publishedAt)],
-        with: {
-          podcast: true,
-        },
-      });
-
-      return rows;
-    }),
-
   get: publicProcedure
     .input(
       z.object({
@@ -42,41 +26,6 @@ export const episodesRouter = createTRPCRouter({
       }
 
       return episodeData;
-    }),
-
-  todaysEpisodes: publicProcedure
-    .input(
-      z
-        .object({ limit: z.number().int().min(1).max(50).optional() })
-        .optional(),
-    )
-    .query(async ({ ctx, input }) => {
-      const limit = input?.limit ?? 20;
-
-      // Get today's date range (start and end of today)
-      const today = new Date();
-      const startOfDay = new Date(
-        today.getFullYear(),
-        today.getMonth(),
-        today.getDate(),
-      );
-      const endOfDay = new Date(startOfDay);
-      endOfDay.setDate(endOfDay.getDate() + 1);
-
-      const rows = await ctx.db.query.episode.findMany({
-        where: (episodes, { and, gte, lt }) =>
-          and(
-            gte(episodes.publishedAt, startOfDay),
-            lt(episodes.publishedAt, endOfDay),
-          ),
-        limit,
-        orderBy: [desc(episode.publishedAt)],
-        with: {
-          podcast: true,
-        },
-      });
-
-      return rows;
     }),
 
   getUnprocessed: publicProcedure
@@ -102,5 +51,104 @@ export const episodesRouter = createTRPCRouter({
       });
 
       return rows;
+    }),
+
+  generateTranscript: publicProcedure
+    .input(
+      z.object({
+        episodeId: z.string(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const episodeData = await ctx.db.query.episode.findFirst({
+        where: eq(episode.id, input.episodeId),
+      });
+
+      if (!episodeData) {
+        throw new Error("Episode not found");
+      }
+
+      if (!episodeData.audioUrl) {
+        throw new Error("Episode has no audio URL");
+      }
+
+      if (episodeData.transcriptUrl) {
+        throw new Error("Episode already has a transcript");
+      }
+
+      try {
+        // Update status to processing
+        await ctx.db
+          .update(episode)
+          .set({ status: "processing" })
+          .where(eq(episode.id, input.episodeId));
+
+        // Download audio and transcribe with Deepgram
+        console.log(`Transcribing audio for episode ${input.episodeId}...`);
+
+        const audioResponse = await fetch(episodeData.audioUrl);
+        if (!audioResponse.ok) {
+          throw new Error(
+            `Failed to download audio: ${audioResponse.statusText}`,
+          );
+        }
+
+        const audioBuffer = await audioResponse.arrayBuffer();
+
+        // Transcribe using Deepgram with AI SDK
+        const transcriptResult = await transcribe({
+          model: deepgram.transcription("nova-3"),
+          audio: new Uint8Array(audioBuffer),
+          providerOptions: {
+            deepgram: {
+              smartFormat: true,
+              punctuate: true,
+              paragraphs: true,
+              diarize: true,
+              utterances: true,
+            },
+          },
+        });
+
+        // Upload transcript as JSON to preserve all metadata
+        console.log(`Uploading transcript for episode ${input.episodeId}...`);
+        const blob = await put(
+          `transcripts/${input.episodeId}.json`,
+          JSON.stringify(transcriptResult, null, 2),
+          {
+            access: "public",
+            contentType: "application/json",
+          },
+        );
+
+        // Update episode with transcript URL and mark as processed
+        await ctx.db
+          .update(episode)
+          .set({
+            transcriptUrl: blob.url,
+            status: "processed",
+          })
+          .where(eq(episode.id, input.episodeId));
+
+        return {
+          success: true,
+          transcriptUrl: blob.url,
+          duration: transcriptResult.durationInSeconds,
+          language: transcriptResult.language,
+        };
+      } catch (error) {
+        console.error(
+          `Failed to generate transcript for episode ${input.episodeId}:`,
+          error,
+        );
+
+        // Mark episode as failed
+        await ctx.db
+          .update(episode)
+          .set({ status: "failed" })
+          .where(eq(episode.id, input.episodeId));
+
+        throw error;
+      }
     }),
 });

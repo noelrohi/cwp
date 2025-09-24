@@ -1,30 +1,68 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import type { experimental_transcribe as transcribe } from "ai";
 import {
   ArrowLeft,
   Calendar,
   Clock,
-  ExternalLink,
+  Download,
+  FileText,
   Play,
   User,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
-import { use } from "react";
+import { use, useState } from "react";
+import { toast } from "sonner";
+import { TranscriptDisplay } from "@/components/transcript-display";
 import { Button } from "@/components/ui/button";
 import { useTRPC } from "@/server/trpc/client";
+
+type TranscriptionResult = Awaited<ReturnType<typeof transcribe>>;
 
 export default function EpisodeDetailPage(props: {
   params: Promise<{ id: string }>;
 }) {
   const trpc = useTRPC();
   const params = use(props.params);
+  const [showTranscript, setShowTranscript] = useState(false);
+  const [transcript, setTranscript] = useState<TranscriptionResult | null>(
+    null,
+  );
 
   const episode = useQuery(
     trpc.episodes.get.queryOptions({
       episodeId: params.id,
     }),
   );
+
+  const generateTranscript = useMutation(
+    trpc.episodes.generateTranscript.mutationOptions({
+      onSuccess: () => {
+        toast.success("Transcript generated successfully!");
+        // Refetch episode data to get the new transcript
+        episode.refetch();
+      },
+      onError: (error) => {
+        toast.error(`Failed to generate transcript: ${error.message}`);
+      },
+    }),
+  );
+
+  const fetchTranscript = async (url: string) => {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error("Failed to fetch transcript");
+      }
+      const jsonData = await response.json();
+      setTranscript(jsonData);
+      setShowTranscript(true);
+    } catch (_error) {
+      toast.error("Failed to load transcript");
+    }
+  };
 
   if (episode.isLoading) {
     return (
@@ -83,10 +121,11 @@ export default function EpisodeDetailPage(props: {
         {/* Episode Thumbnail */}
         {episodeData?.thumbnailUrl && (
           <div className="relative h-32 w-32 rounded-lg bg-muted flex-shrink-0 group">
-            <img
+            <Image
               src={episodeData.thumbnailUrl}
               alt={episodeData.title}
               className="h-full w-full rounded-lg object-cover"
+              fill
             />
             {/* Play Button Overlay */}
             {episodeData?.audioUrl && (
@@ -135,22 +174,70 @@ export default function EpisodeDetailPage(props: {
           </div>
 
           {/* Action Buttons */}
-          <div className="flex gap-2">
-            {episodeData?.transcriptUrl && (
-              <Button variant="outline" asChild>
-                <a
-                  href={episodeData.transcriptUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
+          <div className="flex gap-2 flex-wrap">
+            {episodeData?.transcriptUrl ? (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    fetchTranscript(episodeData.transcriptUrl as string)
+                  }
                 >
-                  <ExternalLink className="h-4 w-4 mr-2" />
-                  Transcript
-                </a>
+                  <FileText className="h-4 w-4 mr-2" />
+                  View Transcript
+                </Button>
+                <Button variant="outline" asChild>
+                  <a
+                    href={episodeData.transcriptUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Download
+                  </a>
+                </Button>
+              </>
+            ) : generateTranscript.isPending ? (
+              <Button variant="outline" disabled>
+                <FileText className="h-4 w-4 mr-2" />
+                Generating Transcript...
               </Button>
-            )}
+            ) : episodeData?.status === "failed" ? (
+              <Button
+                variant="outline"
+                onClick={() =>
+                  generateTranscript.mutate({ episodeId: params.id })
+                }
+                disabled={generateTranscript.isPending}
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                Retry Transcript
+              </Button>
+            ) : episodeData?.audioUrl ? (
+              <Button
+                variant="outline"
+                onClick={() =>
+                  generateTranscript.mutate({ episodeId: params.id })
+                }
+                disabled={generateTranscript.isPending}
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                {generateTranscript.isPending
+                  ? "Generating..."
+                  : "Generate Transcript"}
+              </Button>
+            ) : null}
           </div>
         </div>
       </div>
+
+      {/* Transcript Display */}
+      {showTranscript && transcript && (
+        <TranscriptDisplay
+          transcript={transcript}
+          onClose={() => setShowTranscript(false)}
+        />
+      )}
     </main>
   );
 }

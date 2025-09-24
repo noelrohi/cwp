@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@ai-sdk/deepgram':
+        specifier: ^1.0.10
+        version: 1.0.10(zod@4.1.9)
       '@ai-sdk/openai':
         specifier: ^2.0.32
         version: 2.0.32(zod@4.1.9)
@@ -236,6 +239,12 @@ importers:
         version: 5.9.2
 
 packages:
+
+  '@ai-sdk/deepgram@1.0.10':
+    resolution: {integrity: sha512-9IJJelm193cgiw8n38UVCmEMEz3wszYfcZRqxAvLdTOO5GIPEmzriQzYihLSAetyqXztBtRJ4RRXLC6fkLHTJg==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4
 
   '@ai-sdk/gateway@1.0.23':
     resolution: {integrity: sha512-ynV7WxpRK2zWLGkdOtrU2hW22mBVkEYVS3iMg1+ZGmAYSgzCqzC74bfOJZ2GU1UdcrFWUsFI9qAYjsPkd+AebA==}
@@ -5069,6 +5078,12 @@ packages:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
 snapshots:
+
+  '@ai-sdk/deepgram@1.0.10(zod@4.1.9)':
+    dependencies:
+      '@ai-sdk/provider': 2.0.0
+      '@ai-sdk/provider-utils': 3.0.9(zod@4.1.9)
+      zod: 4.1.9
 
   '@ai-sdk/gateway@1.0.23(zod@4.1.9)':
     dependencies:

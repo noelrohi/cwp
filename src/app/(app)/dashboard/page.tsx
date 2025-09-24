@@ -146,8 +146,12 @@ export default function Dashboard() {
               <div key={dateGroup}>
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-lg font-semibold">{dateGroup}</h3>
-                  <Button variant="ghost" className="text-xs underline">
-                    Process {episodes.length} episodes
+                  <Button variant="ghost" className="text-xs underline" asChild>
+                    <Link
+                      href={`/episode/process?${episodes.map((ep) => `episodes=${ep.id}`).join("&")}`}
+                    >
+                      Process {episodes.length} episodes
+                    </Link>
                   </Button>
                 </div>
                 <div className="space-y-0">

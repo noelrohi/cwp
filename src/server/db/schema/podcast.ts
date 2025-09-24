@@ -6,6 +6,7 @@ import {
   pgTable,
   text,
   timestamp,
+  vector,
 } from "drizzle-orm/pg-core";
 
 export const episodeStatusEnum = pgEnum("episode_status", [
@@ -66,9 +67,37 @@ export const podcastRelations = relations(podcast, ({ many }) => ({
   episodes: many(episode),
 }));
 
-export const episodeRelations = relations(episode, ({ one }) => ({
+export const transcriptChunk = pgTable("transcript_chunk", {
+  id: text("id").primaryKey(),
+  episodeId: text("episode_id")
+    .references(() => episode.id, { onDelete: "cascade" })
+    .notNull(),
+  speaker: text("speaker"),
+  content: text("content").notNull(),
+  embedding: vector("embedding", { dimensions: 1536 }), // OpenAI text-embedding-3-small dimensions
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
+
+export const episodeRelations = relations(episode, ({ one, many }) => ({
   podcast: one(podcast, {
     fields: [episode.podcastId],
     references: [podcast.id],
   }),
+  transcriptChunks: many(transcriptChunk),
 }));
+
+export const transcriptChunkRelations = relations(
+  transcriptChunk,
+  ({ one }) => ({
+    episode: one(episode, {
+      fields: [transcriptChunk.episodeId],
+      references: [episode.id],
+    }),
+  }),
+);
