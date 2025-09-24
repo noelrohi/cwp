@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   FileText,
@@ -12,22 +12,21 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import { parseAsString, useQueryState } from "nuqs";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { toast } from "sonner";
+import { TranscriptDisplay } from "@/components/transcript-display";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useTRPC } from "@/server/trpc/client";
+import type { TranscriptData } from "@/types/transcript";
+
+const minWords = 200;
+const maxWords = 800;
 
 export default function PlaygroundPage() {
   const trpc = useTRPC();
+  const qc = useQueryClient();
   const [episodeId] = useQueryState(
     "episodeId",
     parseAsString
@@ -36,13 +35,10 @@ export default function PlaygroundPage() {
       })
       .withDefault(""),
   );
-  const minWords = 200;
-  const maxWords = 800;
   const [searchQuery, setSearchQuery] = useQueryState(
     "q",
     parseAsString.withDefault(""),
   );
-  const transcriptRef = useRef<HTMLDivElement>(null);
   const [similarChunks, setSimilarChunks] = useState<
     Array<{
       id: string;
@@ -51,6 +47,9 @@ export default function PlaygroundPage() {
       similarity: number;
     }>
   >([]);
+  const [activeTab, setActiveTab] = useState("full-transcript");
+  const [transcript, setTranscript] = useState<TranscriptData | null>(null);
+  const [isTranscriptLoading, setIsTranscriptLoading] = useState(false);
 
   const {
     data: episode,
@@ -66,6 +65,7 @@ export default function PlaygroundPage() {
   const generateTranscript = useMutation(
     trpc.episodes.generateTranscript.mutationOptions({
       onSuccess: () => {
+        qc.invalidateQueries({ queryKey: trpc.episodes.get.queryKey() });
         toast.success("Transcript generated successfully!");
         refetch();
       },
@@ -141,26 +141,22 @@ export default function PlaygroundPage() {
 
   const fetchTranscript = useCallback(async (url: string) => {
     try {
+      setActiveTab("full-transcript");
+      setIsTranscriptLoading(true);
       const response = await fetch(url);
       if (!response.ok) {
         throw new Error("Failed to fetch transcript");
       }
-      await response.json();
+      const jsonData: TranscriptData = await response.json();
+      setTranscript(jsonData);
       toast.success("Transcript loaded successfully");
     } catch (_error) {
+      setTranscript(null);
       toast.error("Failed to load transcript");
+    } finally {
+      setIsTranscriptLoading(false);
     }
   }, []);
-
-  useEffect(() => {
-    if (
-      episode?.transcriptChunks &&
-      episode.transcriptChunks.length > 0 &&
-      transcriptRef.current
-    ) {
-      transcriptRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [episode?.transcriptChunks]);
 
   const handleChunkTranscript = () => {
     if (!isEpisodeLoaded) {
@@ -227,15 +223,13 @@ export default function PlaygroundPage() {
           <ArrowLeft className="h-4 w-4" />
           Back to Podcasts
         </Link>
-        <Card className="w-full">
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-            <CardTitle className="mb-2">Loading Episode</CardTitle>
-            <CardDescription>
-              Please wait while we fetch the episode details...
-            </CardDescription>
-          </CardContent>
-        </Card>
+        <div className="rounded-lg border bg-muted/30 p-10 flex flex-col items-center justify-center text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+          <h2 className="mb-2 text-xl font-semibold">Loading Episode</h2>
+          <p className="text-sm text-muted-foreground">
+            Please wait while we fetch the episode details...
+          </p>
+        </div>
       </main>
     );
   }
@@ -250,22 +244,22 @@ export default function PlaygroundPage() {
           <ArrowLeft className="h-4 w-4" />
           Back to Podcasts
         </Link>
-        <Card className="w-full">
-          <CardContent className="flex flex-col items-center justify-center py-16">
+        <div className="rounded-lg border bg-muted/30 p-10 text-center">
+          <div className="flex flex-col items-center">
             <Podcast className="h-16 w-16 text-muted-foreground mb-6" />
-            <CardTitle className="mb-2">No Episode Selected</CardTitle>
-            <CardDescription className="text-center mb-6 max-w-md">
+            <h2 className="mb-2 text-xl font-semibold">No Episode Selected</h2>
+            <p className="text-sm text-muted-foreground mb-6 max-w-md">
               Select an episode from your dashboard to start exploring
               transcripts, chunking content, and finding similar segments.
-            </CardDescription>
+            </p>
             <Link href="/dashboard">
               <Button size="lg" className="gap-2">
                 <Podcast className="h-4 w-4" />
                 Go to Dashboard
               </Button>
             </Link>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </main>
     );
   }
@@ -274,6 +268,10 @@ export default function PlaygroundPage() {
 
   // Disable all functionality if no episode is loaded
   const isEpisodeLoaded = !!episode && !!episodeId;
+  const handleCloseTranscript = () => {
+    setTranscript(null);
+    setActiveTab("similar");
+  };
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
@@ -322,18 +320,6 @@ export default function PlaygroundPage() {
 
           {/* Action Buttons */}
           <div className="flex gap-2 flex-wrap">
-            {episodeData?.transcriptUrl && (
-              <Button
-                variant="outline"
-                onClick={() =>
-                  fetchTranscript(episodeData.transcriptUrl as string)
-                }
-                disabled={!isEpisodeLoaded}
-              >
-                <FileText className="h-4 w-4 mr-2" />
-                Load Transcript
-              </Button>
-            )}
             {episodeData?.audioUrl && !episodeData?.transcriptUrl && (
               <Button
                 variant="outline"
@@ -364,23 +350,18 @@ export default function PlaygroundPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="similar" className="mb-8">
-        <TabsList className="grid w-full grid-cols-3">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-8">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="full-transcript">Full Transcript</TabsTrigger>
           <TabsTrigger value="similar">Similar Chunks</TabsTrigger>
           <TabsTrigger value="saved">Saved Chunks</TabsTrigger>
           <TabsTrigger value="transcript">Chunked Transcript</TabsTrigger>
         </TabsList>
 
         <TabsContent value="similar" className="mt-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Similarity Search</CardTitle>
-              <CardDescription>
-                Search for specific content within the transcript and find
-                similar segments.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
+          <div className="rounded-lg border bg-muted/30 p-6">
+            <h2 className="text-xl font-semibold mb-4">Similarity Search</h2>
+            <div className="space-y-6">
               <div className="flex flex-col gap-2 sm:flex-row">
                 <Input
                   placeholder="Enter search query..."
@@ -477,69 +458,60 @@ export default function PlaygroundPage() {
                   </div>
                 )}
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="saved" className="mt-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Saved Chunks for Training Context</CardTitle>
-              <CardDescription>
-                Chunks you've saved will be used to improve the model's
-                understanding of your content.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {savedChunksQuery.data && savedChunksQuery.data.length > 0 ? (
-                <div className="space-y-2">
-                  {savedChunksQuery.data.map((savedChunk, index) => (
-                    <div
-                      key={savedChunk.id}
-                      className="rounded-lg bg-muted/50 p-3"
-                    >
-                      <div className="mb-2 flex items-start justify-between">
-                        <div className="text-sm font-medium">
-                          Saved Chunk {index + 1}
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() =>
-                            handleSkipChunk(savedChunk.chunkId, true)
-                          }
-                          className="h-7 px-2 text-xs"
-                        >
-                          Remove
-                        </Button>
+          <div className="rounded-lg border bg-muted/30 p-6">
+            <h2 className="text-xl font-semibold mb-4">
+              Saved Chunks for Training Context
+            </h2>
+            {savedChunksQuery.data && savedChunksQuery.data.length > 0 ? (
+              <div className="space-y-2">
+                {savedChunksQuery.data.map((savedChunk, index) => (
+                  <div
+                    key={savedChunk.id}
+                    className="rounded-lg bg-muted/50 p-3"
+                  >
+                    <div className="mb-2 flex items-start justify-between">
+                      <div className="text-sm font-medium">
+                        Saved Chunk {index + 1}
                       </div>
-                      <p className="mb-1 text-sm text-muted-foreground">
-                        Query: {savedChunk.query}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {savedChunk.content.substring(0, 150)}...
-                      </p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          handleSkipChunk(savedChunk.chunkId, true)
+                        }
+                        className="h-7 px-2 text-xs"
+                      >
+                        Remove
+                      </Button>
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="py-8 text-center">
-                  <FileText className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">
-                    No saved chunks yet. Search for content and save relevant
-                    chunks to build your training context.
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                    <p className="mb-1 text-sm text-muted-foreground">
+                      Query: {savedChunk.query}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {savedChunk.content.substring(0, 150)}...
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="py-8 text-center">
+                <FileText className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">
+                  No saved chunks yet. Search for content and save relevant
+                  chunks to build your training context.
+                </p>
+              </div>
+            )}
+          </div>
         </TabsContent>
 
         <TabsContent value="transcript" className="mt-6">
-          <div
-            ref={transcriptRef}
-            className="rounded-lg border bg-muted/30 p-6"
-          >
+          <div className="rounded-lg border bg-muted/30 p-6">
             <h2 className="mb-4 text-xl font-semibold">
               Chunked Transcript Summary
             </h2>
@@ -581,6 +553,48 @@ export default function PlaygroundPage() {
                 <p className="text-sm text-muted-foreground">
                   Chunk the transcript to see a summary of the first segments.
                 </p>
+              </div>
+            )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="full-transcript" className="mt-6">
+          <div className="rounded-lg border bg-muted/30 p-6">
+            <h2 className="text-xl font-semibold mb-4">Full Transcript</h2>
+            {!episodeData?.transcriptUrl ? (
+              <div className="py-8 text-center">
+                <FileText className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">
+                  Generate a transcript first to browse the full content.
+                </p>
+              </div>
+            ) : isTranscriptLoading ? (
+              <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
+                <Loader2 className="mb-3 h-6 w-6 animate-spin" />
+                <p className="text-sm">Loading transcript…</p>
+              </div>
+            ) : transcript ? (
+              <TranscriptDisplay
+                transcript={transcript}
+                onClose={handleCloseTranscript}
+              />
+            ) : (
+              <div className="flex flex-col items-center gap-4 py-8">
+                <p className="text-sm text-muted-foreground text-center max-w-sm">
+                  Load the transcript to explore every utterance with quick
+                  search and speaker grouping.
+                </p>
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    fetchTranscript(episodeData.transcriptUrl as string)
+                  }
+                  disabled={!isEpisodeLoaded || isTranscriptLoading}
+                  className="gap-2"
+                >
+                  <FileText className="h-4 w-4" />
+                  Load Transcript
+                </Button>
               </div>
             )}
           </div>
