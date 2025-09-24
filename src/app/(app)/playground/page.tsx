@@ -408,8 +408,7 @@ export default function PlaygroundPage() {
                   </Button>
                 </div>
                 <p className="text-sm text-muted-foreground mb-1">
-                  Query: {savedChunk.query} •{" "}
-                  {savedChunk.content.split(/\s+/).length} words
+                  Query: {savedChunk.query}
                 </p>
                 <p className="text-sm text-muted-foreground">
                   {savedChunk.content.substring(0, 150)}...
@@ -429,8 +428,7 @@ export default function PlaygroundPage() {
               <div key={index} className="bg-background rounded-lg p-4">
                 <div className="flex justify-between items-start mb-2">
                   <div className="text-sm font-medium">
-                    Similarity: {(chunk.similarity * 100).toFixed(1)}% •{" "}
-                    {chunk.content.split(/\s+/).length} words
+                    Similarity: {(chunk.similarity * 100).toFixed(1)}%
                   </div>
                   <div className="flex items-center gap-2">
                     {chunk.speaker && (
