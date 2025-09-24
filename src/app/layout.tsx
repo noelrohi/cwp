@@ -24,7 +24,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Framebreak Intelligence",
-  description: "Chat with Podcasts",
+  description:
+    "Turn podcasts and blogs into smart quotes and insights that get better as you use them",
 };
 
 export default function RootLayout({
