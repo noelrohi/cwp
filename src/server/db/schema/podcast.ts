@@ -1,5 +1,19 @@
 import { relations } from "drizzle-orm";
-import { index, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import {
+  index,
+  integer,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+} from "drizzle-orm/pg-core";
+
+export const episodeStatusEnum = pgEnum("episode_status", [
+  "pending",
+  "processing",
+  "processed",
+  "failed",
+]);
 
 export const podcast = pgTable(
   "podcast",
@@ -38,6 +52,7 @@ export const episode = pgTable("episode", {
   audioUrl: text("audio_url"),
   transcriptUrl: text("transcript_url"),
   thumbnailUrl: text("thumbnail_url"),
+  status: episodeStatusEnum("status").default("pending").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
