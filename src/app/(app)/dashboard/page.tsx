@@ -78,7 +78,7 @@ export default function Dashboard() {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const { data: unprocessedEpisodes, isLoading } = useQuery(
-    trpc.episodes.getUnprocessed.queryOptions({ limit: 50 }),
+    trpc.episodes.getEpisodes.queryOptions({ limit: 50 }),
   );
 
   const parseFeed = useMutation({

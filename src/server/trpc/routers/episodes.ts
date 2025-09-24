@@ -52,6 +52,29 @@ export const episodesRouter = createTRPCRouter({
       return rows;
     }),
 
+  getEpisodes: protectedProcedure
+    .input(
+      z
+        .object({
+          limit: z.number().int().min(1).max(100).optional(),
+        })
+        .optional(),
+    )
+    .query(async ({ ctx, input }) => {
+      const limit = input?.limit ?? 50;
+
+      const rows = await ctx.db.query.episode.findMany({
+        where: and(eq(episode.userId, ctx.user.id)),
+        limit,
+        orderBy: [desc(episode.publishedAt)],
+        with: {
+          podcast: true,
+        },
+      });
+
+      return rows;
+    }),
+
   generateTranscript: protectedProcedure
     .input(
       z.object({
