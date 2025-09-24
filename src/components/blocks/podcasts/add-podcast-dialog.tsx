@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { SearchIcon } from "lucide-react";
+import { SearchIcon, StarIcon } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -75,6 +75,15 @@ export function AddPodcastDialog({
   const [isSearching, setIsSearching] = useState(false);
   const [addingPodcastId, setAddingPodcastId] = useState<number | null>(null);
 
+  const suggestedPodcasts = [
+    { name: "Lenny's Podcast", query: "Lenny's Podcast" },
+    { name: "Founders", query: "Founders Podcast" },
+    { name: "All-In", query: "All-In Podcast" },
+    { name: "Acquired", query: "Acquired Podcast" },
+    { name: "My First Million", query: "My First Million" },
+    { name: "The Tim Ferriss Show", query: "Tim Ferriss" },
+  ];
+
   const addPodcast = useMutation(trpc.podcasts.add.mutationOptions());
 
   const handleSearch = async () => {
@@ -131,6 +140,39 @@ export function AddPodcastDialog({
           <DialogTitle>Add New Podcast</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 flex-1 overflow-hidden">
+          {!searchQuery && !searchResults.length && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <StarIcon className="h-4 w-4" />
+                <span className="font-medium">Popular Suggestions</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {suggestedPodcasts.map((podcast) => (
+                  <Button
+                    key={podcast.name}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSearchQuery(podcast.query);
+                      setTimeout(() => handleSearch(), 100);
+                    }}
+                    disabled={isSearching}
+                    className="text-xs h-8 justify-start"
+                  >
+                    {isSearching && searchQuery === podcast.query ? (
+                      <div className="flex items-center gap-1">
+                        <div className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                        <span>Searching...</span>
+                      </div>
+                    ) : (
+                      podcast.name
+                    )}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="flex gap-2 flex-shrink-0">
             <Input
               type="text"

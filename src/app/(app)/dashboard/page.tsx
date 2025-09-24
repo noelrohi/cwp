@@ -1,12 +1,18 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import { Plus, Podcast } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useMemo } from "react";
 import { AddPodcastDialog } from "@/components/blocks/podcasts/add-podcast-dialog";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardTitle,
+} from "@/components/ui/card";
 import { type RouterOutput, useTRPC } from "@/server/trpc/client";
 
 function getDateGroup(date: string | null): string {
@@ -107,7 +113,7 @@ export default function Dashboard() {
     return (
       <main className="mx-auto w-full max-w-4xl px-6 py-8">
         <div className="animate-pulse">
-          <div className="h-8 w-32 bg-muted rounded mb-6" />
+          <div className="h-8 w-48 bg-muted rounded mb-6" />
           <div className="space-y-4">
             {Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="flex gap-4 p-3">
@@ -162,27 +168,29 @@ export default function Dashboard() {
             ))}
         </div>
       ) : (
-        <div className="text-center py-12">
-          <div className="text-muted-foreground text-lg mb-4">
-            No unprocessed episodes found
-          </div>
-          <p className="text-sm text-muted-foreground mb-6">
-            Add a podcast to get started!
-          </p>
-          <AddPodcastDialog
-            onPodcastAdded={(result) => {
-              // Call parseFeed mutation when podcast is successfully added
-              if (result?.success && result.podcast?.id) {
-                parseFeed.mutate({ podcastId: result.podcast.id });
-              }
-            }}
-          >
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Podcast
-            </Button>
-          </AddPodcastDialog>
-        </div>
+        <Card className="w-full">
+          <CardContent className="flex flex-col items-center justify-center py-16">
+            <Podcast className="h-16 w-16 text-muted-foreground mb-6" />
+            <CardTitle className="mb-2">No Episodes Yet</CardTitle>
+            <CardDescription className="text-center mb-6 max-w-md">
+              Get started by adding your first podcast. We'll automatically
+              fetch and process the latest episodes for you to explore.
+            </CardDescription>
+            <AddPodcastDialog
+              onPodcastAdded={(result) => {
+                // Call parseFeed mutation when podcast is successfully added
+                if (result?.success && result.podcast?.id) {
+                  parseFeed.mutate({ podcastId: result.podcast.id });
+                }
+              }}
+            >
+              <Button size="lg" className="gap-2">
+                <Plus className="h-4 w-4" />
+                Add Your First Podcast
+              </Button>
+            </AddPodcastDialog>
+          </CardContent>
+        </Card>
       )}
     </main>
   );
