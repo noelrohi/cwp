@@ -1,5 +1,4 @@
 import { Analytics } from "@vercel/analytics/next";
-import { AutumnProvider } from "autumn-js/react";
 import type { Metadata } from "next";
 import { Geist_Mono, Inter, Inter_Tight } from "next/font/google";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
@@ -39,9 +38,9 @@ export default function RootLayout({
         className={`${sans.variable} ${geistMono.variable} ${serif.variable} font-sans antialiased`}
       >
         <TRPCProviders>
-          <AutumnProvider betterAuthUrl={process.env.NEXT_PUBLIC_APP_URL}>
-            <NuqsAdapter>{children}</NuqsAdapter>
-          </AutumnProvider>
+          {/* <AutumnProvider betterAuthUrl={process.env.NEXT_PUBLIC_APP_URL}> */}
+          <NuqsAdapter>{children}</NuqsAdapter>
+          {/* </AutumnProvider> */}
           <Toaster />
         </TRPCProviders>
         <Analytics />
