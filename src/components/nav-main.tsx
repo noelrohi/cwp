@@ -1,13 +1,14 @@
 "use client";
 
 import {
-  FolderOpenIcon,
   LayoutDashboardIcon,
   MicIcon,
   SettingsIcon,
+  SparklesIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Badge } from "@/components/ui/badge";
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -16,7 +17,14 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 
-const items = [
+type NavItem = {
+  title: string;
+  icon: typeof LayoutDashboardIcon;
+  url: string;
+  badge?: string;
+};
+
+const items: NavItem[] = [
   {
     title: "Dashboard",
     icon: LayoutDashboardIcon,
@@ -28,16 +36,18 @@ const items = [
     url: "/podcasts",
   },
   {
-    title: "Artifacts",
-    icon: FolderOpenIcon,
-    url: "/artifacts",
+    title: "Patterns",
+    icon: SparklesIcon,
+    url: "/patterns",
+    badge: "Soon",
   },
   {
     title: "Preferences",
     icon: SettingsIcon,
     url: "/preferences",
+    badge: "Soon",
   },
-] as const;
+];
 
 export function NavMain() {
   const pathname = usePathname();
@@ -58,6 +68,11 @@ export function NavMain() {
                   <Link href={item.url}>
                     {item.icon && <item.icon />}
                     <span>{item.title}</span>
+                    {item.badge && (
+                      <Badge variant="secondary" className="ml-auto text-xs">
+                        {item.badge}
+                      </Badge>
+                    )}
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

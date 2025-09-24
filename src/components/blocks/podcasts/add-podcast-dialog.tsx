@@ -1,8 +1,8 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { SearchIcon, StarIcon } from "lucide-react";
-import { useState } from "react";
+import { Loader2Icon, SearchIcon, StarIcon } from "lucide-react";
+import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -72,7 +72,7 @@ export function AddPodcastDialog({
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<iTunesResult[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
+  const [isSearching, startSearchTransition] = useTransition();
   const [addingPodcastId, setAddingPodcastId] = useState<number | null>(null);
 
   const suggestedPodcasts = [
@@ -86,23 +86,22 @@ export function AddPodcastDialog({
 
   const addPodcast = useMutation(trpc.podcasts.add.mutationOptions());
 
-  const handleSearch = async () => {
+  const handleSearch = () => {
     if (!searchQuery.trim()) return;
 
-    setIsSearching(true);
-    try {
-      const response = await fetch(
-        `https://itunes.apple.com/search?term=${encodeURIComponent(
-          searchQuery,
-        )}&media=podcast`,
-      );
-      const data = await response.json();
-      setSearchResults(data.results || []);
-    } catch (error) {
-      console.error("Failed to search podcasts:", error);
-    } finally {
-      setIsSearching(false);
-    }
+    startSearchTransition(async () => {
+      try {
+        const response = await fetch(
+          `https://itunes.apple.com/search?term=${encodeURIComponent(
+            searchQuery,
+          )}&media=podcast`,
+        );
+        const data = await response.json();
+        setSearchResults(data.results || []);
+      } catch (error) {
+        console.error("Failed to search podcasts:", error);
+      }
+    });
   };
 
   const handlePodcastSelect = async (podcast: iTunesResult) => {
@@ -191,7 +190,11 @@ export function AddPodcastDialog({
               size="icon"
               disabled={!searchQuery.trim() || isSearching}
             >
-              <SearchIcon className="h-4 w-4" />
+              {isSearching ? (
+                <Loader2Icon className="h-4 w-4 animate-spin" />
+              ) : (
+                <SearchIcon className="h-4 w-4" />
+              )}
             </Button>
           </div>
 
