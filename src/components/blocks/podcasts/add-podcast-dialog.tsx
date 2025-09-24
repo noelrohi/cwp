@@ -46,7 +46,7 @@ type iTunesResult = {
   genres: string[];
 };
 
-type AddPodcastResult = {
+export type AddPodcastResult = {
   success: boolean;
   podcast?: {
     id: string;
