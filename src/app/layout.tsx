@@ -1,3 +1,4 @@
+import { Analytics } from "@vercel/analytics/next";
 import { AutumnProvider } from "autumn-js/react";
 import type { Metadata } from "next";
 import { Geist_Mono, Inter, Inter_Tight } from "next/font/google";
@@ -42,6 +43,7 @@ export default function RootLayout({
           </AutumnProvider>
           <Toaster />
         </TRPCProviders>
+        <Analytics />
       </body>
     </html>
   );
