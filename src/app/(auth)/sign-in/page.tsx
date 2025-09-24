@@ -1,5 +1,5 @@
 "use client";
-import { IconBrandGoogle, IconBrandLinkedin } from "@tabler/icons-react";
+import { IconBrandGoogle } from "@tabler/icons-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,17 +26,6 @@ export default function SignInPage() {
             <IconBrandGoogle className="size-4" />
             Continue with Google
             {lastMethod === "google" && (
-              <Badge className="absolute -top-2 -right-2">Last used</Badge>
-            )}
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => signIn.social({ provider: "linkedin" })}
-            className="justify-start relative"
-          >
-            <IconBrandLinkedin className="size-4" />
-            Continue with LinkedIn
-            {lastMethod === "linkedin" && (
               <Badge className="absolute -top-2 -right-2">Last used</Badge>
             )}
           </Button>

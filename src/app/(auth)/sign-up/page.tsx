@@ -1,5 +1,5 @@
 "use client";
-import { IconBrandGoogle, IconBrandLinkedin } from "@tabler/icons-react";
+import { IconBrandGoogle } from "@tabler/icons-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { signIn } from "@/lib/auth-client";
@@ -25,14 +25,6 @@ export default function SignUpPage() {
           >
             <IconBrandGoogle className="size-4" />
             Continue with Google
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => signIn.social({ provider: "linkedin" })}
-            className="justify-start"
-          >
-            <IconBrandLinkedin className="size-4" />
-            Continue with LinkedIn
           </Button>
         </div>
 
