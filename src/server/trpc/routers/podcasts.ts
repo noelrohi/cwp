@@ -14,6 +14,7 @@ export const podcastsRouter = createTRPCRouter({
         with: {
           episodes: {
             limit: 50,
+            orderBy: [desc(episode.publishedAt)],
           },
         },
       });

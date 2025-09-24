@@ -1,6 +1,5 @@
-import { deepgram } from "@ai-sdk/deepgram";
+import { createClient } from "@deepgram/sdk";
 import { put } from "@vercel/blob";
-import { experimental_transcribe as transcribe } from "ai";
 import { desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { episode } from "@/server/db/schema";
@@ -83,38 +82,42 @@ export const episodesRouter = createTRPCRouter({
           .set({ status: "processing" })
           .where(eq(episode.id, input.episodeId));
 
-        // Download audio and transcribe with Deepgram
+        // Transcribe with Deepgram
         console.log(`Transcribing audio for episode ${input.episodeId}...`);
 
-        const audioResponse = await fetch(episodeData.audioUrl);
-        if (!audioResponse.ok) {
-          throw new Error(
-            `Failed to download audio: ${audioResponse.statusText}`,
-          );
+        // Transcribe using Deepgram SDK directly
+        const deepgramApiKey = process.env.DEEPGRAM_API_KEY;
+        if (!deepgramApiKey) {
+          throw new Error("DEEPGRAM_API_KEY environment variable is not set");
         }
-
-        const audioBuffer = await audioResponse.arrayBuffer();
-
-        // Transcribe using Deepgram with AI SDK
-        const transcriptResult = await transcribe({
-          model: deepgram.transcription("nova-3"),
-          audio: new Uint8Array(audioBuffer),
-          providerOptions: {
-            deepgram: {
-              smartFormat: true,
+        const deepgram = createClient(deepgramApiKey);
+        const { result, error } =
+          await deepgram.listen.prerecorded.transcribeUrl(
+            { url: episodeData.audioUrl },
+            {
+              model: "nova-3",
+              language: "en",
+              smart_format: true,
               punctuate: true,
               paragraphs: true,
               diarize: true,
               utterances: true,
             },
-          },
-        });
+          );
+
+        if (error) {
+          throw new Error(`Deepgram transcription failed: ${error.message}`);
+        }
+
+        const jsonContent = JSON.stringify(result.results.utterances);
+
+        console.log(jsonContent);
 
         // Upload transcript as JSON to preserve all metadata
         console.log(`Uploading transcript for episode ${input.episodeId}...`);
         const blob = await put(
-          `transcripts/${input.episodeId}.json`,
-          JSON.stringify(transcriptResult, null, 2),
+          `transcripts/${input.episodeId}-${Date.now().toString()}.json`,
+          jsonContent,
           {
             access: "public",
             contentType: "application/json",
@@ -133,8 +136,7 @@ export const episodesRouter = createTRPCRouter({
         return {
           success: true,
           transcriptUrl: blob.url,
-          duration: transcriptResult.durationInSeconds,
-          language: transcriptResult.language,
+          duration: result.metadata.duration,
         };
       } catch (error) {
         console.error(
