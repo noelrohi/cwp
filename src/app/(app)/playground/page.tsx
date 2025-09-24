@@ -12,7 +12,7 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import { parseAsString, useQueryState } from "nuqs";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -44,6 +44,7 @@ export default function PlaygroundPage() {
     parseAsString.withDefault(""),
   );
   const [transcript, setTranscript] = useState<TranscriptData | null>(null);
+  const transcriptRef = useRef<HTMLDivElement>(null);
   const [similarChunks, setSimilarChunks] = useState<
     Array<{
       id: string;
@@ -152,6 +153,12 @@ export default function PlaygroundPage() {
       toast.error("Failed to load transcript");
     }
   }, []);
+
+  useEffect(() => {
+    if (transcript && transcriptRef.current) {
+      transcriptRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [transcript]);
 
   const handleChunkTranscript = () => {
     if (!isEpisodeLoaded) {
@@ -558,7 +565,7 @@ export default function PlaygroundPage() {
 
       {/* Transcript Display */}
       {transcript && (
-        <div className="mt-8 bg-muted/50 rounded-lg p-6">
+        <div ref={transcriptRef} className="mt-8 bg-muted/50 rounded-lg p-6">
           <h2 className="text-xl font-semibold mb-4">Transcript Preview</h2>
           <div className="max-h-96 overflow-y-auto space-y-2">
             {transcript.slice(0, 10).map((utterance, index) => (

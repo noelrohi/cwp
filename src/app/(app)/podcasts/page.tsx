@@ -209,7 +209,10 @@ export default function Podcasts() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem
-                    onClick={() => handleRemovePodcast(podcast.podcastId)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleRemovePodcast(podcast.podcastId);
+                    }}
                     disabled={removePodcast.isPending}
                     className="text-destructive"
                   >

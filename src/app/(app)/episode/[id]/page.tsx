@@ -197,6 +197,12 @@ export default function EpisodeDetailPage(props: {
                 </Button>
               </>
             )}
+            <Button variant="outline" asChild>
+              <Link href={`/playground?episodeId=${params.id}`}>
+                <Play className="h-4 w-4 mr-2" />
+                Open in Playground
+              </Link>
+            </Button>
           </div>
         </div>
       </div>
