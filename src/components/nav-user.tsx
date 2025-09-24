@@ -114,8 +114,13 @@ export function NavUser() {
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => {
-                signOut();
-                router.refresh();
+                signOut({
+                  fetchOptions: {
+                    onSuccess: () => {
+                      router.push("/sign-in");
+                    },
+                  },
+                });
               }}
             >
               <IconLogout />

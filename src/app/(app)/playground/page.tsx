@@ -21,7 +21,7 @@ export default function PlaygroundPage() {
       .withOptions({
         clearOnDefault: true,
       })
-      .withDefault("BShYq9Vrkk_Ix2D4DOobl"),
+      .withDefault(""),
   );
   const [minWords, setMinWords] = useState(200);
   const [maxWords, setMaxWords] = useState(800);
@@ -43,11 +43,12 @@ export default function PlaygroundPage() {
     data: episode,
     isLoading,
     refetch,
-  } = useQuery(
-    trpc.episodes.get.queryOptions({
+  } = useQuery({
+    ...trpc.episodes.get.queryOptions({
       episodeId,
     }),
-  );
+    enabled: !!episodeId, // Only run query when episodeId exists and is not empty
+  });
 
   const generateTranscript = useMutation(
     trpc.episodes.generateTranscript.mutationOptions({
@@ -139,6 +140,10 @@ export default function PlaygroundPage() {
   }, []);
 
   const handleChunkTranscript = () => {
+    if (!isEpisodeLoaded) {
+      toast.error("No episode selected");
+      return;
+    }
     if (!episode?.transcriptUrl) {
       toast.error("No transcript available");
       return;
@@ -154,6 +159,10 @@ export default function PlaygroundPage() {
   };
 
   const handleSearchSimilar = () => {
+    if (!isEpisodeLoaded) {
+      toast.error("No episode selected");
+      return;
+    }
     if (!searchQuery.trim()) {
       toast.error("Please enter a search query");
       return;
@@ -203,7 +212,35 @@ export default function PlaygroundPage() {
     );
   }
 
+  if (!episodeId) {
+    return (
+      <main className="mx-auto w-full max-w-4xl px-6 py-8">
+        <Link
+          href="/podcasts"
+          className="inline-flex items-center gap-2 text-sm text-muted-foreground mb-6 hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to Podcasts
+        </Link>
+        <div className="text-center py-12">
+          <div className="text-muted-foreground text-lg mb-4">
+            No episode selected
+          </div>
+          <p className="text-sm text-muted-foreground mb-6">
+            Please select an episode from the dashboard to get started.
+          </p>
+          <Link href="/dashboard">
+            <Button>Go to Dashboard</Button>
+          </Link>
+        </div>
+      </main>
+    );
+  }
+
   const episodeData = episode;
+
+  // Disable all functionality if no episode is loaded
+  const isEpisodeLoaded = !!episode && !!episodeId;
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
@@ -258,6 +295,7 @@ export default function PlaygroundPage() {
                 onClick={() =>
                   fetchTranscript(episodeData.transcriptUrl as string)
                 }
+                disabled={!isEpisodeLoaded}
               >
                 <FileText className="h-4 w-4 mr-2" />
                 Load Transcript
@@ -267,7 +305,7 @@ export default function PlaygroundPage() {
               <Button
                 variant="outline"
                 onClick={() => generateTranscript.mutate({ episodeId })}
-                disabled={generateTranscript.isPending}
+                disabled={generateTranscript.isPending || !isEpisodeLoaded}
               >
                 <FileText className="h-4 w-4 mr-2" />
                 {generateTranscript.isPending
@@ -311,7 +349,11 @@ export default function PlaygroundPage() {
           </div>
           <Button
             onClick={handleChunkTranscript}
-            disabled={chunkTranscript.isPending || !episodeData?.transcriptUrl}
+            disabled={
+              chunkTranscript.isPending ||
+              !episodeData?.transcriptUrl ||
+              !isEpisodeLoaded
+            }
             className="whitespace-nowrap"
           >
             {chunkTranscript.isPending ? "Chunking..." : "Start Chunking"}
@@ -331,7 +373,11 @@ export default function PlaygroundPage() {
           />
           <Button
             onClick={handleSearchSimilar}
-            disabled={findSimilarChunks.isPending || !searchQuery.trim()}
+            disabled={
+              findSimilarChunks.isPending ||
+              !searchQuery.trim() ||
+              !isEpisodeLoaded
+            }
           >
             <Search className="h-4 w-4 mr-2" />
             {findSimilarChunks.isPending ? "Searching..." : "Search"}

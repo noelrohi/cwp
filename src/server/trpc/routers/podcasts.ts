@@ -1,4 +1,4 @@
-import { asc, count, desc, eq, ilike } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import Parser from "rss-parser";
 import { z } from "zod";
@@ -10,7 +10,10 @@ export const podcastsRouter = createTRPCRouter({
     .input(z.object({ podcastId: z.string() }))
     .query(async ({ ctx, input }) => {
       const result = await ctx.db.query.podcast.findFirst({
-        where: eq(podcast.id, input.podcastId),
+        where: and(
+          eq(podcast.id, input.podcastId),
+          eq(podcast.userId, ctx.user.id),
+        ),
         with: {
           episodes: {
             limit: 50,
@@ -44,7 +47,10 @@ export const podcastsRouter = createTRPCRouter({
         sortBy === "title" ? [asc(podcast.title)] : [desc(podcast.createdAt)];
 
       const results = await ctx.db.query.podcast.findMany({
-        where: query ? ilike(podcast.title, `%${query}%`) : undefined,
+        where: and(
+          eq(podcast.userId, ctx.user.id),
+          query ? ilike(podcast.title, `%${query}%`) : undefined,
+        ),
         orderBy,
         limit,
         offset: (page - 1) * limit,
@@ -99,6 +105,7 @@ export const podcastsRouter = createTRPCRouter({
           description: description || null,
           imageUrl: imageUrl || null,
           feedUrl: input.feedUrl || null,
+          userId: ctx.user.id,
         };
 
         await ctx.db.insert(podcast).values(newPodcast);
@@ -124,7 +131,14 @@ export const podcastsRouter = createTRPCRouter({
       const { podcastId } = input;
 
       try {
-        await ctx.db.delete(podcast).where(eq(podcast.podcastId, podcastId));
+        await ctx.db
+          .delete(podcast)
+          .where(
+            and(
+              eq(podcast.podcastId, podcastId),
+              eq(podcast.userId, ctx.user.id),
+            ),
+          );
         return { success: true, message: "Podcast removed from library" };
       } catch (error) {
         console.error("Remove podcast error:", error);
@@ -133,12 +147,20 @@ export const podcastsRouter = createTRPCRouter({
     }),
 
   stats: protectedProcedure.query(async ({ ctx }) => {
-    const totalPodcasts = await ctx.db.select({ count: count() }).from(podcast);
-    const totalEpisodes = await ctx.db.select({ count: count() }).from(episode);
+    const userPodcasts = await ctx.db
+      .select({ count: count() })
+      .from(podcast)
+      .where(eq(podcast.userId, ctx.user.id));
+
+    const userEpisodes = await ctx.db
+      .select({ count: count() })
+      .from(episode)
+      .innerJoin(podcast, eq(episode.podcastId, podcast.id))
+      .where(eq(podcast.userId, ctx.user.id));
 
     return {
-      totalPodcasts: Number(totalPodcasts[0]?.count ?? 0),
-      totalEpisodes: Number(totalEpisodes[0]?.count ?? 0),
+      totalPodcasts: Number(userPodcasts[0]?.count ?? 0),
+      totalEpisodes: Number(userEpisodes[0]?.count ?? 0),
     };
   }),
 
@@ -149,7 +171,7 @@ export const podcastsRouter = createTRPCRouter({
 
       // Get podcast from database
       const podcastRecord = await ctx.db.query.podcast.findFirst({
-        where: eq(podcast.id, podcastId),
+        where: and(eq(podcast.id, podcastId), eq(podcast.userId, ctx.user.id)),
       });
 
       if (!podcastRecord) {
@@ -202,6 +224,7 @@ export const podcastsRouter = createTRPCRouter({
             id: nanoid(),
             episodeId: item.guid || item.link || nanoid(),
             podcastId: podcastRecord.id,
+            userId: podcastRecord.userId,
             title: item.title || "Untitled Episode",
             publishedAt: item.pubDate ? new Date(item.pubDate) : null,
             durationSec,

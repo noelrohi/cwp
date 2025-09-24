@@ -1,10 +1,11 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { ExternalLink } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Plus } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useMemo } from "react";
+import { AddPodcastDialog } from "@/components/blocks/podcasts/add-podcast-dialog";
 import { Button } from "@/components/ui/button";
 import { type RouterOutput, useTRPC } from "@/server/trpc/client";
 
@@ -36,48 +37,53 @@ function EpisodeCard({
   episode: RouterOutput["episodes"]["getUnprocessed"][number];
 }) {
   return (
-    <div className="flex gap-4 mb-4 p-4 border rounded-lg hover:bg-muted/50 transition-colors">
-      {/* Podcast Image */}
-      <div className="relative h-16 w-16 rounded-lg bg-muted flex-shrink-0 overflow-hidden">
-        {episode.podcast?.imageUrl ? (
-          <Image
-            src={episode.podcast.imageUrl}
-            alt={episode.podcast.title}
-            fill
-            className="w-full h-full object-cover rounded-lg"
-          />
-        ) : (
-          <div className="w-full h-full bg-muted flex items-center justify-center">
-            <span className="text-xs text-muted-foreground">No Image</span>
-          </div>
-        )}
-      </div>
+    <Link href={`/playground?episodeId=${episode.id}`}>
+      <div className="flex gap-4 mb-4 p-4 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer">
+        {/* Podcast Image */}
+        <div className="relative h-16 w-16 rounded-lg bg-muted flex-shrink-0 overflow-hidden">
+          {episode.podcast?.imageUrl ? (
+            <Image
+              src={episode.podcast.imageUrl}
+              alt={episode.podcast.title}
+              fill
+              className="w-full h-full object-cover rounded-lg"
+            />
+          ) : (
+            <div className="w-full h-full bg-muted flex items-center justify-center">
+              <span className="text-xs text-muted-foreground">No Image</span>
+            </div>
+          )}
+        </div>
 
-      <div className="flex-1 min-w-0">
-        <h3 className="text-base font-semibold leading-tight line-clamp-2 mb-1">
-          {episode.title}
-        </h3>
-        <p className="text-muted-foreground text-sm">
-          {episode.podcast?.title}
-        </p>
+        <div className="flex-1 min-w-0">
+          <h3 className="text-base font-semibold leading-tight line-clamp-2 mb-1">
+            {episode.title}
+          </h3>
+          <p className="text-muted-foreground text-sm">
+            {episode.podcast?.title}
+          </p>
+        </div>
       </div>
-
-      <div className="flex items-center">
-        <Button variant="ghost" size="sm" asChild>
-          <Link href={`/episode/${episode.id}`}>
-            <ExternalLink className="h-4 w-4" />
-          </Link>
-        </Button>
-      </div>
-    </div>
+    </Link>
   );
 }
 
 export default function Dashboard() {
   const trpc = useTRPC();
+  const queryClient = useQueryClient();
   const { data: unprocessedEpisodes, isLoading } = useQuery(
     trpc.episodes.getUnprocessed.queryOptions({ limit: 50 }),
   );
+
+  const parseFeed = useMutation({
+    ...trpc.podcasts.parseFeed.mutationOptions(),
+    onSuccess: () => {
+      // Refresh the unprocessed episodes list
+      queryClient.invalidateQueries({
+        queryKey: trpc.episodes.getUnprocessed.queryKey(),
+      });
+    },
+  });
 
   const groupedEpisodes = useMemo(() => {
     if (!unprocessedEpisodes) return {};
@@ -144,15 +150,8 @@ export default function Dashboard() {
             })
             .map(([dateGroup, episodes]) => (
               <div key={dateGroup}>
-                <div className="flex items-center justify-between mb-6">
+                <div className="mb-6">
                   <h3 className="text-lg font-semibold">{dateGroup}</h3>
-                  <Button variant="ghost" className="text-xs underline" asChild>
-                    <Link
-                      href={`/episode/process?${episodes.map((ep) => `episodes=${ep.id}`).join("&")}`}
-                    >
-                      Process {episodes.length} episodes
-                    </Link>
-                  </Button>
                 </div>
                 <div className="space-y-0">
                   {episodes.map((episode) => (
@@ -167,9 +166,22 @@ export default function Dashboard() {
           <div className="text-muted-foreground text-lg mb-4">
             No unprocessed episodes found
           </div>
-          <p className="text-sm text-muted-foreground">
-            All episodes have been processed!
+          <p className="text-sm text-muted-foreground mb-6">
+            Add a podcast to get started!
           </p>
+          <AddPodcastDialog
+            onPodcastAdded={(result) => {
+              // Call parseFeed mutation when podcast is successfully added
+              if (result?.success && result.podcast?.id) {
+                parseFeed.mutate({ podcastId: result.podcast.id });
+              }
+            }}
+          >
+            <Button>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Podcast
+            </Button>
+          </AddPodcastDialog>
         </div>
       )}
     </main>

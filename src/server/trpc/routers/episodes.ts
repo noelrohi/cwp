@@ -1,12 +1,12 @@
 import { createClient } from "@deepgram/sdk";
 import { put } from "@vercel/blob";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
-import { episode } from "@/server/db/schema";
-import { createTRPCRouter, protectedProcedure } from "../init";
+import { episode } from "@/server/db/schema/podcast";
+import { createTRPCRouter, protectedProcedure, publicProcedure } from "../init";
 
 export const episodesRouter = createTRPCRouter({
-  get: protectedProcedure
+  get: publicProcedure
     .input(
       z.object({
         episodeId: z.string(),
@@ -14,7 +14,7 @@ export const episodesRouter = createTRPCRouter({
     )
     .query(async ({ ctx, input }) => {
       const episodeData = await ctx.db.query.episode.findFirst({
-        where: eq(episode.id, input.episodeId),
+        where: and(eq(episode.id, input.episodeId)),
         with: {
           podcast: true,
         },
@@ -41,7 +41,7 @@ export const episodesRouter = createTRPCRouter({
       const status = input?.status ?? "pending";
 
       const rows = await ctx.db.query.episode.findMany({
-        where: (episodes, { eq }) => eq(episodes.status, status),
+        where: and(eq(episode.status, status), eq(episode.userId, ctx.user.id)),
         limit,
         orderBy: [desc(episode.publishedAt)],
         with: {
@@ -60,7 +60,13 @@ export const episodesRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const episodeData = await ctx.db.query.episode.findFirst({
-        where: eq(episode.id, input.episodeId),
+        where: and(
+          eq(episode.id, input.episodeId),
+          eq(episode.userId, ctx.user.id),
+        ),
+        with: {
+          podcast: true,
+        },
       });
 
       if (!episodeData) {

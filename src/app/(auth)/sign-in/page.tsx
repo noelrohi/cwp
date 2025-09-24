@@ -1,12 +1,19 @@
 "use client";
 import { IconBrandGoogle } from "@tabler/icons-react";
 import Link from "next/link";
+import { useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { authClient, signIn } from "@/lib/auth-client";
 
 export default function SignInPage() {
   const lastMethod = authClient.getLastUsedLoginMethod();
+  const [isPending, startTransition] = useTransition();
+  const handleSignIn = () => {
+    startTransition(() => {
+      signIn.social({ provider: "google" });
+    });
+  };
   return (
     <div className="w-full max-w-sm">
       <div className="flex flex-col gap-6">
@@ -20,7 +27,8 @@ export default function SignInPage() {
         <div className="flex flex-col gap-2">
           <Button
             variant="outline"
-            onClick={() => signIn.social({ provider: "google" })}
+            onClick={handleSignIn}
+            disabled={isPending}
             className="justify-start relative"
           >
             <IconBrandGoogle className="size-4" />

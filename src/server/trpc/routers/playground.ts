@@ -1,6 +1,6 @@
 import { openai } from "@ai-sdk/openai";
 import { embed } from "ai";
-import { cosineDistance, desc, eq, sql } from "drizzle-orm";
+import { and, cosineDistance, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   episode as episodeSchema,
@@ -93,7 +93,10 @@ export const playgroundRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       // Get episode with transcript
       const episodeData = await ctx.db.query.episode.findFirst({
-        where: eq(episodeSchema.id, input.episodeId),
+        where: and(
+          eq(episodeSchema.id, input.episodeId),
+          eq(episodeSchema.userId, ctx.user.id),
+        ),
       });
 
       if (!episodeData?.transcriptUrl) {
@@ -187,7 +190,18 @@ export const playgroundRouter = createTRPCRouter({
         input.query,
       );
 
-      // First check if there are any chunks for this episode
+      // First check if episode belongs to user and has chunks
+      const episodeCheck = await ctx.db.query.episode.findFirst({
+        where: and(
+          eq(episodeSchema.id, input.episodeId),
+          eq(episodeSchema.userId, ctx.user.id),
+        ),
+      });
+
+      if (!episodeCheck) {
+        throw new Error("Episode not found");
+      }
+
       const existingChunks = await ctx.db
         .select({ count: sql<number>`count(*)` })
         .from(transcriptChunk)

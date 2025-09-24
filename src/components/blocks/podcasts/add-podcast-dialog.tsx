@@ -46,9 +46,21 @@ type iTunesResult = {
   genres: string[];
 };
 
+type AddPodcastResult = {
+  success: boolean;
+  podcast?: {
+    id: string;
+    title: string;
+    description?: string | null;
+    imageUrl?: string | null;
+    feedUrl?: string | null;
+  };
+  message: string;
+};
+
 type AddPodcastDialogProps = {
   children: React.ReactNode;
-  onPodcastAdded?: () => void;
+  onPodcastAdded?: (result: AddPodcastResult) => void;
 };
 
 export function AddPodcastDialog({
@@ -87,7 +99,7 @@ export function AddPodcastDialog({
   const handlePodcastSelect = async (podcast: iTunesResult) => {
     setAddingPodcastId(podcast.collectionId);
     try {
-      await addPodcast.mutateAsync({
+      const result = await addPodcast.mutateAsync({
         podcastId: podcast.collectionId.toString(),
         title: podcast.collectionName,
         description: podcast.primaryGenreName,
@@ -100,7 +112,7 @@ export function AddPodcastDialog({
         queryKey: trpc.podcasts.list.queryKey(),
       });
 
-      onPodcastAdded?.();
+      onPodcastAdded?.(result);
       setIsOpen(false);
       setSearchQuery("");
       setSearchResults([]);
