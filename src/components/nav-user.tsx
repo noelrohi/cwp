@@ -115,6 +115,7 @@ export function NavUser() {
             <DropdownMenuItem
               onClick={() => {
                 signOut();
+                router.refresh();
               }}
             >
               <IconLogout />
