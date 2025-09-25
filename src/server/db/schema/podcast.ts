@@ -1,31 +1,14 @@
 import { relations } from "drizzle-orm";
 import {
-  date,
   doublePrecision,
   index,
   integer,
-  jsonb,
   pgEnum,
   pgTable,
   text,
   timestamp,
   vector,
 } from "drizzle-orm/pg-core";
-
-export type PatternEntityJson = {
-  label: string;
-  category: string;
-  confidence?: number | null;
-};
-
-export type PatternClaimJson = {
-  quote: string;
-  speaker?: string | null;
-  timestamp?: number | null;
-  confidence?: number | null;
-};
-
-export type PatternMetadataJson = Record<string, unknown> | null;
 
 export const episodeStatusEnum = pgEnum("episode_status", [
   "pending",
@@ -64,12 +47,8 @@ export const episode = pgTable(
       onDelete: "cascade",
     }),
     userId: text("user_id").notNull(),
-    series: text("series"),
     title: text("title").notNull(),
-    guest: text("guest"),
-    hostName: text("host_name"),
     publishedAt: timestamp("published_at", { withTimezone: true }),
-    language: text("language"),
     durationSec: integer("duration_sec"),
     audioUrl: text("audio_url"),
     transcriptUrl: text("transcript_url"),
@@ -83,109 +62,101 @@ export const episode = pgTable(
       .$onUpdate(() => new Date())
       .notNull(),
   },
-  (table) => [index().on(table.userId)],
+  (table) => [index().on(table.userId), index().on(table.status)],
 );
 
-export const patternStatusEnum = pgEnum("pattern_status", [
-  "pending",
-  "completed",
-  "failed",
-]);
-
-export const patternEvidenceTypeEnum = pgEnum("pattern_evidence_type", [
-  "entity",
-  "claim",
-]);
-
-export const pattern = pgTable(
-  "pattern",
+export const transcriptChunk = pgTable(
+  "transcript_chunk",
   {
     id: text("id").primaryKey(),
-    userId: text("user_id").notNull(),
-    episodeId: text("episode_id").references(() => episode.id, {
-      onDelete: "set null",
-    }),
-    patternDate: date("pattern_date").notNull(),
-    status: patternStatusEnum("status").default("pending").notNull(),
-    title: text("title").notNull(),
-    synthesis: text("synthesis").notNull(),
-    entities: jsonb("entities").$type<PatternEntityJson[] | null>(),
-    claims: jsonb("claims").$type<PatternClaimJson[] | null>(),
-    metadata: jsonb("metadata").$type<PatternMetadataJson>(),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .defaultNow()
-      .$onUpdate(() => new Date())
-      .notNull(),
-  },
-  (table) => [
-    index().on(table.userId),
-    index().on(table.patternDate),
-    index().on(table.episodeId),
-  ],
-);
-
-export const patternEvidence = pgTable(
-  "pattern_evidence",
-  {
-    id: text("id").primaryKey(),
-    patternId: text("pattern_id")
-      .references(() => pattern.id, { onDelete: "cascade" })
-      .notNull(),
     episodeId: text("episode_id")
       .references(() => episode.id, { onDelete: "cascade" })
       .notNull(),
-    userId: text("user_id").notNull(),
     speaker: text("speaker"),
     content: text("content").notNull(),
-    evidenceType: patternEvidenceTypeEnum("evidence_type")
-      .default("entity")
-      .notNull(),
-    entityLabel: text("entity_label"),
-    entityCategory: text("entity_category"),
-    confidence: doublePrecision("confidence"),
-    showAtSec: integer("show_at_sec"),
-    endAtSec: integer("end_at_sec"),
-    episodeTitle: text("episode_title"),
-    podcastTitle: text("podcast_title"),
-    podcastSeries: text("podcast_series"),
+    startTimeSec: integer("start_time_sec"),
+    endTimeSec: integer("end_time_sec"),
+    wordCount: integer("word_count"),
+    embedding: vector("embedding", { dimensions: 1536 }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .defaultNow()
-      .$onUpdate(() => new Date())
-      .notNull(),
   },
   (table) => [
-    index().on(table.patternId),
     index().on(table.episodeId),
-    index().on(table.userId),
+    index().using("hnsw", table.embedding.op("vector_cosine_ops")),
   ],
 );
 
+// Core feedback loop - this is what trains your model
+export const dailySignal = pgTable(
+  "daily_signal",
+  {
+    id: text("id").primaryKey(),
+    chunkId: text("chunk_id")
+      .references(() => transcriptChunk.id, { onDelete: "cascade" })
+      .notNull(),
+    userId: text("user_id").notNull(),
+    signalDate: timestamp("signal_date", { withTimezone: true }).notNull(),
+    relevanceScore: doublePrecision("relevance_score").notNull(), // 0.0 to 1.0
+    userAction: text("user_action"), // "saved", "skipped", null (pending)
+    presentedAt: timestamp("presented_at", { withTimezone: true }),
+    actionedAt: timestamp("actioned_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index().on(table.userId, table.signalDate),
+    index().on(table.userAction),
+    index().on(table.relevanceScore),
+  ],
+);
+
+// Your personalization engine
+export const userPreferences = pgTable(
+  "user_preferences",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().unique(),
+    centroidEmbedding: vector("centroid_embedding", { dimensions: 1536 }),
+    totalSaved: integer("total_saved").default(0).notNull(),
+    totalSkipped: integer("total_skipped").default(0).notNull(),
+    lastUpdated: timestamp("last_updated", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index().on(table.userId),
+    index().using("hnsw", table.centroidEmbedding.op("vector_cosine_ops")),
+  ],
+);
+
+// Optional: for saved items you want to reference later
+export const savedChunk = pgTable(
+  "saved_chunk",
+  {
+    id: text("id").primaryKey(),
+    chunkId: text("chunk_id")
+      .references(() => transcriptChunk.id, { onDelete: "cascade" })
+      .notNull(),
+    userId: text("user_id").notNull(),
+    tags: text("tags"), // comma-separated, user-defined
+    notes: text("notes"),
+    savedAt: timestamp("saved_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [index().on(table.userId), index().on(table.savedAt)],
+);
+
+// Relations
 export const podcastRelations = relations(podcast, ({ many }) => ({
   episodes: many(episode),
 }));
-
-export const transcriptChunk = pgTable("transcript_chunk", {
-  id: text("id").primaryKey(),
-  episodeId: text("episode_id")
-    .references(() => episode.id, { onDelete: "cascade" })
-    .notNull(),
-  speaker: text("speaker"),
-  content: text("content").notNull(),
-  embedding: vector("embedding", { dimensions: 1536 }), // OpenAI text-embedding-3-small dimensions
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .defaultNow()
-    .$onUpdate(() => new Date())
-    .notNull(),
-});
 
 export const episodeRelations = relations(episode, ({ one, many }) => ({
   podcast: one(podcast, {
@@ -193,50 +164,26 @@ export const episodeRelations = relations(episode, ({ one, many }) => ({
     references: [podcast.id],
   }),
   transcriptChunks: many(transcriptChunk),
-  evidences: many(patternEvidence),
-  patterns: many(pattern),
 }));
-
-export const savedChunk = pgTable("saved_chunk", {
-  id: text("id").primaryKey(),
-  chunkId: text("chunk_id")
-    .references(() => transcriptChunk.id, { onDelete: "cascade" })
-    .notNull(),
-  userId: text("user_id").notNull(),
-  query: text("query").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .defaultNow()
-    .$onUpdate(() => new Date())
-    .notNull(),
-});
-
-export const userCentroid = pgTable("user_centroid", {
-  id: text("id").primaryKey(),
-  userId: text("user_id").notNull().unique(),
-  centroidEmbedding: vector("centroid_embedding", { dimensions: 1536 }),
-  savedCount: integer("saved_count").default(0).notNull(),
-  skippedCount: integer("skipped_count").default(0).notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .defaultNow()
-    .$onUpdate(() => new Date())
-    .notNull(),
-});
 
 export const transcriptChunkRelations = relations(
   transcriptChunk,
-  ({ one }) => ({
+  ({ one, many }) => ({
     episode: one(episode, {
       fields: [transcriptChunk.episodeId],
       references: [episode.id],
     }),
+    dailySignals: many(dailySignal),
+    savedChunks: many(savedChunk),
   }),
 );
+
+export const dailySignalRelations = relations(dailySignal, ({ one }) => ({
+  chunk: one(transcriptChunk, {
+    fields: [dailySignal.chunkId],
+    references: [transcriptChunk.id],
+  }),
+}));
 
 export const savedChunkRelations = relations(savedChunk, ({ one }) => ({
   chunk: one(transcriptChunk, {
@@ -244,32 +191,3 @@ export const savedChunkRelations = relations(savedChunk, ({ one }) => ({
     references: [transcriptChunk.id],
   }),
 }));
-
-export const userCentroidRelations = relations(userCentroid, ({ one }) => ({
-  user: one(savedChunk, {
-    fields: [userCentroid.userId],
-    references: [savedChunk.userId],
-  }),
-}));
-
-export const patternRelations = relations(pattern, ({ one, many }) => ({
-  evidences: many(patternEvidence),
-  episode: one(episode, {
-    fields: [pattern.episodeId],
-    references: [episode.id],
-  }),
-}));
-
-export const patternEvidenceRelations = relations(
-  patternEvidence,
-  ({ one }) => ({
-    pattern: one(pattern, {
-      fields: [patternEvidence.patternId],
-      references: [pattern.id],
-    }),
-    episode: one(episode, {
-      fields: [patternEvidence.episodeId],
-      references: [episode.id],
-    }),
-  }),
-);

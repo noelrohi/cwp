@@ -1,12 +1,10 @@
 import { createClient as createDeepgramClient } from "@deepgram/sdk";
 import { put } from "@vercel/blob";
-import { eq, sql } from "drizzle-orm";
-import { nanoid } from "nanoid";
+import { eq } from "drizzle-orm";
 import { generateEmbedding } from "@/lib/embedding";
 import type { db as dbInstance } from "@/server/db";
 import {
   episode as episodeSchema,
-  patternEvidence,
   transcriptChunk,
 } from "@/server/db/schema/podcast";
 import type { TranscriptData, TranscriptUtterance } from "@/types/transcript";
@@ -255,108 +253,4 @@ function buildChunksFromTranscript({
   }
 
   return chunks;
-}
-
-export type EvidenceRecord = typeof patternEvidence.$inferSelect;
-
-export interface EvidenceInput {
-  patternId: string;
-  episodeId: string;
-  userId: string;
-  speaker: string | null;
-  content: string;
-  evidenceType: (typeof patternEvidence.$inferInsert)["evidenceType"];
-  entityLabel?: string | null;
-  entityCategory?: string | null;
-  confidence?: number | null;
-  showAtSec?: number | null;
-  endAtSec?: number | null;
-  episodeTitle?: string | null;
-  podcastTitle?: string | null;
-  podcastSeries?: string | null;
-}
-
-export async function saveEvidenceRecords(
-  db: DatabaseClient,
-  evidences: EvidenceInput[],
-) {
-  if (evidences.length === 0) {
-    return;
-  }
-
-  const sanitizeIdSegment = (value: string) =>
-    value
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "");
-
-  const buildEvidenceId = (item: EvidenceInput) => {
-    const segments = ["evidence", item.patternId, item.episodeId];
-
-    if (item.showAtSec != null) {
-      segments.push(`t${item.showAtSec}`);
-    }
-    if (item.evidenceType) {
-      segments.push(item.evidenceType);
-    }
-
-    if (item.entityLabel) {
-      const sanitisedLabel = sanitizeIdSegment(item.entityLabel);
-      if (sanitisedLabel) {
-        segments.push(sanitisedLabel);
-      }
-    }
-
-    const candidate = segments.join("_");
-    if (candidate.length <= 255) {
-      return candidate;
-    }
-
-    return `${candidate.slice(0, 200)}_${nanoid(6)}`;
-  };
-
-  const values = evidences.map((item) => ({
-    id:
-      item.showAtSec == null
-        ? `evidence_${item.patternId}_${nanoid(6)}`
-        : buildEvidenceId(item),
-    patternId: item.patternId,
-    episodeId: item.episodeId,
-    userId: item.userId,
-    speaker: item.speaker,
-    content: item.content,
-    evidenceType: item.evidenceType,
-    entityLabel: item.entityLabel ?? null,
-    entityCategory: item.entityCategory ?? null,
-    confidence: item.confidence ?? null,
-    showAtSec: item.showAtSec ?? null,
-    endAtSec: item.endAtSec ?? null,
-    episodeTitle: item.episodeTitle ?? null,
-    podcastTitle: item.podcastTitle ?? null,
-    podcastSeries: item.podcastSeries ?? null,
-  }));
-
-  await db
-    .insert(patternEvidence)
-    .values(values)
-    .onConflictDoUpdate({
-      target: patternEvidence.id,
-      set: {
-        patternId: sql`excluded.pattern_id`,
-        episodeId: sql`excluded.episode_id`,
-        userId: sql`excluded.user_id`,
-        speaker: sql`excluded.speaker`,
-        content: sql`excluded.content`,
-        evidenceType: sql`excluded.evidence_type`,
-        entityLabel: sql`excluded.entity_label`,
-        entityCategory: sql`excluded.entity_category`,
-        confidence: sql`excluded.confidence`,
-        showAtSec: sql`excluded.show_at_sec`,
-        endAtSec: sql`excluded.end_at_sec`,
-        episodeTitle: sql`excluded.episode_title`,
-        podcastTitle: sql`excluded.podcast_title`,
-        podcastSeries: sql`excluded.podcast_series`,
-        updatedAt: sql`now()`,
-      },
-    });
 }

@@ -8,7 +8,6 @@ import {
   Download,
   FileText,
   Play,
-  User,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -146,13 +145,6 @@ export default function EpisodeDetailPage(props: {
           <h1 className="text-2xl font-bold mb-3">{episodeData?.title}</h1>
 
           <div className="flex items-center gap-6 text-sm text-muted-foreground mb-4">
-            {episodeData?.guest && (
-              <div className="flex items-center gap-1">
-                <User className="h-4 w-4" />
-                Guest: {episodeData.guest}
-              </div>
-            )}
-
             {episodeData?.publishedAt && (
               <div className="flex items-center gap-1">
                 <Calendar className="h-4 w-4" />

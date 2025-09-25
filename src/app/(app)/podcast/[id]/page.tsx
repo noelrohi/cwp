@@ -187,11 +187,7 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
                   <h3 className="font-medium text-sm mb-1 hover:text-primary">
                     {episode.title}
                   </h3>
-                  {episode.guest && (
-                    <p className="text-xs text-muted-foreground mb-2">
-                      Guest: {episode.guest}
-                    </p>
-                  )}
+
                   <div className="flex items-center gap-4 text-xs text-muted-foreground">
                     <span>
                       {episode.publishedAt
