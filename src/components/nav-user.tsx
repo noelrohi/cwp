@@ -104,9 +104,7 @@ export function NavUser() {
                 <IconUserCircle />
                 Account
               </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => router.push("/settings/billing")}
-              >
+              <DropdownMenuItem disabled>
                 <IconSettings />
                 Settings
               </DropdownMenuItem>
