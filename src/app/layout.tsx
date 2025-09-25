@@ -41,7 +41,7 @@ export default function RootLayout({
           {/* <AutumnProvider betterAuthUrl={process.env.NEXT_PUBLIC_APP_URL}> */}
           <NuqsAdapter>{children}</NuqsAdapter>
           {/* </AutumnProvider> */}
-          <Toaster />
+          <Toaster richColors />
         </TRPCProviders>
         <Analytics />
       </body>
