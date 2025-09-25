@@ -1,6 +1,11 @@
 "use client";
 
-import { LayoutDashboardIcon, LightbulbIcon, MicIcon } from "lucide-react";
+import {
+  LayoutDashboardIcon,
+  LightbulbIcon,
+  MicIcon,
+  ShieldIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +16,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { useSession } from "@/lib/auth-client";
 
 type NavItem = {
   title: string;
@@ -51,12 +57,27 @@ const items: NavItem[] = [
 
 export function NavMain() {
   const pathname = usePathname();
+  const { data: session } = useSession();
+  const isAdmin = session?.user?.role === "admin";
+
+  const allItems = [
+    ...items,
+    ...(isAdmin
+      ? [
+          {
+            title: "Admin",
+            icon: ShieldIcon,
+            url: "/admin",
+          },
+        ]
+      : []),
+  ];
 
   return (
     <SidebarGroup>
       <SidebarGroupContent className="flex flex-col gap-2">
         <SidebarMenu>
-          {items.map((item) => {
+          {allItems.map((item) => {
             const isActive = pathname === item.url;
             return (
               <SidebarMenuItem key={item.title}>
