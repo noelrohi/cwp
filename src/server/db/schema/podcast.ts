@@ -99,6 +99,9 @@ export const dailySignal = pgTable(
     userId: text("user_id").notNull(),
     signalDate: timestamp("signal_date", { withTimezone: true }).notNull(),
     relevanceScore: doublePrecision("relevance_score").notNull(), // 0.0 to 1.0
+    title: text("title"),
+    summary: text("summary"),
+    excerpt: text("excerpt"),
     userAction: text("user_action"), // "saved", "skipped", null (pending)
     presentedAt: timestamp("presented_at", { withTimezone: true }),
     actionedAt: timestamp("actioned_at", { withTimezone: true }),

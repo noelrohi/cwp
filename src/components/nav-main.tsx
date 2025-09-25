@@ -2,6 +2,7 @@
 
 import {
   LayoutDashboardIcon,
+  LightbulbIcon,
   MicIcon,
   SettingsIcon,
   SparklesIcon,
@@ -29,6 +30,11 @@ const items: NavItem[] = [
     title: "Dashboard",
     icon: LayoutDashboardIcon,
     url: "/dashboard",
+  },
+  {
+    title: "Signals",
+    icon: LightbulbIcon,
+    url: "/signals",
   },
   {
     title: "Podcasts",

@@ -1,8 +1,20 @@
 import { serve } from "inngest/next";
 import { inngest } from "@/inngest/client";
-import { helloWorld } from "@/inngest/functions/hello";
+import {
+  dailyIntelligencePipeline,
+  helloWorld,
+  monthlyCleanup,
+  updateUserPreferences,
+  weeklyPreferencesOptimization,
+} from "@/inngest/functions/index";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
-  functions: [helloWorld],
+  functions: [
+    helloWorld,
+    dailyIntelligencePipeline,
+    updateUserPreferences,
+    weeklyPreferencesOptimization,
+    monthlyCleanup,
+  ],
 });

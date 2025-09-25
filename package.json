@@ -14,6 +14,7 @@
     "db:push:dev": "drizzle-kit push --config=drizzle.config.dev.ts",
     "db:studio": "drizzle-kit studio",
     "db:studio:dev": "drizzle-kit studio --config=drizzle.config.dev.ts",
+    "db:backfill:user-preferences": "tsx scripts/backfill-user-preferences.ts",
     "ui": "pnpm dlx shadcn@latest"
   },
   "dependencies": {
