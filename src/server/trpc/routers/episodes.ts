@@ -3,7 +3,6 @@ import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { inngest } from "@/inngest/client";
 import { episode } from "@/server/db/schema/podcast";
-import { ensureEpisodeTranscript } from "@/server/lib/transcript-processing";
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "../init";
 
 export const episodesRouter = createTRPCRouter({
@@ -75,55 +74,6 @@ export const episodesRouter = createTRPCRouter({
       });
 
       return rows;
-    }),
-
-  generateTranscript: protectedProcedure
-    .input(
-      z.object({
-        episodeId: z.string(),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      const episodeData = await ctx.db.query.episode.findFirst({
-        where: and(
-          eq(episode.id, input.episodeId),
-          eq(episode.userId, ctx.user.id),
-        ),
-        with: {
-          podcast: true,
-        },
-      });
-
-      if (!episodeData) {
-        throw new Error("Episode not found");
-      }
-
-      if (!episodeData.audioUrl) {
-        throw new Error("Episode has no audio URL");
-      }
-
-      if (episodeData.transcriptUrl) {
-        throw new Error("Episode already has a transcript");
-      }
-
-      try {
-        const result = await ensureEpisodeTranscript({
-          db: ctx.db,
-          episode: episodeData,
-        });
-
-        return {
-          success: true,
-          transcriptUrl: result.transcriptUrl,
-          duration: result.duration,
-        };
-      } catch (error) {
-        console.error(
-          `Failed to generate transcript for episode ${input.episodeId}:`,
-          error,
-        );
-        throw error;
-      }
     }),
 
   processEpisode: protectedProcedure
