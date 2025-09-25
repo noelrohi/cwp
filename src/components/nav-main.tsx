@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  LayoutDashboardIcon,
-  LightbulbIcon,
-  MicIcon,
-  SettingsIcon,
-  SparklesIcon,
-} from "lucide-react";
+import { LayoutDashboardIcon, LightbulbIcon, MicIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -41,18 +35,18 @@ const items: NavItem[] = [
     icon: MicIcon,
     url: "/podcasts",
   },
-  {
-    title: "Patterns",
-    icon: SparklesIcon,
-    url: "/patterns",
-    badge: "Soon",
-  },
-  {
-    title: "Preferences",
-    icon: SettingsIcon,
-    url: "/preferences",
-    badge: "Soon",
-  },
+  // {
+  //   title: "Patterns",
+  //   icon: SparklesIcon,
+  //   url: "/patterns",
+  //   badge: "Soon",
+  // },
+  // {
+  //   title: "Preferences",
+  //   icon: SettingsIcon,
+  //   url: "/preferences",
+  //   badge: "Soon",
+  // },
 ];
 
 export function NavMain() {
