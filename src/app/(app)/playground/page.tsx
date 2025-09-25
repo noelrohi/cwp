@@ -353,9 +353,9 @@ export default function PlaygroundPage() {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-8">
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="full-transcript">Full Transcript</TabsTrigger>
+          <TabsTrigger value="transcript">Chunked Transcript</TabsTrigger>
           <TabsTrigger value="similar">Similar Chunks</TabsTrigger>
           <TabsTrigger value="saved">Saved Chunks</TabsTrigger>
-          <TabsTrigger value="transcript">Chunked Transcript</TabsTrigger>
         </TabsList>
 
         <TabsContent value="similar" className="mt-6">
@@ -518,34 +518,24 @@ export default function PlaygroundPage() {
             {episodeData?.transcriptChunks &&
             episodeData.transcriptChunks.length > 0 ? (
               <div className="space-y-3">
-                {episodeData.transcriptChunks
-                  .slice(0, 5)
-                  .map((chunk, index) => (
-                    <div
-                      key={chunk.id}
-                      className="rounded-lg border bg-background p-3"
-                    >
-                      <div className="mb-2 flex items-center gap-2">
-                        <span className="text-xs font-mono text-muted-foreground">
-                          Chunk {index + 1}
+                {episodeData.transcriptChunks.map((chunk, index) => (
+                  <div
+                    key={chunk.id}
+                    className="rounded-lg border bg-background p-3"
+                  >
+                    <div className="mb-2 flex items-center gap-2">
+                      <span className="text-xs font-mono text-muted-foreground">
+                        Chunk {index + 1}
+                      </span>
+                      {chunk.speaker && (
+                        <span className="text-xs font-medium text-muted-foreground">
+                          Speaker {chunk.speaker}
                         </span>
-                        {chunk.speaker && (
-                          <span className="text-xs font-medium text-muted-foreground">
-                            Speaker {chunk.speaker}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-sm line-clamp-2">{chunk.content}</p>
+                      )}
                     </div>
-                  ))}
-                {episodeData.transcriptChunks.length > 5 && (
-                  <div className="py-2 text-center">
-                    <p className="text-xs text-muted-foreground">
-                      Showing first 5 of {episodeData.transcriptChunks.length}{" "}
-                      chunks
-                    </p>
+                    <p className="text-sm line-clamp-2">{chunk.content}</p>
                   </div>
-                )}
+                ))}
               </div>
             ) : (
               <div className="py-8 text-center">
@@ -560,7 +550,9 @@ export default function PlaygroundPage() {
 
         <TabsContent value="full-transcript" className="mt-6">
           <div className="rounded-lg border bg-muted/30 p-6">
-            <h2 className="text-xl font-semibold mb-4">Full Transcript</h2>
+            {!transcript && (
+              <h2 className="text-xl font-semibold mb-4">Full Transcript</h2>
+            )}
             {!episodeData?.transcriptUrl ? (
               <div className="py-8 text-center">
                 <FileText className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />

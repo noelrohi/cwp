@@ -1,13 +1,31 @@
 import { relations } from "drizzle-orm";
 import {
+  date,
+  doublePrecision,
   index,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   text,
   timestamp,
   vector,
 } from "drizzle-orm/pg-core";
+
+export type PatternEntityJson = {
+  label: string;
+  category: string;
+  confidence?: number | null;
+};
+
+export type PatternClaimJson = {
+  quote: string;
+  speaker?: string | null;
+  timestamp?: number | null;
+  confidence?: number | null;
+};
+
+export type PatternMetadataJson = Record<string, unknown> | null;
 
 export const episodeStatusEnum = pgEnum("episode_status", [
   "pending",
@@ -68,6 +86,86 @@ export const episode = pgTable(
   (table) => [index().on(table.userId)],
 );
 
+export const patternStatusEnum = pgEnum("pattern_status", [
+  "pending",
+  "completed",
+  "failed",
+]);
+
+export const patternEvidenceTypeEnum = pgEnum("pattern_evidence_type", [
+  "entity",
+  "claim",
+]);
+
+export const pattern = pgTable(
+  "pattern",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    episodeId: text("episode_id").references(() => episode.id, {
+      onDelete: "set null",
+    }),
+    patternDate: date("pattern_date").notNull(),
+    status: patternStatusEnum("status").default("pending").notNull(),
+    title: text("title").notNull(),
+    synthesis: text("synthesis").notNull(),
+    entities: jsonb("entities").$type<PatternEntityJson[] | null>(),
+    claims: jsonb("claims").$type<PatternClaimJson[] | null>(),
+    metadata: jsonb("metadata").$type<PatternMetadataJson>(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    index().on(table.userId),
+    index().on(table.patternDate),
+    index().on(table.episodeId),
+  ],
+);
+
+export const patternEvidence = pgTable(
+  "pattern_evidence",
+  {
+    id: text("id").primaryKey(),
+    patternId: text("pattern_id")
+      .references(() => pattern.id, { onDelete: "cascade" })
+      .notNull(),
+    episodeId: text("episode_id")
+      .references(() => episode.id, { onDelete: "cascade" })
+      .notNull(),
+    userId: text("user_id").notNull(),
+    speaker: text("speaker"),
+    content: text("content").notNull(),
+    evidenceType: patternEvidenceTypeEnum("evidence_type")
+      .default("entity")
+      .notNull(),
+    entityLabel: text("entity_label"),
+    entityCategory: text("entity_category"),
+    confidence: doublePrecision("confidence"),
+    showAtSec: integer("show_at_sec"),
+    endAtSec: integer("end_at_sec"),
+    episodeTitle: text("episode_title"),
+    podcastTitle: text("podcast_title"),
+    podcastSeries: text("podcast_series"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    index().on(table.patternId),
+    index().on(table.episodeId),
+    index().on(table.userId),
+  ],
+);
+
 export const podcastRelations = relations(podcast, ({ many }) => ({
   episodes: many(episode),
 }));
@@ -95,6 +193,8 @@ export const episodeRelations = relations(episode, ({ one, many }) => ({
     references: [podcast.id],
   }),
   transcriptChunks: many(transcriptChunk),
+  evidences: many(patternEvidence),
+  patterns: many(pattern),
 }));
 
 export const savedChunk = pgTable("saved_chunk", {
@@ -151,3 +251,25 @@ export const userCentroidRelations = relations(userCentroid, ({ one }) => ({
     references: [savedChunk.userId],
   }),
 }));
+
+export const patternRelations = relations(pattern, ({ one, many }) => ({
+  evidences: many(patternEvidence),
+  episode: one(episode, {
+    fields: [pattern.episodeId],
+    references: [episode.id],
+  }),
+}));
+
+export const patternEvidenceRelations = relations(
+  patternEvidence,
+  ({ one }) => ({
+    pattern: one(pattern, {
+      fields: [patternEvidence.patternId],
+      references: [pattern.id],
+    }),
+    episode: one(episode, {
+      fields: [patternEvidence.episodeId],
+      references: [episode.id],
+    }),
+  }),
+);

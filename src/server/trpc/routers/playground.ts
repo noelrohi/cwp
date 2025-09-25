@@ -8,6 +8,7 @@ import {
   transcriptChunk,
   userCentroid,
 } from "@/server/db/schema";
+import { chunkEpisodeTranscript } from "@/server/lib/transcript-processing";
 import { createTRPCRouter, protectedProcedure } from "../init";
 
 interface ChunkWithScore {
@@ -91,7 +92,6 @@ export const playgroundRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      // Get episode with transcript
       const episodeData = await ctx.db.query.episode.findFirst({
         where: and(
           eq(episodeSchema.id, input.episodeId),
@@ -103,76 +103,14 @@ export const playgroundRouter = createTRPCRouter({
         throw new Error("Episode or transcript not found");
       }
 
-      // Fetch transcript data
-      const transcriptResponse = await fetch(episodeData.transcriptUrl);
-      if (!transcriptResponse.ok) {
-        throw new Error("Failed to fetch transcript");
-      }
+      const result = await chunkEpisodeTranscript({
+        db: ctx.db,
+        episode: episodeData,
+        minTokens: input.minTokens,
+        maxTokens: input.maxTokens,
+      });
 
-      const transcriptData = await transcriptResponse.json();
-
-      // Delete existing chunks for this episode
-      await ctx.db
-        .delete(transcriptChunk)
-        .where(eq(transcriptChunk.episodeId, input.episodeId));
-
-      // Chunk the transcript
-      const chunks = [];
-      let currentChunk = {
-        content: "",
-        speaker: null as string | null,
-        startSec: 0,
-        endSec: 0,
-      };
-
-      for (const utterance of transcriptData) {
-        const text = utterance.transcript || utterance.text || "";
-        const words = text.split(/\s+/);
-
-        for (const word of words) {
-          if (currentChunk.content.split(/\s+/).length >= input.maxTokens) {
-            // Save current chunk if it meets minimum token requirement
-            if (currentChunk.content.split(/\s+/).length >= input.minTokens) {
-              chunks.push({ ...currentChunk });
-            }
-            // Start new chunk
-            currentChunk = {
-              content: word,
-              speaker: utterance.speaker?.toString() || null,
-              startSec: utterance.start || utterance.startSecond || 0,
-              endSec: utterance.end || utterance.endSecond || 0,
-            };
-          } else {
-            // Add to current chunk
-            currentChunk.content += (currentChunk.content ? " " : "") + word;
-            currentChunk.speaker = utterance.speaker?.toString() || null;
-            currentChunk.endSec = utterance.end || utterance.endSecond || 0;
-          }
-        }
-      }
-
-      // Save the last chunk if it meets minimum token requirement
-      if (currentChunk.content.split(/\s+/).length >= input.minTokens) {
-        chunks.push(currentChunk);
-      }
-
-      // Generate embeddings and save chunks
-      for (const chunk of chunks) {
-        const { embedding } = await embed({
-          model: openai.textEmbeddingModel("text-embedding-3-small"),
-          value: chunk.content,
-        });
-
-        await ctx.db.insert(transcriptChunk).values({
-          id: `chunk_${input.episodeId}_${chunks.indexOf(chunk)}`,
-          episodeId: input.episodeId,
-          speaker: chunk.speaker,
-          content: chunk.content,
-          embedding: embedding,
-        });
-      }
-
-      return { success: true, chunkCount: chunks.length };
+      return { success: true, chunkCount: result.chunkCount };
     }),
 
   findSimilarChunks: protectedProcedure

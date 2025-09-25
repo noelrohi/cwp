@@ -1,8 +1,7 @@
-import { createClient } from "@deepgram/sdk";
-import { put } from "@vercel/blob";
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { episode } from "@/server/db/schema/podcast";
+import { ensureEpisodeTranscript } from "@/server/lib/transcript-processing";
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "../init";
 
 export const episodesRouter = createTRPCRouter({
@@ -106,80 +105,21 @@ export const episodesRouter = createTRPCRouter({
       }
 
       try {
-        // Update status to processing
-        await ctx.db
-          .update(episode)
-          .set({ status: "processing" })
-          .where(eq(episode.id, input.episodeId));
-
-        // Transcribe with Deepgram
-        console.log(`Transcribing audio for episode ${input.episodeId}...`);
-
-        // Transcribe using Deepgram SDK directly
-        const deepgramApiKey = process.env.DEEPGRAM_API_KEY;
-        if (!deepgramApiKey) {
-          throw new Error("DEEPGRAM_API_KEY environment variable is not set");
-        }
-        const deepgram = createClient(deepgramApiKey);
-        const { result, error } =
-          await deepgram.listen.prerecorded.transcribeUrl(
-            { url: episodeData.audioUrl },
-            {
-              model: "nova-3",
-              language: "en",
-              smart_format: true,
-              punctuate: true,
-              paragraphs: true,
-              diarize: true,
-              utterances: true,
-            },
-          );
-
-        if (error) {
-          throw new Error(`Deepgram transcription failed: ${error.message}`);
-        }
-
-        const jsonContent = JSON.stringify(result.results.utterances);
-
-        console.log(jsonContent);
-
-        // Upload transcript as JSON to preserve all metadata
-        console.log(`Uploading transcript for episode ${input.episodeId}...`);
-        const blob = await put(
-          `transcripts/${input.episodeId}-${Date.now().toString()}.json`,
-          jsonContent,
-          {
-            access: "public",
-            contentType: "application/json",
-          },
-        );
-
-        // Update episode with transcript URL and mark as processed
-        await ctx.db
-          .update(episode)
-          .set({
-            transcriptUrl: blob.url,
-            status: "processed",
-          })
-          .where(eq(episode.id, input.episodeId));
+        const result = await ensureEpisodeTranscript({
+          db: ctx.db,
+          episode: episodeData,
+        });
 
         return {
           success: true,
-          transcriptUrl: blob.url,
-          duration: result.metadata.duration,
+          transcriptUrl: result.transcriptUrl,
+          duration: result.duration,
         };
       } catch (error) {
         console.error(
           `Failed to generate transcript for episode ${input.episodeId}:`,
           error,
         );
-
-        // Mark episode as failed
-        await ctx.db
-          .update(episode)
-          .set({ status: "failed" })
-          .where(eq(episode.id, input.episodeId));
-
         throw error;
       }
     }),
