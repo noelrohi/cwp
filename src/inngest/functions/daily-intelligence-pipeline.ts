@@ -250,14 +250,15 @@ export const dailyIntelligenceProcessEpisode = inngest.createFunction(
           : null,
       };
 
-      await step.run("ensure-transcript", async () => {
-        await ensureEpisodeTranscript({
+      const transcriptResult = await step.run("ensure-transcript", async () => {
+        return await ensureEpisodeTranscript({
           db,
           episode: normalisedEpisode,
           force: false,
         });
-        return "ok";
       });
+
+      normalisedEpisode.transcriptUrl = transcriptResult.transcriptUrl;
 
       await step.run("chunk-transcript", async () => {
         await chunkEpisodeTranscript({
