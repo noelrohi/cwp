@@ -36,7 +36,8 @@ const PIPELINE_SETTINGS = {
   minConfidenceScore: 0.7,
 } as const;
 
-const PIPELINE_LOOKBACK_HOURS = 72;
+const PIPELINE_LOOKBACK_HOURS =
+  process.env.NODE_ENV === "development" ? 72 : 24;
 
 const SIGNAL_MODEL_ID = "x-ai/grok-4-fast:free" as const;
 
