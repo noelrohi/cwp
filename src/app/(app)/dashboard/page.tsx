@@ -43,7 +43,7 @@ function EpisodeCard({
   episode: RouterOutput["episodes"]["getUnprocessed"][number];
 }) {
   return (
-    <Link href={`/playground?episodeId=${episode.id}`}>
+    <Link href={`/episode/${episode.id}`}>
       <div className="flex gap-4 mb-4 p-4 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer">
         {/* Podcast Image */}
         <div className="relative h-16 w-16 rounded-lg bg-muted flex-shrink-0 overflow-hidden">

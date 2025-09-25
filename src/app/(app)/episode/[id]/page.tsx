@@ -177,7 +177,7 @@ export default function EpisodeDetailPage(props: {
               {statusLabel && (
                 <Badge
                   variant="secondary"
-                  className="self-start bg-muted text-muted-foreground hover:bg-muted"
+                  className="self-start bg-muted text-muted-foreground hover:bg-muted capitalize"
                 >
                   {statusLabel}
                 </Badge>
@@ -274,10 +274,6 @@ export default function EpisodeDetailPage(props: {
       <section className="mt-12 space-y-5">
         <div className="space-y-1">
           <h2 className="text-xl font-semibold font-serif">Related Signals</h2>
-          <p className="text-sm text-muted-foreground">
-            Intelligence generated for this episode will appear once processing
-            completes.
-          </p>
         </div>
 
         {signals.isLoading ? (
