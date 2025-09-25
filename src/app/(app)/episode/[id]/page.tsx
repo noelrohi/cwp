@@ -7,14 +7,24 @@ import {
   Clock,
   Download,
   FileText,
+  Loader2,
   Play,
+  Sparkles,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { use, useState } from "react";
 import { toast } from "sonner";
 import { TranscriptDisplay } from "@/components/transcript-display";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { useTRPC } from "@/server/trpc/client";
 import type { TranscriptData } from "@/types/transcript";
 
@@ -23,7 +33,6 @@ export default function EpisodeDetailPage(props: {
 }) {
   const trpc = useTRPC();
   const params = use(props.params);
-  const [showTranscript, setShowTranscript] = useState(false);
   const [transcript, setTranscript] = useState<TranscriptData | null>(null);
 
   const episode = useQuery(
@@ -32,15 +41,26 @@ export default function EpisodeDetailPage(props: {
     }),
   );
 
-  const generateTranscript = useMutation(
-    trpc.episodes.generateTranscript.mutationOptions({
-      onSuccess: () => {
-        toast.success("Transcript generated successfully!");
-        // Refetch episode data to get the new transcript
+  const signals = useQuery(
+    trpc.signals.byEpisode.queryOptions({
+      episodeId: params.id,
+    }),
+  );
+
+  const processEpisode = useMutation(
+    trpc.episodes.processEpisode.mutationOptions({
+      onSuccess: (result) => {
+        const isReprocess = result.status === "dispatched";
+        toast.success(
+          isReprocess
+            ? "Episode processing re-run dispatched"
+            : "Episode processing started",
+        );
         episode.refetch();
+        signals.refetch();
       },
       onError: (error) => {
-        toast.error(`Failed to generate transcript: ${error.message}`);
+        toast.error(`Failed to process episode: ${error.message}`);
       },
     }),
   );
@@ -52,11 +72,7 @@ export default function EpisodeDetailPage(props: {
         throw new Error("Failed to fetch transcript");
       }
       const jsonData = await response.json();
-      console.log("---");
-      console.log(JSON.stringify(Object.keys(jsonData), null, 2));
-      console.log("---");
       setTranscript(jsonData);
-      setShowTranscript(true);
     } catch (_error) {
       toast.error("Failed to load transcript");
     }
@@ -98,6 +114,17 @@ export default function EpisodeDetailPage(props: {
   }
 
   const episodeData = episode.data;
+  const relatedSignals = signals.data ?? [];
+  const isProcessing =
+    episodeData?.status === "processing" || processEpisode.isPending;
+  const processButtonLabel = (() => {
+    if (isProcessing) return "Processing...";
+    if (episodeData?.status === "processed") return "Re-run Processing";
+    return "Process Episode";
+  })();
+  const statusLabel = episodeData?.status
+    ? episodeData.status.replace(/_/g, " ")
+    : null;
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
@@ -115,14 +142,14 @@ export default function EpisodeDetailPage(props: {
       </Link>
 
       {/* Episode Header */}
-      <div className="flex gap-6 mb-8">
+      <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:gap-8">
         {/* Episode Thumbnail */}
         {episodeData?.thumbnailUrl && (
-          <div className="relative h-32 w-32 rounded-lg bg-muted flex-shrink-0 group">
+          <div className="relative h-32 w-32 shrink-0 overflow-hidden rounded-xl bg-muted">
             <Image
               src={episodeData.thumbnailUrl}
               alt={episodeData.title}
-              className="h-full w-full rounded-lg object-cover"
+              className="h-full w-full object-cover"
               fill
             />
             {/* Play Button Overlay */}
@@ -131,9 +158,9 @@ export default function EpisodeDetailPage(props: {
                 href={episodeData.audioUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity duration-200 hover:opacity-100"
               >
-                <div className="bg-white rounded-full p-3 shadow-lg hover:scale-110 transition-transform">
+                <div className="rounded-full bg-background p-3 shadow-lg">
                   <Play className="h-6 w-6 text-black fill-current" />
                 </div>
               </a>
@@ -141,43 +168,81 @@ export default function EpisodeDetailPage(props: {
           </div>
         )}
 
-        <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-bold mb-3">{episodeData?.title}</h1>
+        <div className="flex-1 space-y-4">
+          <div className="space-y-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <h1 className="text-xl font-semibold leading-tight">
+                {episodeData?.title}
+              </h1>
+              {statusLabel && (
+                <Badge
+                  variant="secondary"
+                  className="self-start bg-muted text-muted-foreground hover:bg-muted"
+                >
+                  {statusLabel}
+                </Badge>
+              )}
+            </div>
 
-          <div className="flex items-center gap-6 text-sm text-muted-foreground mb-4">
-            {episodeData?.publishedAt && (
-              <div className="flex items-center gap-1">
-                <Calendar className="h-4 w-4" />
-                {new Date(episodeData.publishedAt).toLocaleDateString("en-US", {
-                  month: "long",
-                  day: "numeric",
-                  year: "numeric",
-                })}
-              </div>
-            )}
-
-            {episodeData?.durationSec && (
-              <div className="flex items-center gap-1">
-                <Clock className="h-4 w-4" />
-                {Math.floor(episodeData.durationSec / 60)} min
-              </div>
-            )}
+            <dl className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+              {episodeData?.publishedAt && (
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4" />
+                  <dt className="sr-only">Published</dt>
+                  <dd>
+                    {new Date(episodeData.publishedAt).toLocaleDateString(
+                      "en-US",
+                      {
+                        month: "long",
+                        day: "numeric",
+                        year: "numeric",
+                      },
+                    )}
+                  </dd>
+                </div>
+              )}
+              {episodeData?.durationSec && (
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4" />
+                  <dt className="sr-only">Duration</dt>
+                  <dd>{Math.floor(episodeData.durationSec / 60)} min</dd>
+                </div>
+              )}
+            </dl>
           </div>
 
           {/* Action Buttons */}
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex flex-wrap gap-2">
             {episodeData?.transcriptUrl && (
               <>
-                <Button
-                  variant="outline"
-                  onClick={() =>
-                    fetchTranscript(episodeData.transcriptUrl as string)
-                  }
-                >
-                  <FileText className="h-4 w-4 mr-2" />
-                  View Transcript
-                </Button>
-                <Button variant="outline" asChild>
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        fetchTranscript(episodeData.transcriptUrl as string)
+                      }
+                    >
+                      <FileText className="h-4 w-4 mr-2" />
+                      View Transcript
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden">
+                    <DialogHeader>
+                      <DialogTitle>Episode Transcript</DialogTitle>
+                    </DialogHeader>
+                    <div className="overflow-auto">
+                      {transcript && (
+                        <TranscriptDisplay
+                          transcript={transcript}
+                          onClose={() => {}}
+                        />
+                      )}
+                    </div>
+                  </DialogContent>
+                </Dialog>
+                <Button variant="outline" size="sm" asChild>
                   <a
                     href={episodeData.transcriptUrl}
                     target="_blank"
@@ -189,65 +254,118 @@ export default function EpisodeDetailPage(props: {
                 </Button>
               </>
             )}
-            <Button variant="outline" asChild>
-              <Link href={`/playground?episodeId=${params.id}`}>
-                <Play className="h-4 w-4 mr-2" />
-                Open in Playground
-              </Link>
+            <Button
+              onClick={() => processEpisode.mutate({ episodeId: params.id })}
+              disabled={isProcessing}
+              size="sm"
+            >
+              {isProcessing ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="mr-2 h-4 w-4" />
+              )}
+              {processButtonLabel}
             </Button>
           </div>
         </div>
       </div>
 
-      {/* Transcript Empty State */}
-      {!episodeData?.transcriptUrl && episodeData?.audioUrl && (
-        <div className="border border-dashed border-muted-foreground/25 rounded-lg p-12 text-center">
-          <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-          <h3 className="text-lg font-semibold mb-2">
-            No Transcript Available
-          </h3>
-          <p className="text-muted-foreground mb-6">
-            Generate a transcript for this episode to read along or search for
-            specific content.
+      {/* Related Signals */}
+      <section className="mt-12 space-y-5">
+        <div className="space-y-1">
+          <h2 className="text-xl font-semibold font-serif">Related Signals</h2>
+          <p className="text-sm text-muted-foreground">
+            Intelligence generated for this episode will appear once processing
+            completes.
           </p>
-          {generateTranscript.isPending ? (
-            <Button variant="outline" disabled>
-              <FileText className="h-4 w-4 mr-2" />
-              Generating Transcript...
-            </Button>
-          ) : episodeData?.status === "failed" ? (
-            <Button
-              variant="outline"
-              onClick={() =>
-                generateTranscript.mutate({ episodeId: params.id })
-              }
-              disabled={generateTranscript.isPending}
-            >
-              <FileText className="h-4 w-4 mr-2" />
-              Retry Transcript
-            </Button>
-          ) : (
-            <Button
-              variant="outline"
-              onClick={() =>
-                generateTranscript.mutate({ episodeId: params.id })
-              }
-              disabled={generateTranscript.isPending}
-            >
-              <FileText className="h-4 w-4 mr-2" />
-              Generate Transcript
-            </Button>
-          )}
         </div>
-      )}
 
-      {/* Transcript Display */}
-      {showTranscript && transcript && (
-        <TranscriptDisplay
-          transcript={transcript}
-          onClose={() => setShowTranscript(false)}
-        />
-      )}
+        {signals.isLoading ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div
+                key={index}
+                className="animate-pulse rounded-xl border border-border/60 bg-muted/40 p-4"
+              >
+                <div className="h-4 w-1/2 rounded bg-muted-foreground/30" />
+                <div className="mt-3 h-3 w-full rounded bg-muted-foreground/20" />
+                <div className="mt-2 h-3 w-3/4 rounded bg-muted-foreground/20" />
+              </div>
+            ))}
+          </div>
+        ) : signals.error ? (
+          <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+            Unable to load related signals.
+          </div>
+        ) : relatedSignals.length === 0 ? (
+          <div className="rounded-xl border border-border/50 bg-muted/30 p-6 text-sm text-muted-foreground">
+            No signals yet. Start processing above and check back after the
+            pipeline finishes.
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {relatedSignals.map((signal) => {
+              const speakerDisplay = signal.speakerName?.trim()
+                ? signal.speakerName
+                : signal.chunk.speaker?.trim()
+                  ? `Speaker ${signal.chunk.speaker}`
+                  : "Unknown speaker";
+              const publishedLabel = formatDate(signal.episode?.publishedAt);
+              return (
+                <article
+                  key={signal.id}
+                  className="rounded-2xl border border-border/70 bg-background/80 p-6 shadow-sm"
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="space-y-2">
+                      <h3 className="text-lg font-semibold leading-tight">
+                        {signal.title}
+                      </h3>
+                      <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                        <span>{speakerDisplay}</span>
+                        {publishedLabel && <span>{publishedLabel}</span>}
+                      </div>
+                    </div>
+                    <Badge
+                      variant="secondary"
+                      className="inline-flex items-center gap-1 self-start text-xs"
+                    >
+                      {Math.round(signal.relevanceScore * 100)}
+                    </Badge>
+                  </div>
+                  <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
+                    {signal.summary}
+                  </p>
+                  {signal.excerpt && (
+                    <blockquote className="mt-3 border-l-2 border-muted pl-3 italic text-muted-foreground/90">
+                      "{signal.excerpt}"
+                    </blockquote>
+                  )}
+                  <details className="mt-4">
+                    <summary className="cursor-pointer text-xs font-medium text-primary underline-offset-4 hover:underline">
+                      Show transcript context
+                    </summary>
+                    <p className="mt-2 rounded-lg border border-dashed border-muted/60 bg-muted/30 p-3 text-xs leading-relaxed text-muted-foreground">
+                      {signal.chunk.content}
+                    </p>
+                  </details>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
     </main>
   );
+}
+
+function formatDate(value: Date | string | null | undefined): string | null {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
 }

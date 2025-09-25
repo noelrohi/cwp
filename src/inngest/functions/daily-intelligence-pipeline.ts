@@ -255,6 +255,7 @@ export const dailyIntelligenceProcessEpisode = inngest.createFunction(
           episode: normalisedEpisode,
           force: false,
         });
+        return "ok";
       });
 
       await step.run("chunk-transcript", async () => {
@@ -264,6 +265,7 @@ export const dailyIntelligenceProcessEpisode = inngest.createFunction(
           minTokens: CHUNK_SETTINGS.minWords,
           maxTokens: CHUNK_SETTINGS.maxWords,
         });
+        return "ok";
       });
 
       await step.run("mark-processed", async () => {

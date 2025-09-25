@@ -2,7 +2,12 @@ import { TRPCError } from "@trpc/server";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { inngest } from "@/inngest/client";
-import { dailySignal } from "@/server/db/schema/podcast";
+import {
+  dailySignal,
+  episode,
+  podcast,
+  transcriptChunk,
+} from "@/server/db/schema/podcast";
 import { createTRPCRouter, protectedProcedure } from "../init";
 
 const DEFAULT_SIGNAL_LIMIT = 30;
@@ -102,6 +107,79 @@ export const signalsRouter = createTRPCRouter({
                 : null,
             }
           : null,
+      }));
+    }),
+
+  byEpisode: protectedProcedure
+    .input(
+      z.object({
+        episodeId: z.string().min(1),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const rows = await ctx.db
+        .select({
+          id: dailySignal.id,
+          relevanceScore: dailySignal.relevanceScore,
+          signalDate: dailySignal.signalDate,
+          title: dailySignal.title,
+          summary: dailySignal.summary,
+          excerpt: dailySignal.excerpt,
+          speakerName: dailySignal.speakerName,
+          chunkId: dailySignal.chunkId,
+          chunkContent: transcriptChunk.content,
+          chunkSpeaker: transcriptChunk.speaker,
+          chunkStart: transcriptChunk.startTimeSec,
+          chunkEnd: transcriptChunk.endTimeSec,
+          relatedEpisodeId: episode.id,
+          relatedEpisodeTitle: episode.title,
+          relatedEpisodePublishedAt: episode.publishedAt,
+          relatedPodcastId: podcast.id,
+          relatedPodcastTitle: podcast.title,
+          relatedPodcastImageUrl: podcast.imageUrl,
+        })
+        .from(dailySignal)
+        .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
+        .innerJoin(episode, eq(transcriptChunk.episodeId, episode.id))
+        .leftJoin(podcast, eq(episode.podcastId, podcast.id))
+        .where(
+          and(
+            eq(dailySignal.userId, ctx.user.id),
+            eq(transcriptChunk.episodeId, input.episodeId),
+          ),
+        )
+        .orderBy(
+          desc(dailySignal.signalDate),
+          desc(dailySignal.relevanceScore),
+        );
+
+      return rows.map((row) => ({
+        id: row.id,
+        relevanceScore: row.relevanceScore,
+        signalDate: row.signalDate,
+        title: row.title ?? buildFallbackTitle(row.chunkContent),
+        summary: row.summary ?? buildFallbackSummary(row.chunkContent),
+        excerpt: row.excerpt ?? buildFallbackExcerpt(row.chunkContent),
+        speakerName: row.speakerName,
+        chunk: {
+          id: row.chunkId,
+          content: row.chunkContent,
+          speaker: row.chunkSpeaker,
+          startTimeSec: row.chunkStart,
+          endTimeSec: row.chunkEnd,
+        },
+        episode: {
+          id: row.relatedEpisodeId,
+          title: row.relatedEpisodeTitle,
+          publishedAt: row.relatedEpisodePublishedAt,
+          podcast: row.relatedPodcastId
+            ? {
+                id: row.relatedPodcastId,
+                title: row.relatedPodcastTitle,
+                imageUrl: row.relatedPodcastImageUrl,
+              }
+            : null,
+        },
       }));
     }),
 

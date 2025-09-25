@@ -1,5 +1,7 @@
+import { randomUUID } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
+import { inngest } from "@/inngest/client";
 import { episode } from "@/server/db/schema/podcast";
 import { ensureEpisodeTranscript } from "@/server/lib/transcript-processing";
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "../init";
@@ -122,5 +124,55 @@ export const episodesRouter = createTRPCRouter({
         );
         throw error;
       }
+    }),
+
+  processEpisode: protectedProcedure
+    .input(
+      z.object({
+        episodeId: z.string(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const episodeRecord = await ctx.db.query.episode.findFirst({
+        where: and(
+          eq(episode.id, input.episodeId),
+          eq(episode.userId, ctx.user.id),
+        ),
+        columns: {
+          id: true,
+          status: true,
+        },
+      });
+
+      if (!episodeRecord) {
+        throw new Error("Episode not found");
+      }
+
+      if (episodeRecord.status === "processing") {
+        return { status: "processing" as const };
+      }
+
+      if (episodeRecord.status !== "processed") {
+        await ctx.db
+          .update(episode)
+          .set({ status: "processing" })
+          .where(eq(episode.id, input.episodeId));
+      }
+
+      const pipelineRunId = randomUUID();
+
+      await inngest.send({
+        name: "app/daily-intelligence.episode.process",
+        data: {
+          pipelineRunId,
+          userId: ctx.user.id,
+          episodeId: input.episodeId,
+        },
+      });
+
+      return {
+        status: episodeRecord.status === "processed" ? "dispatched" : "queued",
+        pipelineRunId,
+      } as const;
     }),
 });
