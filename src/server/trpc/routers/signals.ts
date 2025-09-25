@@ -80,6 +80,7 @@ export const signalsRouter = createTRPCRouter({
         title: row.title ?? buildFallbackTitle(row.chunk.content),
         summary: row.summary ?? buildFallbackSummary(row.chunk.content),
         excerpt: row.excerpt ?? buildFallbackExcerpt(row.chunk.content),
+        speakerName: row.speakerName,
         chunk: {
           id: row.chunk.id,
           content: row.chunk.content,

@@ -1,7 +1,10 @@
 import { serve } from "inngest/next";
 import { inngest } from "@/inngest/client";
 import {
+  dailyIntelligenceGenerateSignals,
   dailyIntelligencePipeline,
+  dailyIntelligenceProcessEpisode,
+  dailyIntelligenceProcessUser,
   helloWorld,
   monthlyCleanup,
   updateUserPreferences,
@@ -13,6 +16,9 @@ export const { GET, POST, PUT } = serve({
   functions: [
     helloWorld,
     dailyIntelligencePipeline,
+    dailyIntelligenceProcessUser,
+    dailyIntelligenceProcessEpisode,
+    dailyIntelligenceGenerateSignals,
     updateUserPreferences,
     weeklyPreferencesOptimization,
     monthlyCleanup,

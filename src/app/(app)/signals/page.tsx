@@ -6,6 +6,7 @@ import {
   BookmarkXIcon,
   CalendarDaysIcon,
   Loader2,
+  Mic2Icon,
   PodcastIcon,
   TrophyIcon,
 } from "lucide-react";
@@ -71,6 +72,14 @@ export default function SignalsPage() {
         <section className="space-y-4">
           {signals.map((signal) => {
             const isPending = pendingSignalId === signal.id;
+            const inferredSpeakerName = signal.speakerName?.trim();
+            const speakerLabel = signal.chunk.speaker?.trim();
+            const speakerDisplay =
+              inferredSpeakerName && inferredSpeakerName.length > 0
+                ? inferredSpeakerName
+                : speakerLabel
+                  ? `Speaker ${speakerLabel}`
+                  : "Unknown speaker";
             return (
               <article
                 key={signal.id}
@@ -90,18 +99,24 @@ export default function SignalsPage() {
                         {Math.round(signal.relevanceScore * 100)}
                       </Badge>
                     </div>
-                    {signal.episode && (
-                      <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                        <span className="inline-flex items-center gap-1">
-                          <PodcastIcon className="h-3 w-3" />
-                          {signal.episode.podcast?.title ?? "Unknown podcast"}
-                        </span>
-                        <span className="inline-flex items-center gap-1">
-                          <CalendarDaysIcon className="h-3 w-3" />
-                          {formatDate(signal.episode.publishedAt)}
-                        </span>
-                      </div>
-                    )}
+                    <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                      <span className="inline-flex items-center gap-1">
+                        <Mic2Icon className="h-3 w-3" />
+                        {speakerDisplay}
+                      </span>
+                      {signal.episode && (
+                        <>
+                          <span className="inline-flex items-center gap-1">
+                            <PodcastIcon className="h-3 w-3" />
+                            {signal.episode.podcast?.title ?? "Unknown podcast"}
+                          </span>
+                          <span className="inline-flex items-center gap-1">
+                            <CalendarDaysIcon className="h-3 w-3" />
+                            {formatDate(signal.episode.publishedAt)}
+                          </span>
+                        </>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex gap-2">

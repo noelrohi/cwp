@@ -102,6 +102,7 @@ export const dailySignal = pgTable(
     title: text("title"),
     summary: text("summary"),
     excerpt: text("excerpt"),
+    speakerName: text("speaker_name"),
     userAction: text("user_action"), // "saved", "skipped", null (pending)
     presentedAt: timestamp("presented_at", { withTimezone: true }),
     actionedAt: timestamp("actioned_at", { withTimezone: true }),

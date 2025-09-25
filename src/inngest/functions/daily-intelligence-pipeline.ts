@@ -17,6 +17,13 @@ import {
 } from "@/server/lib/transcript-processing";
 import { inngest } from "../client";
 
+const DAILY_INTELLIGENCE_USER_EVENT =
+  "app/daily-intelligence.user.process" as const;
+const DAILY_INTELLIGENCE_EPISODE_EVENT =
+  "app/daily-intelligence.episode.process" as const;
+const DAILY_INTELLIGENCE_GENERATE_SIGNALS_EVENT =
+  "app/daily-intelligence.user.generate-signals" as const;
+
 // Configuration from sequence.md - "set once, forget"
 const CHUNK_SETTINGS = {
   minWords: 400,
@@ -29,7 +36,7 @@ const PIPELINE_SETTINGS = {
   minConfidenceScore: 0.7,
 } as const;
 
-const PIPELINE_LOOKBACK_HOURS = 24;
+const PIPELINE_LOOKBACK_HOURS = 72;
 
 const SIGNAL_MODEL_ID = "x-ai/grok-4-fast:free" as const;
 
@@ -37,29 +44,48 @@ const signalSchema = z.object({
   title: z.string().min(4).max(140),
   summary: z.string().min(24).max(1200),
   excerpt: z.string().min(12).max(320).optional().nullable(),
+  speakerName: z.string().min(2).max(120).optional().nullable(),
 });
 
 type GeneratedSignal = z.infer<typeof signalSchema> & {
   excerpt: string | null;
+  speakerName: string | null;
 };
 
 /**
  * Daily Intelligence Pipeline - 2:00 AM
  * Simple sequence: users -> podcasts -> episodes -> transcripts -> signals
  */
+type DailyIntelligenceUserEvent = {
+  pipelineRunId: string;
+  userId: string;
+  lookbackStart: string;
+};
+
+type DailyIntelligenceEpisodeEvent = {
+  pipelineRunId: string;
+  userId: string;
+  episodeId: string;
+};
+
+type DailyIntelligenceGenerateSignalsEvent = {
+  pipelineRunId: string;
+  userId: string;
+};
+
 export const dailyIntelligencePipeline = inngest.createFunction(
   { id: "daily-intelligence-pipeline" },
   { cron: "0 2 * * *" },
   async ({ step, logger }) => {
     const now = new Date();
+    const pipelineRunId = randomUUID();
     const lookbackWindowMs = PIPELINE_LOOKBACK_HOURS * 60 * 60 * 1000;
     const lookbackStart = new Date(now.getTime() - lookbackWindowMs);
 
     logger.info(
-      `Running daily intelligence pipeline (lookback=${PIPELINE_LOOKBACK_HOURS}h)`,
+      `Running daily intelligence pipeline (lookback=${PIPELINE_LOOKBACK_HOURS}h, run=${pipelineRunId})`,
     );
 
-    // 1. Get all users
     const users = await step.run("get-all-users", async () => {
       return await db
         .select({ userId: podcast.userId })
@@ -67,101 +93,243 @@ export const dailyIntelligencePipeline = inngest.createFunction(
         .groupBy(podcast.userId);
     });
 
-    logger.info(`Found ${users.length} users with podcasts`);
-
-    let totalSignals = 0;
-
-    // Process each user
-    for (const user of users) {
-      const signals = await step.run(
-        `process-user-${user.userId}`,
-        async () => {
-          // 2. Get user's list of podcasts
-          const userPodcasts = await db
-            .select({ id: podcast.id })
-            .from(podcast)
-            .where(eq(podcast.userId, user.userId));
-
-          logger.info(
-            `User ${user.userId}: Found ${userPodcasts.length} podcasts`,
-          );
-
-          if (userPodcasts.length === 0) return 0;
-
-          // 3. Process last 24 hours published episodes from podcasts
-          const recentEpisodes = await db
-            .select()
-            .from(episode)
-            .where(
-              and(
-                inArray(
-                  episode.podcastId,
-                  userPodcasts.map((p) => p.id),
-                ),
-                gte(episode.publishedAt, lookbackStart),
-              ),
-            );
-
-          logger.info(
-            `User ${user.userId}: Found ${recentEpisodes.length} recent episodes`,
-          );
-
-          // 4. Process transcripts of each episode
-          for (const ep of recentEpisodes) {
-            if (ep.status === "processed") continue; // Skip already processed
-
-            try {
-              const episodeRecord = {
-                ...ep,
-                createdAt: new Date(ep.createdAt),
-                updatedAt: new Date(ep.updatedAt),
-                publishedAt: ep.publishedAt ? new Date(ep.publishedAt) : null,
-              };
-
-              // Ensure transcript exists
-              await ensureEpisodeTranscript({
-                db,
-                episode: episodeRecord,
-                force: false,
-              });
-
-              // Chunk transcript (400-800 words, speaker turns)
-              await chunkEpisodeTranscript({
-                db,
-                episode: episodeRecord,
-                minTokens: CHUNK_SETTINGS.minWords,
-                maxTokens: CHUNK_SETTINGS.maxWords,
-              });
-
-              // Update status
-              await db
-                .update(episode)
-                .set({ status: "processed" })
-                .where(eq(episode.id, ep.id));
-            } catch (error) {
-              console.error(`Failed to process episode ${ep.id}:`, error);
-              await db
-                .update(episode)
-                .set({ status: "failed" })
-                .where(eq(episode.id, ep.id));
-            }
-          }
-
-          // 5. Generate embeddings and score signals for this user
-          const signals = await generateUserSignals(user.userId);
-          logger.info(`User ${user.userId}: Generated ${signals} signals`);
-          return signals;
-        },
-      );
-
-      totalSignals += signals;
+    if (users.length === 0) {
+      logger.info("No users with podcasts found for pipeline run");
+      return {
+        date: now.toISOString().split("T")[0],
+        pipelineRunId,
+        usersDispatched: 0,
+      };
     }
+
+    await step.sendEvent(
+      "dispatch-user-processing",
+      users.map((user) => ({
+        name: DAILY_INTELLIGENCE_USER_EVENT,
+        data: {
+          pipelineRunId,
+          userId: user.userId,
+          lookbackStart: lookbackStart.toISOString(),
+        } satisfies DailyIntelligenceUserEvent,
+      })),
+    );
+
+    logger.info(`Dispatched ${users.length} users for daily intelligence run`);
 
     return {
       date: now.toISOString().split("T")[0],
-      usersProcessed: users.length,
-      signalsGenerated: totalSignals,
+      pipelineRunId,
+      usersDispatched: users.length,
     };
+  },
+);
+
+export const dailyIntelligenceProcessUser = inngest.createFunction(
+  { id: "daily-intelligence-process-user" },
+  { event: DAILY_INTELLIGENCE_USER_EVENT },
+  async ({ event, step, logger }) => {
+    const { pipelineRunId, userId, lookbackStart } =
+      event.data as DailyIntelligenceUserEvent;
+    const lookbackStartDate = new Date(lookbackStart);
+
+    logger.info(
+      `Pipeline run ${pipelineRunId}: processing user ${userId} (lookback start ${lookbackStartDate.toISOString()})`,
+    );
+
+    const userPodcasts = await step.run("fetch-user-podcasts", async () => {
+      return await db
+        .select({ id: podcast.id })
+        .from(podcast)
+        .where(eq(podcast.userId, userId));
+    });
+
+    if (userPodcasts.length === 0) {
+      logger.info(
+        `Pipeline run ${pipelineRunId}: user ${userId} has no podcasts`,
+      );
+      return { episodesDispatched: 0 };
+    }
+
+    const recentEpisodes = await step.run("fetch-recent-episodes", async () => {
+      return await db
+        .select()
+        .from(episode)
+        .where(
+          and(
+            inArray(
+              episode.podcastId,
+              userPodcasts.map((p) => p.id),
+            ),
+            gte(episode.publishedAt, lookbackStartDate),
+          ),
+        );
+    });
+
+    const pendingEpisodes = recentEpisodes.filter(
+      (ep) => ep.status !== "processed",
+    );
+
+    if (pendingEpisodes.length === 0) {
+      logger.info(
+        `Pipeline run ${pipelineRunId}: user ${userId} has no pending episodes`,
+      );
+      return { episodesDispatched: 0 };
+    }
+
+    await step.sendEvent(
+      "dispatch-episode-processing",
+      pendingEpisodes.map((ep) => ({
+        name: DAILY_INTELLIGENCE_EPISODE_EVENT,
+        data: {
+          pipelineRunId,
+          userId,
+          episodeId: ep.id,
+        } satisfies DailyIntelligenceEpisodeEvent,
+      })),
+    );
+
+    logger.info(
+      `Pipeline run ${pipelineRunId}: dispatched ${pendingEpisodes.length} episodes for user ${userId}`,
+    );
+
+    return { episodesDispatched: pendingEpisodes.length };
+  },
+);
+
+export const dailyIntelligenceProcessEpisode = inngest.createFunction(
+  { id: "daily-intelligence-process-episode" },
+  { event: DAILY_INTELLIGENCE_EPISODE_EVENT },
+  async ({ event, step, logger }) => {
+    const { pipelineRunId, userId, episodeId } =
+      event.data as DailyIntelligenceEpisodeEvent;
+
+    logger.info(
+      `Pipeline run ${pipelineRunId}: processing episode ${episodeId} for user ${userId}`,
+    );
+
+    const episodeRecord = await step.run("load-episode", async () => {
+      const [row] = await db
+        .select()
+        .from(episode)
+        .where(eq(episode.id, episodeId))
+        .limit(1);
+      return row ?? null;
+    });
+
+    if (!episodeRecord) {
+      logger.error(
+        `Pipeline run ${pipelineRunId}: episode ${episodeId} not found`,
+      );
+      return { status: "missing" } as const;
+    }
+
+    if (episodeRecord.status === "processed") {
+      logger.info(
+        `Pipeline run ${pipelineRunId}: episode ${episodeId} already processed`,
+      );
+      await step.sendEvent("signal-generation", [
+        {
+          name: DAILY_INTELLIGENCE_GENERATE_SIGNALS_EVENT,
+          data: {
+            pipelineRunId,
+            userId,
+          } satisfies DailyIntelligenceGenerateSignalsEvent,
+        },
+      ]);
+      return { status: "already-processed" } as const;
+    }
+
+    try {
+      const normalisedEpisode = {
+        ...episodeRecord,
+        createdAt: new Date(episodeRecord.createdAt),
+        updatedAt: new Date(episodeRecord.updatedAt),
+        publishedAt: episodeRecord.publishedAt
+          ? new Date(episodeRecord.publishedAt)
+          : null,
+      };
+
+      await step.run("ensure-transcript", async () => {
+        await ensureEpisodeTranscript({
+          db,
+          episode: normalisedEpisode,
+          force: false,
+        });
+      });
+
+      await step.run("chunk-transcript", async () => {
+        await chunkEpisodeTranscript({
+          db,
+          episode: normalisedEpisode,
+          minTokens: CHUNK_SETTINGS.minWords,
+          maxTokens: CHUNK_SETTINGS.maxWords,
+        });
+      });
+
+      await step.run("mark-processed", async () => {
+        await db
+          .update(episode)
+          .set({ status: "processed" })
+          .where(eq(episode.id, episodeId));
+      });
+    } catch (error) {
+      const err =
+        error instanceof Error
+          ? error
+          : new Error(
+              typeof error === "string" ? error : JSON.stringify(error),
+            );
+      logger.error(
+        `Pipeline run ${pipelineRunId}: failed to process episode ${episodeId}`,
+        {
+          error: err.message,
+          stack: err.stack,
+        },
+      );
+      await step.run("mark-failed", async () => {
+        await db
+          .update(episode)
+          .set({ status: "failed" })
+          .where(eq(episode.id, episodeId));
+      });
+      throw err;
+    }
+
+    await step.sendEvent("signal-generation", [
+      {
+        name: DAILY_INTELLIGENCE_GENERATE_SIGNALS_EVENT,
+        data: {
+          pipelineRunId,
+          userId,
+        } satisfies DailyIntelligenceGenerateSignalsEvent,
+      },
+    ]);
+
+    logger.info(
+      `Pipeline run ${pipelineRunId}: episode ${episodeId} processed and signal generation dispatched for user ${userId}`,
+    );
+
+    return { status: "processed" } as const;
+  },
+);
+
+export const dailyIntelligenceGenerateSignals = inngest.createFunction(
+  { id: "daily-intelligence-generate-signals" },
+  { event: DAILY_INTELLIGENCE_GENERATE_SIGNALS_EVENT },
+  async ({ event, step, logger }) => {
+    const { pipelineRunId, userId } =
+      event.data as DailyIntelligenceGenerateSignalsEvent;
+
+    const signalsGenerated = await step.run(
+      "generate-user-signals",
+      async () => await generateUserSignals(userId),
+    );
+
+    logger.info(
+      `Pipeline run ${pipelineRunId}: generated ${signalsGenerated} signals for user ${userId}`,
+    );
+
+    return { signalsGenerated };
   },
 );
 
@@ -204,6 +372,7 @@ type ChunkRecord = {
   episodeTitle: string | null;
   episodePublishedAt: Date | string | null;
   podcastTitle: string | null;
+  speaker: string | null;
 };
 
 type ScoredChunk = ChunkRecord & { relevanceScore: number };
@@ -250,6 +419,7 @@ async function getNewChunksForUser(userId: string): Promise<ChunkRecord[]> {
       episodeTitle: episode.title,
       episodePublishedAt: episode.publishedAt,
       podcastTitle: podcast.title,
+      speaker: transcriptChunk.speaker,
     })
     .from(transcriptChunk)
     .innerJoin(episode, eq(transcriptChunk.episodeId, episode.id))
@@ -390,6 +560,7 @@ async function storeDailySignals(
       title: signal.title,
       summary: signal.summary,
       excerpt: signal.excerpt,
+      speakerName: signal.speakerName,
       userAction: null,
       presentedAt: null,
       actionedAt: null,
@@ -433,6 +604,7 @@ async function generateSignalFromChunk(
     title: object.title.trim(),
     summary: object.summary.trim(),
     excerpt: object.excerpt?.trim() ?? null,
+    speakerName: object.speakerName?.trim() ?? null,
   };
 }
 
@@ -449,11 +621,15 @@ function buildSignalPrompt({
 }: SignalPromptContext): string {
   const podcastTitle = chunk.podcastTitle ?? "Unknown Podcast";
   const episodeTitle = chunk.episodeTitle ?? chunk.episodeId;
+  const speakerLabel = chunk.speaker
+    ? `Speaker ${chunk.speaker}`
+    : "Unknown speaker";
 
   return [
     `Podcast: ${podcastTitle}`,
     `Episode: ${episodeTitle}`,
     `Published: ${publishedDate}`,
+    `Speaker label in transcript metadata: ${speakerLabel}`,
     "",
     "Transcript excerpt:",
     trimmedContent,
@@ -463,6 +639,7 @@ function buildSignalPrompt({
     "- Write a 2-4 sentence summary focused on why this matters for decision makers.",
     "- Highlight any quantitative data, strategic implications, or contrasting viewpoints.",
     "- Provide a short excerpt or quote (≤200 characters) that anchors the insight.",
+    "- Identify the likely real speaker name or role for the provided speaker label and return it in the speakerName field (use 'Unknown speaker' if unclear).",
     "- Do not fabricate information not present in the excerpt.",
   ].join("\n");
 }

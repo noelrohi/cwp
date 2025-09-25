@@ -5,5 +5,10 @@ export {
   updateUserPreferences,
   weeklyPreferencesOptimization,
 } from "./continuous-learning";
-export { dailyIntelligencePipeline } from "./daily-intelligence-pipeline";
+export {
+  dailyIntelligenceGenerateSignals,
+  dailyIntelligencePipeline,
+  dailyIntelligenceProcessEpisode,
+  dailyIntelligenceProcessUser,
+} from "./daily-intelligence-pipeline";
 export { helloWorld } from "./hello";
