@@ -71,6 +71,7 @@ type DailyIntelligenceEpisodeEvent = {
 type DailyIntelligenceGenerateSignalsEvent = {
   pipelineRunId: string;
   userId: string;
+  episodeId?: string;
 };
 
 export const dailyIntelligencePipeline = inngest.createFunction(
@@ -267,13 +268,6 @@ export const dailyIntelligenceProcessEpisode = inngest.createFunction(
         });
         return "ok";
       });
-
-      await step.run("mark-processed", async () => {
-        await db
-          .update(episode)
-          .set({ status: "processed" })
-          .where(eq(episode.id, episodeId));
-      });
     } catch (error) {
       const err =
         error instanceof Error
@@ -303,15 +297,16 @@ export const dailyIntelligenceProcessEpisode = inngest.createFunction(
         data: {
           pipelineRunId,
           userId,
+          episodeId,
         } satisfies DailyIntelligenceGenerateSignalsEvent,
       },
     ]);
 
     logger.info(
-      `Pipeline run ${pipelineRunId}: episode ${episodeId} processed and signal generation dispatched for user ${userId}`,
+      `Pipeline run ${pipelineRunId}: episode ${episodeId} transcript processed and signal generation dispatched for user ${userId}`,
     );
 
-    return { status: "processed" } as const;
+    return { status: "transcript-processed" } as const;
   },
 );
 
@@ -319,13 +314,27 @@ export const dailyIntelligenceGenerateSignals = inngest.createFunction(
   { id: "daily-intelligence-generate-signals" },
   { event: DAILY_INTELLIGENCE_GENERATE_SIGNALS_EVENT },
   async ({ event, step, logger }) => {
-    const { pipelineRunId, userId } =
+    const { pipelineRunId, userId, episodeId } =
       event.data as DailyIntelligenceGenerateSignalsEvent;
 
     const signalsGenerated = await step.run(
       "generate-user-signals",
       async () => await generateUserSignals(userId),
     );
+
+    // Mark episode as processed only after successful signal generation
+    if (episodeId) {
+      await step.run("mark-episode-processed", async () => {
+        await db
+          .update(episode)
+          .set({ status: "processed" })
+          .where(eq(episode.id, episodeId));
+      });
+
+      logger.info(
+        `Pipeline run ${pipelineRunId}: episode ${episodeId} marked as processed after signal generation`,
+      );
+    }
 
     logger.info(
       `Pipeline run ${pipelineRunId}: generated ${signalsGenerated} signals for user ${userId}`,
