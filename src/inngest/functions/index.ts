@@ -11,4 +11,5 @@ export {
   dailyIntelligenceProcessEpisode,
   dailyIntelligenceProcessUser,
 } from "./daily-intelligence-pipeline";
+export { feedParserPipeline } from "./feed-parser";
 export { helloWorld } from "./hello";

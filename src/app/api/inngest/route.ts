@@ -5,6 +5,7 @@ import {
   dailyIntelligencePipeline,
   dailyIntelligenceProcessEpisode,
   dailyIntelligenceProcessUser,
+  feedParserPipeline,
   helloWorld,
   monthlyCleanup,
   updateUserPreferences,
@@ -15,6 +16,7 @@ export const { GET, POST, PUT } = serve({
   client: inngest,
   functions: [
     helloWorld,
+    feedParserPipeline,
     dailyIntelligencePipeline,
     dailyIntelligenceProcessUser,
     dailyIntelligenceProcessEpisode,
