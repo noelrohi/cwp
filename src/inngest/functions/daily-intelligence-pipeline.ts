@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { openrouter } from "@openrouter/ai-sdk-provider";
-import { generateObject } from "ai";
+import { cosineSimilarity, generateObject } from "ai";
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/server/db";
@@ -667,21 +667,4 @@ function formatPublishedDate(date: Date | string | null): string {
   const parsed = date instanceof Date ? date : new Date(date);
   if (Number.isNaN(parsed.getTime())) return "unknown date";
   return parsed.toISOString().split("T")[0];
-}
-
-function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length) return 0;
-
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
-
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-
-  const magnitude = Math.sqrt(normA) * Math.sqrt(normB);
-  return magnitude === 0 ? 0 : dot / magnitude;
 }
