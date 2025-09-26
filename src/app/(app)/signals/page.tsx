@@ -6,13 +6,14 @@ import {
   BookmarkXIcon,
   CalendarDaysIcon,
   Loader2,
-  Mic2Icon,
   PodcastIcon,
-  TrophyIcon,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
+import {
+  SignalCard,
+  type SignalCardMetadataItem,
+} from "@/blocks/signals/signal-card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTRPC } from "@/server/trpc/client";
@@ -53,7 +54,7 @@ export default function SignalsPage() {
   const signals = signalsQuery.data ?? [];
 
   return (
-    <main className="mx-auto w-full max-w-4xl space-y-6 px-6 py-8">
+    <main className="mx-auto w-full max-w-6xl space-y-6 px-6 py-8">
       <header className="space-y-2">
         <h1 className="text-xl font-semibold font-serif">Today's Signals</h1>
         <p className="text-sm text-muted-foreground">
@@ -80,93 +81,54 @@ export default function SignalsPage() {
                 : speakerLabel
                   ? `Speaker ${speakerLabel}`
                   : "Unknown speaker";
+            const metadata: SignalCardMetadataItem[] = [];
+            if (signal.episode) {
+              if (signal.episode.podcast?.title) {
+                metadata.push({
+                  icon: <PodcastIcon className="h-3 w-3" />,
+                  label: signal.episode.podcast.title,
+                });
+              }
+              metadata.push({
+                icon: <CalendarDaysIcon className="h-3 w-3" />,
+                label: formatDate(signal.episode.publishedAt),
+              });
+            }
             return (
-              <article
+              <SignalCard
                 key={signal.id}
-                className="rounded-xl border border-border bg-background/70 p-6 shadow-sm"
+                className="border-border bg-background/70"
+                chunkContent={signal.chunk.content}
+                speakerLabel={speakerDisplay}
+                startTimeSec={signal.chunk.startTimeSec ?? null}
+                metadata={metadata}
               >
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-lg font-semibold leading-tight">
-                        {signal.title}
-                      </h2>
-                      <Badge
-                        variant="secondary"
-                        className="inline-flex items-center gap-1 text-xs"
-                      >
-                        <TrophyIcon className="h-3 w-3" />
-                        {Math.round(signal.relevanceScore * 100)}
-                      </Badge>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                      <span className="inline-flex items-center gap-1">
-                        <Mic2Icon className="h-3 w-3" />
-                        {speakerDisplay}
-                      </span>
-                      {signal.episode && (
-                        <>
-                          <span className="inline-flex items-center gap-1">
-                            <PodcastIcon className="h-3 w-3" />
-                            {signal.episode.podcast?.title ?? "Unknown podcast"}
-                          </span>
-                          <span className="inline-flex items-center gap-1">
-                            <CalendarDaysIcon className="h-3 w-3" />
-                            {formatDate(signal.episode.publishedAt)}
-                          </span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleAction(signal.id, "skipped")}
-                      disabled={isPending}
-                    >
-                      {isPending && pendingAction === "skipped" ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <BookmarkXIcon className="mr-2 h-4 w-4" />
-                      )}
-                      Skip
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={() => handleAction(signal.id, "saved")}
-                      disabled={isPending}
-                    >
-                      {isPending && pendingAction === "saved" ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <BookmarkCheckIcon className="mr-2 h-4 w-4" />
-                      )}
-                      Save
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="mt-4 space-y-3 text-sm">
-                  <p className="leading-relaxed text-muted-foreground">
-                    {signal.summary}
-                  </p>
-                  {signal.excerpt && (
-                    <blockquote className="border-l-2 border-muted pl-3 italic text-muted-foreground/90">
-                      "{signal.excerpt}"
-                    </blockquote>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleAction(signal.id, "skipped")}
+                  disabled={isPending}
+                >
+                  {isPending && pendingAction === "skipped" ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <BookmarkXIcon className="mr-2 h-4 w-4" />
                   )}
-                  <details className="group">
-                    <summary className="cursor-pointer text-xs font-medium text-primary underline-offset-4 transition hover:underline">
-                      Show transcript context
-                    </summary>
-                    <p className="mt-2 rounded-lg border border-dashed border-muted/60 bg-muted/30 p-3 text-xs leading-relaxed text-muted-foreground">
-                      {signal.chunk.content}
-                    </p>
-                  </details>
-                </div>
-              </article>
+                  Skip
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => handleAction(signal.id, "saved")}
+                  disabled={isPending}
+                >
+                  {isPending && pendingAction === "saved" ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <BookmarkCheckIcon className="mr-2 h-4 w-4" />
+                  )}
+                  Save
+                </Button>
+              </SignalCard>
             );
           })}
         </section>
@@ -184,19 +146,24 @@ function SignalSkeletonList() {
           className="rounded-xl border border-border bg-background/70 p-6 shadow-sm"
         >
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div className="space-y-2">
-              <Skeleton className="h-5 w-48" />
-              <Skeleton className="h-4 w-64" />
+            <div className="flex flex-wrap gap-3">
+              <Skeleton className="h-6 w-28 rounded-full" />
+              <Skeleton className="h-6 w-32 rounded-full" />
             </div>
             <div className="flex gap-2">
               <Skeleton className="h-9 w-20" />
               <Skeleton className="h-9 w-20" />
             </div>
           </div>
-          <div className="mt-4 space-y-2">
-            <Skeleton className="h-3 w-full" />
-            <Skeleton className="h-3 w-3/4" />
-            <Skeleton className="h-3 w-2/3" />
+          <div className="mt-4 rounded-lg bg-muted/50 p-4">
+            <div className="flex gap-3">
+              <Skeleton className="h-3 w-12 rounded" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-3 w-24 rounded" />
+                <Skeleton className="h-4 w-full rounded" />
+                <Skeleton className="h-4 w-4/5 rounded" />
+              </div>
+            </div>
           </div>
         </div>
       ))}

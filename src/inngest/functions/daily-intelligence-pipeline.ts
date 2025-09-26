@@ -1,8 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { openrouter } from "@openrouter/ai-sdk-provider";
-import { cosineSimilarity, generateObject } from "ai";
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
-import { z } from "zod";
+import Parser from "rss-parser";
 import { db } from "@/server/db";
 import {
   dailySignal,
@@ -17,6 +15,11 @@ import {
 } from "@/server/lib/transcript-processing";
 import { inngest } from "../client";
 
+const rssParser = new Parser();
+
+type RSSFeed = Awaited<ReturnType<typeof rssParser.parseURL>>;
+type RSSFeedItem = RSSFeed["items"][number];
+
 const DAILY_INTELLIGENCE_USER_EVENT =
   "app/daily-intelligence.user.process" as const;
 const DAILY_INTELLIGENCE_EPISODE_EVENT =
@@ -26,32 +29,41 @@ const DAILY_INTELLIGENCE_GENERATE_SIGNALS_EVENT =
 
 // Configuration from sequence.md - "set once, forget"
 const CHUNK_SETTINGS = {
-  minWords: 400,
-  maxWords: 800,
+  minWords: 200,
+  maxWords: 300,
   useSpeakerTurns: true,
 } as const;
 
 const PIPELINE_SETTINGS = {
   maxDailySignals: 30,
-  minConfidenceScore: 0.7,
+  minConfidenceScore: 0.4,
 } as const;
 
 const PIPELINE_LOOKBACK_HOURS =
   process.env.NODE_ENV === "development" ? 72 : 24;
 
-const SIGNAL_MODEL_ID = "x-ai/grok-4-fast:free" as const;
+const HOST_PATTERNS: RegExp[] = [
+  /hosted by ([^.;\n]+)/gi,
+  /hosts?:\s*([^.;\n]+)/gi,
+  /with (?:your\s+)?hosts? ([^.;\n]+)/gi,
+  /co-hosts?:\s*([^.;\n]+)/gi,
+];
 
-const signalSchema = z.object({
-  title: z.string().min(4).max(140),
-  summary: z.string().min(24).max(1200),
-  excerpt: z.string().min(12).max(320).optional().nullable(),
-  speakerName: z.string().min(2).max(120).optional().nullable(),
-});
+const TITLE_GUEST_PATTERNS: RegExp[] = [
+  /\bwith\s+([^:-]+?)(?:$|[:-])/gi,
+  /\bfeat(?:\.|uring)?\s+([^:-]+?)(?:$|[:-])/gi,
+  /\bft\.\s+([^:-]+?)(?:$|[:-])/gi,
+];
 
-type GeneratedSignal = z.infer<typeof signalSchema> & {
-  excerpt: string | null;
-  speakerName: string | null;
-};
+const DESCRIPTION_GUEST_PATTERNS: RegExp[] = [
+  /special guests?[:\-\s]+([^\n.!]+)/gi,
+  /guest[s]?[:\-\s]+([^\n.!]+)/gi,
+  /featur(?:ing|es)\s+([^\n.!]+)/gi,
+  /joined by\s+([^\n.!]+)/gi,
+  /conversation with\s+([^\n.!]+)/gi,
+  /interview(?:s)? with\s+([^\n.!]+)/gi,
+  /speaks with\s+([^\n.!]+)/gi,
+];
 
 /**
  * Daily Intelligence Pipeline - 2:00 AM
@@ -383,8 +395,10 @@ type ChunkRecord = {
   embedding: number[] | null;
   createdAt: Date;
   episodeTitle: string | null;
+  episodeExternalId: string | null;
   episodePublishedAt: Date | string | null;
   podcastTitle: string | null;
+  podcastFeedUrl: string | null;
   speaker: string | null;
 };
 
@@ -430,8 +444,10 @@ async function getNewChunksForUser(userId: string): Promise<ChunkRecord[]> {
       embedding: transcriptChunk.embedding,
       createdAt: transcriptChunk.createdAt,
       episodeTitle: episode.title,
+      episodeExternalId: episode.episodeId,
       episodePublishedAt: episode.publishedAt,
       podcastTitle: podcast.title,
+      podcastFeedUrl: podcast.feedUrl,
       speaker: transcriptChunk.speaker,
     })
     .from(transcriptChunk)
@@ -480,9 +496,13 @@ function scoreChunksForRelevance(
       return { ...chunk, relevanceScore: baseScore };
     }
 
-    const similarity = cosineSimilarity(chunkEmbedding, userEmbedding);
-    const score = normalizeScore(similarity);
-    console.log(`Chunk ${chunk.id}: similarity ${similarity}, score ${score}`);
+    // Use dot product instead of cosine similarity for preference learning
+    const dotProduct = chunkEmbedding.reduce(
+      (sum, val, i) => sum + val * userEmbedding[i],
+      0,
+    );
+    const score = normalizeScore(dotProduct);
+    console.log(`Chunk ${chunk.id}: dot product ${dotProduct}, score ${score}`);
     return {
       ...chunk,
       relevanceScore: score,
@@ -545,126 +565,456 @@ async function storeDailySignals(
 
   if (newChunks.length === 0) return;
 
-  const generated: Array<{ chunk: ScoredChunk; signal: GeneratedSignal }> = [];
+  const signalDate = new Date();
+  const speakerMappings = await buildSpeakerMappings(newChunks);
 
-  for (const chunk of newChunks) {
-    try {
-      const signal = await generateSignalFromChunk(chunk);
-      generated.push({ chunk, signal });
-    } catch (error) {
-      console.error(
-        `Failed to generate AI signal for chunk ${chunk.id}`,
-        error,
-      );
+  await db.insert(dailySignal).values(
+    newChunks.map((chunk) => {
+      const mappingForEpisode = chunk.speaker
+        ? speakerMappings.get(chunk.episodeId)
+        : null;
+      const inferredSpeakerName =
+        chunk.speaker && mappingForEpisode
+          ? (mappingForEpisode.get(chunk.speaker) ?? null)
+          : null;
+      const speakerName = inferredSpeakerName
+        ? inferredSpeakerName
+        : chunk.speaker
+          ? deriveDefaultSpeakerLabel(chunk.speaker)
+          : null;
+
+      return {
+        id: randomUUID(),
+        chunkId: chunk.id,
+        userId,
+        signalDate,
+        relevanceScore: chunk.relevanceScore,
+        title: null,
+        summary: null,
+        excerpt: null,
+        speakerName,
+        userAction: null,
+        presentedAt: null,
+        actionedAt: null,
+      };
+    }),
+  );
+}
+
+async function buildSpeakerMappings(
+  chunks: ScoredChunk[],
+): Promise<Map<string, Map<string, string>>> {
+  const episodes = new Map<
+    string,
+    {
+      episodeId: string;
+      podcastFeedUrl: string | null;
+      episodeTitle: string | null;
+      podcastTitle: string | null;
+      speakerIds: Set<string>;
+    }
+  >();
+
+  for (const chunk of chunks) {
+    let context = episodes.get(chunk.episodeId);
+    if (!context) {
+      context = {
+        episodeId: chunk.episodeId,
+        podcastFeedUrl: chunk.podcastFeedUrl ?? null,
+        episodeTitle: chunk.episodeTitle ?? null,
+        podcastTitle: chunk.podcastTitle ?? null,
+        speakerIds: new Set<string>(),
+      };
+      episodes.set(chunk.episodeId, context);
+    }
+
+    if (chunk.speaker && chunk.speaker.trim() !== "") {
+      context.speakerIds.add(chunk.speaker.trim());
     }
   }
 
-  if (generated.length === 0) return;
+  const mappings = new Map<string, Map<string, string>>();
+  const feedCache = new Map<string, RSSFeed | null>();
 
-  const signalDate = new Date();
+  for (const context of episodes.values()) {
+    const speakerIds = Array.from(context.speakerIds);
+    if (speakerIds.length === 0) {
+      mappings.set(context.episodeId, new Map());
+      continue;
+    }
 
-  await db.insert(dailySignal).values(
-    generated.map(({ chunk, signal }) => ({
-      id: randomUUID(),
-      chunkId: chunk.id,
-      userId,
-      signalDate,
-      relevanceScore: chunk.relevanceScore,
-      title: signal.title,
-      summary: signal.summary,
-      excerpt: signal.excerpt,
-      speakerName: signal.speakerName,
-      userAction: null,
-      presentedAt: null,
-      actionedAt: null,
-    })),
+    const feed =
+      context.podcastFeedUrl && /^https?:\/\//i.test(context.podcastFeedUrl)
+        ? await getFeedData(context.podcastFeedUrl, feedCache)
+        : null;
+
+    const speakerMap = inferSpeakerMapFromFeed({
+      feed,
+      speakerIds,
+      episodeTitle: context.episodeTitle,
+      podcastTitle: context.podcastTitle,
+    });
+
+    mappings.set(context.episodeId, speakerMap);
+  }
+
+  return mappings;
+}
+
+async function getFeedData(
+  feedUrl: string,
+  cache: Map<string, RSSFeed | null>,
+): Promise<RSSFeed | null> {
+  if (cache.has(feedUrl)) {
+    return cache.get(feedUrl) ?? null;
+  }
+
+  try {
+    const feed = await rssParser.parseURL(feedUrl);
+    cache.set(feedUrl, feed);
+    return feed;
+  } catch (error) {
+    console.warn(`Unable to parse RSS feed ${feedUrl}:`, error);
+    cache.set(feedUrl, null);
+    return null;
+  }
+}
+
+function inferSpeakerMapFromFeed(params: {
+  feed: RSSFeed | null;
+  speakerIds: string[];
+  episodeTitle: string | null;
+  podcastTitle: string | null;
+}): Map<string, string> {
+  const { feed, speakerIds, episodeTitle, podcastTitle } = params;
+  const mapping = new Map<string, string>();
+
+  if (speakerIds.length === 0) {
+    return mapping;
+  }
+
+  const sortedSpeakerIds = [...speakerIds].sort(compareSpeakerIds);
+  const hostNames = dedupeNames(extractHostNames({ feed, podcastTitle }));
+
+  const episodeItem =
+    feed && episodeTitle ? findEpisodeItem(feed, episodeTitle) : null;
+
+  const guestNames = dedupeNames(
+    extractGuestNames({ episodeItem, episodeTitle, hostNames }),
   );
+
+  const hostQueue = [...hostNames];
+  const hostLower = new Set(hostQueue.map((name) => name.toLowerCase()));
+  const guestQueue = guestNames.filter(
+    (name) => !hostLower.has(name.toLowerCase()),
+  );
+
+  if (sortedSpeakerIds.includes("0")) {
+    const primaryHost = hostQueue.shift();
+    if (primaryHost) {
+      mapping.set("0", primaryHost);
+    }
+  }
+
+  const remainingNames = [...hostQueue, ...guestQueue];
+  let nameIndex = 0;
+
+  for (const speakerId of sortedSpeakerIds) {
+    if (speakerId === "0") continue;
+    const candidate = remainingNames[nameIndex];
+    if (candidate) {
+      mapping.set(speakerId, candidate);
+      nameIndex += 1;
+    }
+  }
+
+  return mapping;
+}
+
+function findEpisodeItem(
+  feed: RSSFeed,
+  episodeTitle: string,
+): RSSFeedItem | null {
+  const normalizedTarget = normalizeForComparison(episodeTitle);
+
+  const exactMatch = feed.items.find(
+    (item) =>
+      typeof item.title === "string" &&
+      normalizeForComparison(item.title) === normalizedTarget,
+  );
+
+  if (exactMatch) {
+    return exactMatch;
+  }
+
+  const partialMatch = feed.items.find(
+    (item) =>
+      typeof item.title === "string" &&
+      normalizeForComparison(item.title).includes(normalizedTarget),
+  );
+
+  return partialMatch ?? null;
+}
+
+function extractHostNames(params: {
+  feed: RSSFeed | null;
+  podcastTitle: string | null;
+}): string[] {
+  const { feed, podcastTitle } = params;
+  const candidates: string[] = [];
+
+  const feedAuthor = feed?.itunes?.author;
+  if (typeof feedAuthor === "string") {
+    candidates.push(...splitCandidateNames(feedAuthor));
+  }
+
+  const ownerName = feed?.itunes?.owner?.name;
+  if (typeof ownerName === "string") {
+    candidates.push(...splitCandidateNames(ownerName));
+  }
+
+  const feedSummary = feed?.itunes?.summary;
+  if (typeof feedSummary === "string") {
+    candidates.push(...extractNamesByPatterns(feedSummary, HOST_PATTERNS));
+  }
+
+  if (typeof feed?.description === "string") {
+    candidates.push(...extractNamesByPatterns(feed.description, HOST_PATTERNS));
+  }
+
+  if (podcastTitle) {
+    candidates.push(...extractNamesFromPodcastTitle(podcastTitle));
+  }
+
+  return dedupeNames(candidates);
+}
+
+function extractGuestNames(params: {
+  episodeItem: RSSFeedItem | null;
+  episodeTitle: string | null;
+  hostNames: string[];
+}): string[] {
+  const { episodeItem, episodeTitle, hostNames } = params;
+  const candidates: string[] = [];
+
+  if (episodeTitle) {
+    candidates.push(
+      ...extractNamesByPatterns(episodeTitle, TITLE_GUEST_PATTERNS),
+    );
+  }
+
+  if (episodeItem) {
+    const descriptionFields = [
+      episodeItem.content,
+      episodeItem.contentSnippet,
+      episodeItem.summary,
+      (episodeItem as { description?: unknown }).description,
+    ];
+
+    for (const field of descriptionFields) {
+      if (typeof field === "string" && field.trim() !== "") {
+        const cleaned = stripHtml(decodeEntities(field));
+        candidates.push(
+          ...extractNamesByPatterns(cleaned, DESCRIPTION_GUEST_PATTERNS),
+        );
+      }
+    }
+
+    if (typeof episodeItem.creator === "string") {
+      candidates.push(...splitCandidateNames(episodeItem.creator));
+    }
+
+    const itemAuthor = (episodeItem as { author?: unknown }).author;
+    if (typeof itemAuthor === "string") {
+      candidates.push(...splitCandidateNames(itemAuthor));
+    }
+
+    const itunesAuthor = (episodeItem as { itunes?: { author?: unknown } })
+      .itunes?.author;
+    if (typeof itunesAuthor === "string") {
+      candidates.push(...splitCandidateNames(itunesAuthor));
+    }
+  }
+
+  const hostLower = new Set(hostNames.map((name) => name.toLowerCase()));
+  return dedupeNames(
+    candidates.filter((name) => !hostLower.has(name.toLowerCase())),
+  );
+}
+
+function extractNamesByPatterns(text: string, patterns: RegExp[]): string[] {
+  const names: string[] = [];
+
+  for (const pattern of patterns) {
+    const flags = pattern.flags.includes("g")
+      ? pattern.flags
+      : `${pattern.flags}g`;
+    const regex = new RegExp(pattern.source, flags);
+    let match = regex.exec(text);
+
+    while (match !== null) {
+      if (match?.[1]) {
+        names.push(...splitCandidateNames(match[1]));
+      }
+      match = regex.exec(text);
+    }
+  }
+
+  return names;
+}
+
+function extractNamesFromPodcastTitle(title: string): string[] {
+  const patterns = [
+    /(?:The\s+)?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\s+(?:Podcast|Show)/,
+    /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)'s\s+(?:Podcast|Show)/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = pattern.exec(title);
+    if (match?.[1]) {
+      return splitCandidateNames(match[1]);
+    }
+  }
+
+  return [];
+}
+
+function splitCandidateNames(value: string): string[] {
+  const sanitized = decodeEntities(stripHtml(value))
+    .replace(/[\u2013\u2014]/g, "-")
+    .replace(/[\u2022•]/g, " ");
+
+  return sanitized
+    .split(/,|&|\band\b|\bwith\b|\bfeaturing\b|\bfeat\.\b|\bx\b|\+|\r?\n|\//i)
+    .map((segment) => segment.replace(/\((.*?)\)/g, " "))
+    .map((segment) =>
+      segment.replace(
+        /\b(host|hosts|co-hosts?|cohosts?|guest|guests|special guest|special guests)\b/gi,
+        "",
+      ),
+    )
+    .map((segment) => segment.replace(/^[\s:;\-–—\u2022•]+/, ""))
+    .map((segment) => segment.replace(/[\s:;\-–—\u2022•]+$/, ""))
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0)
+    .filter(isLikelyPersonName)
+    .map((segment) => segment.replace(/\s+/g, " "));
+}
+
+function isLikelyPersonName(value: string): boolean {
+  const tokens = value.split(/\s+/).filter((token) => token.length > 0);
+  if (tokens.length < 2) {
+    return false;
+  }
+
+  let hasCoreName = false;
+  for (const token of tokens) {
+    const normalized = token.replace(/[,]/g, "");
+    const lower = normalized.toLowerCase();
+
+    if (
+      [
+        "dr",
+        "dr.",
+        "mr",
+        "mr.",
+        "mrs",
+        "mrs.",
+        "ms",
+        "ms.",
+        "prof",
+        "prof.",
+        "sir",
+        "dame",
+      ].includes(lower)
+    ) {
+      continue;
+    }
+
+    if (["jr", "jr.", "sr", "sr.", "ii", "iii", "iv"].includes(lower)) {
+      continue;
+    }
+
+    if (/^[A-Z][a-z]+(?:[-'][A-Z][a-z]+)?$/.test(normalized)) {
+      hasCoreName = true;
+      continue;
+    }
+
+    if (/^[A-Z]\.$/.test(normalized)) {
+      hasCoreName = true;
+      continue;
+    }
+
+    return false;
+  }
+
+  return hasCoreName;
+}
+
+function dedupeNames(names: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const name of names) {
+    const trimmed = name.trim();
+    if (trimmed === "") continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(trimmed);
+  }
+
+  return result;
+}
+
+function stripHtml(value: string): string {
+  return value.replace(/<[^>]+>/g, " ");
+}
+
+function decodeEntities(value: string): string {
+  return value
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&apos;/gi, "'")
+    .replace(/&nbsp;/gi, " ");
+}
+
+function normalizeForComparison(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function compareSpeakerIds(a: string, b: string): number {
+  const aNum = Number.parseInt(a, 10);
+  const bNum = Number.parseInt(b, 10);
+
+  const aHas = !Number.isNaN(aNum);
+  const bHas = !Number.isNaN(bNum);
+
+  if (aHas && bHas) {
+    return aNum - bNum;
+  }
+
+  if (aHas) return -1;
+  if (bHas) return 1;
+
+  return a.localeCompare(b);
+}
+
+function deriveDefaultSpeakerLabel(speakerId: string): string {
+  if (speakerId === "0") {
+    return "Host";
+  }
+
+  const parsed = Number.parseInt(speakerId, 10);
+  if (!Number.isNaN(parsed)) {
+    return parsed === 1 ? "Guest" : `Guest ${parsed}`;
+  }
+
+  return `Speaker ${speakerId}`;
 }
 
 function normalizeScore(raw: number): number {
   const clamped = Math.max(-1, Math.min(1, raw));
   return (clamped + 1) / 2;
-}
-
-async function generateSignalFromChunk(
-  chunk: ScoredChunk,
-): Promise<GeneratedSignal> {
-  const trimmedContent = truncateText(chunk.content, 2400);
-  const publishedDate = formatPublishedDate(chunk.episodePublishedAt);
-  const { object } = await generateObject({
-    model: openrouter(SIGNAL_MODEL_ID),
-    schema: signalSchema,
-    temperature: 0.4,
-    maxRetries: 2,
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are a senior research analyst who crafts concise daily intelligence signals from podcast transcripts. Keep the output actionable for operators and strategists.",
-      },
-      {
-        role: "user",
-        content: buildSignalPrompt({ chunk, publishedDate, trimmedContent }),
-      },
-    ],
-  });
-
-  if (!object) {
-    throw new Error("Signal generation returned no content");
-  }
-
-  return {
-    title: object.title.trim(),
-    summary: object.summary.trim(),
-    excerpt: object.excerpt?.trim() ?? null,
-    speakerName: object.speakerName?.trim() ?? null,
-  };
-}
-
-interface SignalPromptContext {
-  chunk: ScoredChunk;
-  publishedDate: string;
-  trimmedContent: string;
-}
-
-function buildSignalPrompt({
-  chunk,
-  publishedDate,
-  trimmedContent,
-}: SignalPromptContext): string {
-  const podcastTitle = chunk.podcastTitle ?? "Unknown Podcast";
-  const episodeTitle = chunk.episodeTitle ?? chunk.episodeId;
-  const speakerLabel = chunk.speaker
-    ? `Speaker ${chunk.speaker}`
-    : "Unknown speaker";
-
-  return [
-    `Podcast: ${podcastTitle}`,
-    `Episode: ${episodeTitle}`,
-    `Published: ${publishedDate}`,
-    `Speaker label in transcript metadata: ${speakerLabel}`,
-    "",
-    "Transcript excerpt:",
-    trimmedContent,
-    "",
-    "Instructions:",
-    "- Produce a compelling title (≤12 words) that captures the operator takeaway.",
-    "- Write a 2-4 sentence summary focused on why this matters for decision makers.",
-    "- Highlight any quantitative data, strategic implications, or contrasting viewpoints.",
-    "- Provide a short excerpt or quote (≤200 characters) that anchors the insight.",
-    "- Identify the likely real speaker name or role for the provided speaker label and return it in the speakerName field (use 'Unknown speaker' if unclear).",
-    "- Do not fabricate information not present in the excerpt.",
-  ].join("\n");
-}
-
-function truncateText(text: string, maxChars: number): string {
-  if (text.length <= maxChars) return text;
-  return `${text.slice(0, maxChars - 3)}...`;
-}
-
-function formatPublishedDate(date: Date | string | null): string {
-  if (!date) return "unknown date";
-  const parsed = date instanceof Date ? date : new Date(date);
-  if (Number.isNaN(parsed.getTime())) return "unknown date";
-  return parsed.toISOString().split("T")[0];
 }

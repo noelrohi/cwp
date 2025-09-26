@@ -15,6 +15,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { use, useState } from "react";
 import { toast } from "sonner";
+import {
+  SignalCard,
+  type SignalCardMetadataItem,
+} from "@/blocks/signals/signal-card";
 import { TranscriptDisplay } from "@/components/transcript-display";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -307,45 +311,19 @@ export default function EpisodeDetailPage(props: {
                   ? `Speaker ${signal.chunk.speaker}`
                   : "Unknown speaker";
               const publishedLabel = formatDate(signal.episode?.publishedAt);
+              const metadata: SignalCardMetadataItem[] = [];
+              if (publishedLabel) {
+                metadata.push({ label: publishedLabel });
+              }
               return (
-                <article
+                <SignalCard
                   key={signal.id}
-                  className="rounded-2xl border border-border/70 bg-background/80 p-6 shadow-sm"
-                >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="space-y-2">
-                      <h3 className="text-lg font-semibold leading-tight">
-                        {signal.title}
-                      </h3>
-                      <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                        <span>{speakerDisplay}</span>
-                        {publishedLabel && <span>{publishedLabel}</span>}
-                      </div>
-                    </div>
-                    <Badge
-                      variant="secondary"
-                      className="inline-flex items-center gap-1 self-start text-xs"
-                    >
-                      {Math.round(signal.relevanceScore * 100)}
-                    </Badge>
-                  </div>
-                  <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
-                    {signal.summary}
-                  </p>
-                  {signal.excerpt && (
-                    <blockquote className="mt-3 border-l-2 border-muted pl-3 italic text-muted-foreground/90">
-                      "{signal.excerpt}"
-                    </blockquote>
-                  )}
-                  <details className="mt-4">
-                    <summary className="cursor-pointer text-xs font-medium text-primary underline-offset-4 hover:underline">
-                      Show transcript context
-                    </summary>
-                    <p className="mt-2 rounded-lg border border-dashed border-muted/60 bg-muted/30 p-3 text-xs leading-relaxed text-muted-foreground">
-                      {signal.chunk.content}
-                    </p>
-                  </details>
-                </article>
+                  className="rounded-2xl"
+                  chunkContent={signal.chunk.content}
+                  speakerLabel={speakerDisplay}
+                  startTimeSec={signal.chunk.startTimeSec ?? null}
+                  metadata={metadata}
+                />
               );
             })}
           </div>

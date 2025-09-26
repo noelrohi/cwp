@@ -43,7 +43,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <SidebarHeader>
           <div className="flex items-center gap-2 px-2">
             <SidebarTrigger className="-ml-1" />
-            <SidebarMenu className="flex-1">
+            <SidebarMenu className="flex-1 overflow-hidden">
               <SidebarMenuItem>
                 <SidebarMenuButton
                   asChild

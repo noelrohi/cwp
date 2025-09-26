@@ -12,7 +12,7 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
         } as React.CSSProperties
       }
     >
-      <AppSidebar variant="inset" />
+      <AppSidebar collapsible="icon" />
       <SidebarInset className="md:peer-data-[variant=inset]:mb-0 md:peer-data-[variant=inset]:rounded-b-none">
         {children}
       </SidebarInset>

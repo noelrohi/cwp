@@ -97,7 +97,7 @@ export async function ensureEpisodeTranscript({
       .update(episodeSchema)
       .set({
         transcriptUrl: blob.url,
-        status: "processed",
+        status: "processing",
       })
       .where(eq(episodeSchema.id, episode.id));
 
