@@ -50,6 +50,8 @@ export const signalsRouter = createTRPCRouter({
                   id: true,
                   title: true,
                   publishedAt: true,
+                  audioUrl: true,
+                  durationSec: true,
                   podcastId: true,
                 },
                 with: {
@@ -98,6 +100,8 @@ export const signalsRouter = createTRPCRouter({
               id: row.chunk.episode.id,
               title: row.chunk.episode.title,
               publishedAt: row.chunk.episode.publishedAt,
+              audioUrl: row.chunk.episode.audioUrl,
+              durationSec: row.chunk.episode.durationSec,
               podcast: row.chunk.episode.podcast
                 ? {
                     id: row.chunk.episode.podcast.id,
@@ -134,6 +138,8 @@ export const signalsRouter = createTRPCRouter({
           relatedEpisodeId: episode.id,
           relatedEpisodeTitle: episode.title,
           relatedEpisodePublishedAt: episode.publishedAt,
+          relatedEpisodeAudioUrl: episode.audioUrl,
+          relatedEpisodeDurationSec: episode.durationSec,
           relatedPodcastId: podcast.id,
           relatedPodcastTitle: podcast.title,
           relatedPodcastImageUrl: podcast.imageUrl,
@@ -172,6 +178,8 @@ export const signalsRouter = createTRPCRouter({
           id: row.relatedEpisodeId,
           title: row.relatedEpisodeTitle,
           publishedAt: row.relatedEpisodePublishedAt,
+          audioUrl: row.relatedEpisodeAudioUrl,
+          durationSec: row.relatedEpisodeDurationSec,
           podcast: row.relatedPodcastId
             ? {
                 id: row.relatedPodcastId,

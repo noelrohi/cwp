@@ -315,6 +315,16 @@ export default function EpisodeDetailPage(props: {
               if (publishedLabel) {
                 metadata.push({ label: publishedLabel });
               }
+              const audioSource = signal.episode?.audioUrl
+                ? {
+                    id: `${signal.id}-${signal.chunk.id}`,
+                    title: signal.episode?.title ?? signal.title ?? "Episode",
+                    subtitle: speakerDisplay,
+                    audioUrl: signal.episode.audioUrl,
+                    startTimeSec: signal.chunk.startTimeSec ?? undefined,
+                    durationSec: signal.episode.durationSec ?? undefined,
+                  }
+                : undefined;
               return (
                 <SignalCard
                   key={signal.id}
@@ -323,6 +333,7 @@ export default function EpisodeDetailPage(props: {
                   speakerLabel={speakerDisplay}
                   startTimeSec={signal.chunk.startTimeSec ?? null}
                   metadata={metadata}
+                  audio={audioSource}
                 />
               );
             })}

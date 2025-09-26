@@ -1,6 +1,10 @@
 "use client";
 
+import { PauseIcon, PlayIcon } from "lucide-react";
 import type { ReactNode } from "react";
+import { useAudioPlayer } from "@/components/audio-player/audio-player-provider";
+import { Button } from "@/components/ui/button";
+import { formatTimecode } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
 export type SignalCardMetadataItem = {
@@ -13,6 +17,14 @@ export type SignalCardProps = {
   speakerLabel?: string | null;
   startTimeSec?: number | null;
   metadata?: SignalCardMetadataItem[];
+  audio?: {
+    id: string;
+    title: string;
+    subtitle?: string | null;
+    audioUrl: string;
+    startTimeSec?: number | null;
+    durationSec?: number | null;
+  };
   children?: ReactNode;
   className?: string;
 };
@@ -23,11 +35,33 @@ export function SignalCard(props: SignalCardProps) {
     speakerLabel,
     startTimeSec,
     metadata = [],
+    audio,
     children,
     className,
   } = props;
-  const timestampLabel = formatTimestamp(startTimeSec);
+  const timestampLabel = formatTimecode(startTimeSec);
   const resolvedSpeaker = speakerLabel?.trim() ?? null;
+  const audioPlayer = useAudioPlayer();
+  const isCurrentTrack =
+    audio && audioPlayer.currentTrack?.id === audio.id && audioPlayer.isPlaying;
+
+  const handlePlayClick = async () => {
+    if (!audio) {
+      return;
+    }
+    if (audioPlayer.currentTrack?.id === audio.id) {
+      await audioPlayer.toggle();
+      return;
+    }
+    await audioPlayer.play({
+      id: audio.id,
+      title: audio.title,
+      subtitle: audio.subtitle,
+      audioUrl: audio.audioUrl,
+      startTimeSec: audio.startTimeSec,
+      durationSec: audio.durationSec,
+    });
+  };
 
   return (
     <article
@@ -53,9 +87,23 @@ export function SignalCard(props: SignalCardProps) {
             ))}
           </div>
         ) : null}
-        {children ? (
-          <div className="flex flex-wrap gap-2">{children}</div>
-        ) : null}
+        <div className="flex flex-wrap gap-2">
+          {audio ? (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => void handlePlayClick()}
+            >
+              {isCurrentTrack ? (
+                <PauseIcon className="mr-2 h-4 w-4" />
+              ) : (
+                <PlayIcon className="mr-2 h-4 w-4" />
+              )}
+              {isCurrentTrack ? "Pause" : "Play"}
+            </Button>
+          ) : null}
+          {children}
+        </div>
       </div>
       <div className="mt-4 rounded-lg bg-muted/50 p-4">
         <div className="flex gap-3">
@@ -76,23 +124,4 @@ export function SignalCard(props: SignalCardProps) {
       </div>
     </article>
   );
-}
-
-function formatTimestamp(value?: number | null): string | null {
-  if (typeof value !== "number" || Number.isNaN(value) || value < 0) {
-    return null;
-  }
-
-  const totalSeconds = Math.floor(value);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-
-  if (hours > 0) {
-    return `${hours}:${minutes.toString().padStart(2, "0")}:${seconds
-      .toString()
-      .padStart(2, "0")}`;
-  }
-
-  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }

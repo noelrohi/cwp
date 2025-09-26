@@ -94,6 +94,20 @@ export default function SignalsPage() {
                 label: formatDate(signal.episode.publishedAt),
               });
             }
+            const audioSource = signal.episode?.audioUrl
+              ? {
+                  id: `${signal.id}-${signal.chunk.id}`,
+                  title:
+                    signal.episode.title ??
+                    signal.title ??
+                    signal.episode.podcast?.title ??
+                    "Episode",
+                  subtitle: speakerDisplay,
+                  audioUrl: signal.episode.audioUrl,
+                  startTimeSec: signal.chunk.startTimeSec ?? undefined,
+                  durationSec: signal.episode.durationSec ?? undefined,
+                }
+              : undefined;
             return (
               <SignalCard
                 key={signal.id}
@@ -102,6 +116,7 @@ export default function SignalsPage() {
                 speakerLabel={speakerDisplay}
                 startTimeSec={signal.chunk.startTimeSec ?? null}
                 metadata={metadata}
+                audio={audioSource}
               >
                 <Button
                   variant="outline"
