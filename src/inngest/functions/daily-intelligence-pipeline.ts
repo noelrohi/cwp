@@ -549,7 +549,9 @@ async function storeDailySignals(
         title: null,
         summary: null,
         excerpt: null,
-        speakerName: `Speaker ${chunk.speaker}`,
+        speakerName: chunk.speaker
+          ? `Speaker  ${Number(chunk.speaker) + 1}`
+          : "Unknown Spekaer",
         userAction: null,
         presentedAt: null,
         actionedAt: null,
