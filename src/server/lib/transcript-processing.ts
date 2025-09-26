@@ -164,6 +164,8 @@ export async function chunkEpisodeTranscript({
       episodeId: episode.id,
       speaker: chunk.speaker,
       content: chunk.content,
+      startTimeSec: chunk.startSec,
+      endTimeSec: chunk.endSec,
       embedding,
     });
     index += 1;
