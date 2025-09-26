@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/server/db";
 import {
@@ -56,7 +57,7 @@ export const updateUserPreferences = inngest.createFunction(
     if (action === "saved") {
       await step.run("create-saved-chunk", async () => {
         await db.insert(savedChunk).values({
-          id: crypto.randomUUID(),
+          id: randomUUID(),
           chunkId: signalData.chunkId,
           userId: signalData.userId,
           tags: null,
@@ -128,17 +129,7 @@ async function updateUserCentroid(
   chunkEmbedding: number[],
   action: string,
 ): Promise<void> {
-  const userPref = await db
-    .select()
-    .from(userPreferences)
-    .where(eq(userPreferences.userId, userId))
-    .limit(1);
-
-  if (userPref.length === 0) {
-    throw new Error(`User preferences not found for ${userId}`);
-  }
-
-  const prefs = userPref[0];
+  const prefs = await ensureUserPreferencesRow(userId);
   const currentCentroid =
     (prefs.centroidEmbedding as number[]) || new Array(1536).fill(0);
 
@@ -189,6 +180,8 @@ async function updateUserCentroid(
  */
 export async function recomputeUserCentroid(userId: string): Promise<void> {
   // Get all saved chunks for this user
+  await ensureUserPreferencesRow(userId);
+
   const savedChunks = await db
     .select({
       embedding: transcriptChunk.embedding,
@@ -281,6 +274,41 @@ export async function recomputeUserCentroid(userId: string): Promise<void> {
       lastUpdated: new Date(),
     })
     .where(eq(userPreferences.userId, userId));
+}
+
+async function ensureUserPreferencesRow(userId: string) {
+  const existing = await db
+    .select()
+    .from(userPreferences)
+    .where(eq(userPreferences.userId, userId))
+    .limit(1);
+
+  if (existing.length > 0) {
+    return existing[0];
+  }
+
+  const emptyVector = new Array(1536).fill(0);
+  await db.insert(userPreferences).values({
+    id: randomUUID(),
+    userId,
+    centroidEmbedding: emptyVector,
+    totalSaved: 0,
+    totalSkipped: 0,
+    lastUpdated: new Date(),
+    createdAt: new Date(),
+  });
+
+  const [created] = await db
+    .select()
+    .from(userPreferences)
+    .where(eq(userPreferences.userId, userId))
+    .limit(1);
+
+  if (!created) {
+    throw new Error(`Unable to initialize user preferences for ${userId}`);
+  }
+
+  return created;
 }
 
 /**
