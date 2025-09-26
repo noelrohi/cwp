@@ -420,6 +420,9 @@ async function getNewChunksForUser(userId: string): Promise<ChunkRecord[]> {
       podcastTitle: podcast.title,
       podcastFeedUrl: podcast.feedUrl,
       speaker: transcriptChunk.speaker,
+      startTimeSec: transcriptChunk.startTimeSec,
+      endTimeSec: transcriptChunk.endTimeSec,
+      transcriptUrl: episode.transcriptUrl,
     })
     .from(transcriptChunk)
     .innerJoin(episode, eq(transcriptChunk.episodeId, episode.id))
@@ -548,10 +551,10 @@ async function storeDailySignals(
         relevanceScore: chunk.relevanceScore,
         title: null,
         summary: null,
-        excerpt: null,
+        excerpt: chunk.content,
         speakerName: chunk.speaker
-          ? `Speaker  ${Number(chunk.speaker) + 1}`
-          : "Unknown Spekaer",
+          ? `Speaker ${Number(chunk.speaker) + 1}`
+          : "Unknown Speaker",
         userAction: null,
         presentedAt: null,
         actionedAt: null,
