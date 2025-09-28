@@ -7,7 +7,7 @@ import {
   episode as episodeSchema,
   transcriptChunk,
 } from "@/server/db/schema/podcast";
-import type { TranscriptData, TranscriptUtterance } from "@/types/transcript";
+import type { TranscriptData } from "@/types/transcript";
 
 export type DatabaseClient = typeof dbInstance;
 export type EpisodeRecord = typeof episodeSchema.$inferSelect;
@@ -187,25 +187,60 @@ interface BuiltChunk {
   endSec: number;
 }
 
-function buildChunksFromTranscript({
-  transcript,
-  minTokens,
-  maxTokens,
-}: BuildChunksParams): BuiltChunk[] {
-  if (minTokens <= 0 || maxTokens <= 0 || minTokens > maxTokens) {
-    throw new Error("Invalid chunking parameters supplied");
+interface TimestampedWord {
+  word: string;
+  start: number;
+  end: number;
+  speaker: number | undefined;
+  utteranceIndex: number;
+}
+
+function extractWordsWithTimestamps(
+  transcript: TranscriptData,
+): TimestampedWord[] {
+  const allWords: TimestampedWord[] = [];
+
+  for (let uttIdx = 0; uttIdx < transcript.length; uttIdx++) {
+    const utterance = transcript[uttIdx];
+
+    if (!utterance.words || utterance.words.length === 0) {
+      const words = (utterance.transcript || "").trim().split(/\s+/);
+      const duration = (utterance.end || 0) - (utterance.start || 0);
+      const timePerWord = words.length > 0 ? duration / words.length : 0;
+
+      words.forEach((word, wordIdx) => {
+        if (word.trim()) {
+          allWords.push({
+            word: word.trim(),
+            start: (utterance.start || 0) + wordIdx * timePerWord,
+            end: (utterance.start || 0) + (wordIdx + 1) * timePerWord,
+            speaker: utterance.speaker,
+            utteranceIndex: uttIdx,
+          });
+        }
+      });
+    } else {
+      utterance.words.forEach((word) => {
+        if (word.word.trim()) {
+          allWords.push({
+            word: word.punctuated_word || word.word,
+            start: word.start,
+            end: word.end,
+            speaker: word.speaker ?? utterance.speaker,
+            utteranceIndex: uttIdx,
+          });
+        }
+      });
+    }
   }
 
-  const chunks: BuiltChunk[] = [];
-  let currentChunk: BuiltChunk = {
-    content: "",
-    speaker: null,
-    startSec: 0,
-    endSec: 0,
-  };
-  let currentCount = 0;
+  return allWords;
+}
 
-  // Strong semantic boundaries that indicate complete thoughts
+function createSemanticBreakDetector(
+  allWords: TimestampedWord[],
+  transcript: TranscriptData,
+) {
   const strongBoundaries = [
     "So ",
     "Now ",
@@ -233,103 +268,83 @@ function buildChunksFromTranscript({
     "What matters",
   ];
 
-  // Sentence endings that indicate thought completion
   const sentenceEndings = /[.!?]\s*$/;
 
-  // Question patterns that indicate complete thoughts
-  const questionPatterns = /\?\s*$/;
+  return function isGoodBreakPoint(wordIndex: number): boolean {
+    if (wordIndex >= allWords.length - 1) return true;
 
-  const isStrongBoundary = (text: string): boolean => {
-    return strongBoundaries.some((phrase) =>
-      text.toLowerCase().startsWith(phrase.toLowerCase()),
-    );
-  };
+    const currentWord = allWords[wordIndex];
+    const nextWord = allWords[wordIndex + 1];
 
-  const endsWithCompleteSentence = (text: string): boolean => {
-    return (
-      sentenceEndings.test(text.trim()) || questionPatterns.test(text.trim())
-    );
-  };
+    if (!sentenceEndings.test(currentWord.word.trim())) return false;
 
-  const isGoodBreakPoint = (
-    utterance: TranscriptUtterance,
-    nextUtterance?: TranscriptUtterance,
-  ): boolean => {
-    const text = utterance.transcript?.trim() || "";
-    const nextText = nextUtterance?.transcript?.trim() || "";
-
-    // Complete sentence + next starts with strong boundary
     if (
-      endsWithCompleteSentence(text) &&
-      nextText &&
-      isStrongBoundary(nextText)
-    ) {
+      strongBoundaries.some((phrase) =>
+        nextWord.word.toLowerCase().startsWith(phrase.toLowerCase()),
+      )
+    )
       return true;
-    }
+    if (currentWord.speaker !== nextWord.speaker) return true;
+    if (nextWord.start - currentWord.end > 2) return true;
 
-    // Speaker change + complete sentence
-    if (
-      endsWithCompleteSentence(text) &&
-      nextUtterance &&
-      utterance.speaker !== nextUtterance.speaker
-    ) {
-      return true;
-    }
-
-    // Long pause (>2 seconds) + complete sentence
-    const pauseDuration = nextUtterance
-      ? (nextUtterance.start || 0) - (utterance.end || 0)
-      : 0;
-    if (endsWithCompleteSentence(text) && pauseDuration > 2) {
-      return true;
+    if (currentWord.utteranceIndex !== nextWord.utteranceIndex) {
+      const currentUtterance = transcript[currentWord.utteranceIndex];
+      const nextUtterance = transcript[nextWord.utteranceIndex];
+      if (nextUtterance.start - currentUtterance.end > 1) return true;
     }
 
     return false;
   };
+}
+
+function buildChunksFromTranscript({
+  transcript,
+  minTokens,
+  maxTokens,
+}: BuildChunksParams): BuiltChunk[] {
+  if (minTokens <= 0 || maxTokens <= 0 || minTokens > maxTokens) {
+    throw new Error("Invalid chunking parameters supplied");
+  }
+
+  const allWords = extractWordsWithTimestamps(transcript);
+  if (allWords.length === 0) return [];
+
+  const isGoodBreakPoint = createSemanticBreakDetector(allWords, transcript);
+  const chunks: BuiltChunk[] = [];
+
+  let currentChunk: BuiltChunk = {
+    content: "",
+    speaker: null,
+    startSec: 0,
+    endSec: 0,
+  };
+  let currentCount = 0;
 
   const pushCurrentChunk = () => {
     if (currentCount >= minTokens && currentChunk.content.trim()) {
       chunks.push({ ...currentChunk });
     }
-    currentChunk = {
-      content: "",
-      speaker: null,
-      startSec: 0,
-      endSec: 0,
-    };
+    currentChunk = { content: "", speaker: null, startSec: 0, endSec: 0 };
     currentCount = 0;
   };
 
-  for (let i = 0; i < transcript.length; i++) {
-    const utterance = transcript[i];
-    const nextUtterance = transcript[i + 1];
-    const text = utterance.transcript?.trim();
-
-    if (!text) continue;
-
-    const words = text.split(/\s+/);
+  for (let i = 0; i < allWords.length; i++) {
+    const word = allWords[i];
 
     if (currentCount === 0) {
-      currentChunk.startSec = Math.floor(utterance.start ?? 0);
-      currentChunk.speaker = utterance.speaker?.toString() ?? null;
+      currentChunk.startSec = Math.floor(word.start);
+      currentChunk.speaker = word.speaker?.toString() ?? null;
     }
 
-    // Add content to current chunk
-    for (const word of words) {
-      currentChunk.content += currentChunk.content ? ` ${word}` : word;
-      currentCount += 1;
-      currentChunk.endSec = Math.floor(utterance.end ?? currentChunk.endSec);
-    }
+    currentChunk.content += currentChunk.content ? ` ${word.word}` : word.word;
+    currentCount += 1;
+    currentChunk.endSec = Math.ceil(word.end);
 
-    // Check if we should break after this utterance
     const shouldBreak =
       currentCount >= minTokens &&
-      // Ideal break point: semantic boundary within reasonable size
-      ((currentCount <= maxTokens &&
-        isGoodBreakPoint(utterance, nextUtterance)) ||
-        // Force break: approaching max tokens and we have a sentence ending
-        (currentCount >= maxTokens * 0.8 && endsWithCompleteSentence(text)) ||
-        // Hard limit: must break to avoid oversized chunks
+      ((currentCount <= maxTokens && isGoodBreakPoint(i)) ||
+        (currentCount >= maxTokens * 0.8 &&
+          /[.!?]\s*$/.test(word.word.trim())) ||
         currentCount >= maxTokens * 1.2);
 
     if (shouldBreak) {
@@ -337,7 +352,6 @@ function buildChunksFromTranscript({
     }
   }
 
-  // Handle remaining content
   if (currentCount >= minTokens) {
     chunks.push({ ...currentChunk });
   }

@@ -322,6 +322,7 @@ export default function EpisodeDetailPage(props: {
                     subtitle: speakerDisplay,
                     audioUrl: signal.episode.audioUrl,
                     startTimeSec: signal.chunk.startTimeSec ?? undefined,
+                    endTimeSec: signal.chunk.endTimeSec ?? undefined,
                     durationSec: signal.episode.durationSec ?? undefined,
                   }
                 : undefined;
@@ -332,6 +333,7 @@ export default function EpisodeDetailPage(props: {
                   chunkContent={signal.chunk.content}
                   speakerLabel={speakerDisplay}
                   startTimeSec={signal.chunk.startTimeSec ?? null}
+                  endTimeSec={signal.chunk.endTimeSec ?? null}
                   metadata={metadata}
                   audio={audioSource}
                 />

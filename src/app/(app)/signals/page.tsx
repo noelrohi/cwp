@@ -134,6 +134,7 @@ export default function SignalsPage() {
                 chunkContent={signal.chunk.content}
                 speakerLabel={speakerDisplay}
                 startTimeSec={signal.chunk.startTimeSec ?? null}
+                endTimeSec={signal.chunk.endTimeSec ?? null}
                 metadata={metadata}
                 audio={audioSource}
               >

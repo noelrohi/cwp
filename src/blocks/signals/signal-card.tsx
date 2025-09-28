@@ -16,6 +16,7 @@ export type SignalCardProps = {
   chunkContent: string;
   speakerLabel?: string | null;
   startTimeSec?: number | null;
+  endTimeSec?: number | null;
   metadata?: SignalCardMetadataItem[];
   audio?: {
     id: string;
@@ -35,12 +36,17 @@ export function SignalCard(props: SignalCardProps) {
     chunkContent,
     speakerLabel,
     startTimeSec,
+    endTimeSec,
     metadata = [],
     audio,
     children,
     className,
   } = props;
-  const timestampLabel = formatTimecode(startTimeSec);
+
+  const timestampLabel =
+    startTimeSec && endTimeSec
+      ? `${formatTimecode(startTimeSec)} - ${formatTimecode(endTimeSec)}`
+      : formatTimecode(startTimeSec);
   const resolvedSpeaker = speakerLabel?.trim() ?? null;
   const audioPlayer = useAudioPlayer();
   const isCurrentTrack =
@@ -122,20 +128,19 @@ export function SignalCard(props: SignalCardProps) {
         </div>
       </div>
       <div className="mt-4 rounded-lg bg-muted/50 p-4">
-        <div className="flex gap-3">
-          <span className="text-xs font-mono text-muted-foreground min-w-[4rem]">
-            {timestampLabel ?? "--:--"}
-          </span>
-          <div className="flex-1 space-y-1">
-            {resolvedSpeaker ? (
-              <div className="text-xs font-medium text-muted-foreground">
-                {resolvedSpeaker}
-              </div>
-            ) : null}
-            <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-line">
-              {chunkContent.trim()}
-            </p>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="font-mono">{timestampLabel ?? "--:--"}</span>
+            {resolvedSpeaker && (
+              <>
+                <span>•</span>
+                <span className="font-medium">{resolvedSpeaker}</span>
+              </>
+            )}
           </div>
+          <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-line">
+            {chunkContent.trim()}
+          </p>
         </div>
       </div>
     </article>
