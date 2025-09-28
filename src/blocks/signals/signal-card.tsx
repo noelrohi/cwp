@@ -1,6 +1,6 @@
 "use client";
 
-import { PauseIcon, PlayIcon } from "lucide-react";
+import { PauseIcon, PlayIcon, RotateCcwIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { useAudioPlayer } from "@/components/audio-player/audio-player-provider";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ export type SignalCardProps = {
     subtitle?: string | null;
     audioUrl: string;
     startTimeSec?: number | null;
+    endTimeSec?: number | null;
     durationSec?: number | null;
   };
   children?: ReactNode;
@@ -44,13 +45,21 @@ export function SignalCard(props: SignalCardProps) {
   const audioPlayer = useAudioPlayer();
   const isCurrentTrack =
     audio && audioPlayer.currentTrack?.id === audio.id && audioPlayer.isPlaying;
+  const isCurrentTrackEnded =
+    audio &&
+    audioPlayer.currentTrack?.id === audio.id &&
+    audioPlayer.hasReachedEnd;
 
   const handlePlayClick = async () => {
     if (!audio) {
       return;
     }
     if (audioPlayer.currentTrack?.id === audio.id) {
-      await audioPlayer.toggle();
+      if (audioPlayer.hasReachedEnd) {
+        await audioPlayer.replay();
+      } else {
+        await audioPlayer.toggle();
+      }
       return;
     }
     await audioPlayer.play({
@@ -59,6 +68,7 @@ export function SignalCard(props: SignalCardProps) {
       subtitle: audio.subtitle,
       audioUrl: audio.audioUrl,
       startTimeSec: audio.startTimeSec,
+      endTimeSec: audio.endTimeSec,
       durationSec: audio.durationSec,
     });
   };
@@ -94,12 +104,18 @@ export function SignalCard(props: SignalCardProps) {
               variant="secondary"
               onClick={() => void handlePlayClick()}
             >
-              {isCurrentTrack ? (
+              {isCurrentTrackEnded ? (
+                <RotateCcwIcon className="mr-2 h-4 w-4" />
+              ) : isCurrentTrack ? (
                 <PauseIcon className="mr-2 h-4 w-4" />
               ) : (
                 <PlayIcon className="mr-2 h-4 w-4" />
               )}
-              {isCurrentTrack ? "Pause" : "Play"}
+              {isCurrentTrackEnded
+                ? "Replay"
+                : isCurrentTrack
+                  ? "Pause"
+                  : "Play"}
             </Button>
           ) : null}
           {children}

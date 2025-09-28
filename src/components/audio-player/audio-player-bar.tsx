@@ -4,10 +4,11 @@ import {
   Loader2,
   PauseIcon,
   PlayIcon,
+  RotateCcwIcon,
   SkipBackIcon,
   SkipForwardIcon,
 } from "lucide-react";
-import { useMemo } from "react";
+import { memo, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { formatTimecode } from "@/lib/time";
@@ -18,7 +19,9 @@ interface AudioPlayerBarProps {
   className?: string;
 }
 
-export function AudioPlayerBar({ className }: AudioPlayerBarProps) {
+const AudioPlayerBar = memo(function AudioPlayerBar({
+  className,
+}: AudioPlayerBarProps) {
   const {
     currentTrack,
     isPlaying,
@@ -27,9 +30,11 @@ export function AudioPlayerBar({ className }: AudioPlayerBarProps) {
     duration,
     playbackRate,
     error,
+    hasReachedEnd,
     toggle,
     skip,
     cycleRate,
+    replay,
   } = useAudioPlayer();
 
   const progressValue = useMemo(() => {
@@ -39,12 +44,34 @@ export function AudioPlayerBar({ className }: AudioPlayerBarProps) {
     return Math.min(100, Math.max(0, (currentTime / duration) * 100));
   }, [currentTime, duration]);
 
+  const handlePlayPause = useCallback(() => {
+    if (hasReachedEnd) {
+      void replay();
+    } else {
+      void toggle();
+    }
+  }, [hasReachedEnd, replay, toggle]);
+
+  const handleSkipBack = useCallback(() => skip(-10), [skip]);
+  const handleSkipForward = useCallback(() => skip(10), [skip]);
+
+  const currentLabel = useMemo(
+    () => formatTimecode(currentTime) ?? "0:00",
+    [currentTime],
+  );
+  const durationLabel = useMemo(
+    () => formatTimecode(duration) ?? "--:--",
+    [duration],
+  );
+
+  const playbackRateLabel = useMemo(
+    () => `${playbackRate.toFixed(playbackRate % 1 === 0 ? 0 : 1)}x`,
+    [playbackRate],
+  );
+
   if (!currentTrack) {
     return null;
   }
-
-  const currentLabel = formatTimecode(currentTime) ?? "0:00";
-  const durationLabel = formatTimecode(duration) ?? "--:--";
 
   return (
     <div
@@ -70,20 +97,22 @@ export function AudioPlayerBar({ className }: AudioPlayerBarProps) {
             <Button
               size="icon"
               variant="ghost"
-              onClick={() => skip(-10)}
+              onClick={handleSkipBack}
               aria-label="Go back 10 seconds"
             >
               <SkipBackIcon className="h-4 w-4" />
             </Button>
             <Button
               size="icon"
-              onClick={() => {
-                void toggle();
-              }}
-              aria-label={isPlaying ? "Pause" : "Play"}
+              onClick={handlePlayPause}
+              aria-label={
+                hasReachedEnd ? "Replay" : isPlaying ? "Pause" : "Play"
+              }
             >
               {isLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
+              ) : hasReachedEnd ? (
+                <RotateCcwIcon className="h-4 w-4" />
               ) : isPlaying ? (
                 <PauseIcon className="h-4 w-4" />
               ) : (
@@ -93,7 +122,7 @@ export function AudioPlayerBar({ className }: AudioPlayerBarProps) {
             <Button
               size="icon"
               variant="ghost"
-              onClick={() => skip(10)}
+              onClick={handleSkipForward}
               aria-label="Skip ahead 10 seconds"
             >
               <SkipForwardIcon className="h-4 w-4" />
@@ -104,7 +133,7 @@ export function AudioPlayerBar({ className }: AudioPlayerBarProps) {
               onClick={cycleRate}
               aria-label="Change playback rate"
             >
-              {`${playbackRate.toFixed(playbackRate % 1 === 0 ? 0 : 1)}x`}
+              {playbackRateLabel}
             </Button>
           </div>
         </div>
@@ -123,4 +152,6 @@ export function AudioPlayerBar({ className }: AudioPlayerBarProps) {
       </div>
     </div>
   );
-}
+});
+
+export { AudioPlayerBar };

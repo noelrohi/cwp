@@ -18,6 +18,7 @@ type AudioTrack = {
   subtitle?: string | null;
   audioUrl: string;
   startTimeSec?: number | null;
+  endTimeSec?: number | null;
   durationSec?: number | null;
 };
 
@@ -29,6 +30,7 @@ type AudioPlayerState = {
   duration: number;
   playbackRate: number;
   error: string | null;
+  hasReachedEnd: boolean;
 };
 
 type AudioPlayerControls = {
@@ -37,6 +39,8 @@ type AudioPlayerControls = {
   seek: (time: number) => void;
   skip: (amount: number) => void;
   cycleRate: () => void;
+  replay: () => Promise<void>;
+  preloadAudio: (urls: string[]) => void;
 };
 
 type AudioPlayerContextValue = AudioPlayerState & AudioPlayerControls;
@@ -60,6 +64,7 @@ function resolveErrorMessage(message: unknown): string {
 export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const howlRef = useRef<Howl | null>(null);
   const rafRef = useRef<number | null>(null);
+  const preloadedRef = useRef<Map<string, Howl>>(new Map());
   const [currentTrack, setCurrentTrack] = useState<AudioTrack | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -67,6 +72,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const [duration, setDuration] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [error, setError] = useState<string | null>(null);
+  const [hasReachedEnd, setHasReachedEnd] = useState(false);
 
   const clearTicker = useCallback(() => {
     if (rafRef.current !== null) {
@@ -76,12 +82,21 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const startTicker = useCallback(
-    (howl: Howl) => {
+    (howl: Howl, track: AudioTrack) => {
       clearTicker();
       const update = () => {
         const position = howl.seek();
         if (typeof position === "number") {
           setCurrentTime(position);
+
+          // Check if we've reached the end timestamp
+          if (track.endTimeSec && position >= track.endTimeSec) {
+            howl.pause();
+            setIsPlaying(false);
+            setHasReachedEnd(true);
+            clearTicker();
+            return;
+          }
         }
         if (howl.playing()) {
           rafRef.current = requestAnimationFrame(update);
@@ -103,16 +118,25 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     }
   }, [clearTicker]);
 
+  const disposePreloaded = useCallback(() => {
+    preloadedRef.current.forEach((howl) => {
+      howl.unload();
+    });
+    preloadedRef.current.clear();
+  }, []);
+
   useEffect(() => {
     return () => {
       disposeHowl();
+      disposePreloaded();
     };
-  }, [disposeHowl]);
+  }, [disposeHowl, disposePreloaded]);
 
   const play = async (track: AudioTrack) => {
     setCurrentTrack(track);
     setIsLoading(true);
     setError(null);
+    setHasReachedEnd(false);
     setCurrentTime(track.startTimeSec ?? 0);
     if (track.durationSec) {
       setDuration(track.durationSec);
@@ -121,12 +145,26 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     disposeHowl();
 
     const targetStart = track.startTimeSec ?? 0;
-    const howl = new Howl({
-      src: [track.audioUrl],
-      html5: true,
-      preload: true,
-      rate: playbackRate,
-    });
+
+    // Check if we have a preloaded version
+    const preloaded = preloadedRef.current.get(track.audioUrl);
+    let howl: Howl;
+
+    if (preloaded) {
+      howl = preloaded;
+      preloadedRef.current.delete(track.audioUrl); // Remove from preloaded cache
+      howl.rate(playbackRate); // Update playback rate
+      howl.volume(1); // Reset volume from silent preload
+      // Clear any existing event handlers from preload
+      howl.off();
+    } else {
+      howl = new Howl({
+        src: [track.audioUrl],
+        html5: true,
+        preload: true,
+        rate: playbackRate,
+      });
+    }
 
     howlRef.current = howl;
 
@@ -134,7 +172,8 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       setIsPlaying(true);
       setIsLoading(false);
       setError(null);
-      startTicker(howl);
+      setHasReachedEnd(false);
+      startTicker(howl, track);
     };
 
     const handlePause = () => {
@@ -148,10 +187,11 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
 
     const handleEnd = () => {
       setIsPlaying(false);
+      setHasReachedEnd(true);
       clearTicker();
       const total = howl.duration();
       if (Number.isFinite(total) && total > 0) {
-        setCurrentTime(total);
+        setCurrentTime(track.endTimeSec ?? total);
       }
     };
 
@@ -198,6 +238,28 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const preloadAudio = useCallback(
+    (urls: string[]) => {
+      // Clear existing preloaded audio
+      disposePreloaded();
+
+      // Preload unique URLs
+      const uniqueUrls = Array.from(new Set(urls));
+      uniqueUrls.forEach((url) => {
+        if (url && !preloadedRef.current.has(url)) {
+          const howl = new Howl({
+            src: [url],
+            html5: true,
+            preload: true,
+            volume: 0, // Silent preload
+          });
+          preloadedRef.current.set(url, howl);
+        }
+      });
+    },
+    [disposePreloaded],
+  );
+
   const toggle = async () => {
     const howl = howlRef.current;
     if (!howl) {
@@ -242,6 +304,13 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const replay = async () => {
+    if (!currentTrack) {
+      return;
+    }
+    await play(currentTrack);
+  };
+
   const value: AudioPlayerContextValue = {
     currentTrack,
     isPlaying,
@@ -250,11 +319,14 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     duration,
     playbackRate,
     error,
+    hasReachedEnd,
     play,
     toggle,
     seek,
     skip,
     cycleRate,
+    replay,
+    preloadAudio,
   };
 
   return (

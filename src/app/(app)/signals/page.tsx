@@ -8,12 +8,13 @@ import {
   Loader2,
   PodcastIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   SignalCard,
   type SignalCardMetadataItem,
 } from "@/blocks/signals/signal-card";
+import { useAudioPlayer } from "@/components/audio-player/audio-player-provider";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTRPC } from "@/server/trpc/client";
@@ -23,6 +24,7 @@ type SignalAction = "saved" | "skipped";
 export default function SignalsPage() {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
+  const audioPlayer = useAudioPlayer();
   const [pendingSignalId, setPendingSignalId] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<SignalAction | null>(null);
 
@@ -52,6 +54,22 @@ export default function SignalsPage() {
   const fetchErrorMessage =
     fetchError && fetchError instanceof Error ? fetchError.message : undefined;
   const signals = signalsQuery.data ?? [];
+
+  // Preload audio for unique episodes when signals are loaded
+  useEffect(() => {
+    if (signals.length > 0) {
+      const uniqueAudioUrls = Array.from(
+        new Set(
+          signals
+            .map((signal) => signal.episode?.audioUrl)
+            .filter((url): url is string => Boolean(url)),
+        ),
+      );
+      if (uniqueAudioUrls.length > 0) {
+        audioPlayer.preloadAudio(uniqueAudioUrls);
+      }
+    }
+  }, [signals, audioPlayer]);
 
   return (
     <main className="mx-auto w-full max-w-6xl space-y-6 px-6 py-8">
@@ -105,6 +123,7 @@ export default function SignalsPage() {
                   subtitle: speakerDisplay,
                   audioUrl: signal.episode.audioUrl,
                   startTimeSec: signal.chunk.startTimeSec ?? undefined,
+                  endTimeSec: signal.chunk.endTimeSec ?? undefined,
                   durationSec: signal.episode.durationSec ?? undefined,
                 }
               : undefined;

@@ -205,8 +205,8 @@ function buildChunksFromTranscript({
   };
   let currentCount = 0;
 
-  // Transition phrases that indicate topic shifts or complete thoughts
-  const transitionPhrases = [
+  // Strong semantic boundaries that indicate complete thoughts
+  const strongBoundaries = [
     "So ",
     "Now ",
     "But here's ",
@@ -218,23 +218,77 @@ function buildChunksFromTranscript({
     "You know what",
     "Here's the thing",
     "What's interesting",
-    "I think",
     "My point is",
     "The reality is",
     "To be honest",
     "In my experience",
     "What I've learned",
     "The bottom line",
+    "Anyway",
+    "Moving on",
+    "That said",
+    "In other words",
+    "To summarize",
+    "The key thing",
+    "What matters",
   ];
 
-  const isTransitionPoint = (text: string): boolean => {
-    return transitionPhrases.some((phrase) =>
-      text.toLowerCase().includes(phrase.toLowerCase()),
+  // Sentence endings that indicate thought completion
+  const sentenceEndings = /[.!?]\s*$/;
+
+  // Question patterns that indicate complete thoughts
+  const questionPatterns = /\?\s*$/;
+
+  const isStrongBoundary = (text: string): boolean => {
+    return strongBoundaries.some((phrase) =>
+      text.toLowerCase().startsWith(phrase.toLowerCase()),
     );
   };
 
+  const endsWithCompleteSentence = (text: string): boolean => {
+    return (
+      sentenceEndings.test(text.trim()) || questionPatterns.test(text.trim())
+    );
+  };
+
+  const isGoodBreakPoint = (
+    utterance: TranscriptUtterance,
+    nextUtterance?: TranscriptUtterance,
+  ): boolean => {
+    const text = utterance.transcript?.trim() || "";
+    const nextText = nextUtterance?.transcript?.trim() || "";
+
+    // Complete sentence + next starts with strong boundary
+    if (
+      endsWithCompleteSentence(text) &&
+      nextText &&
+      isStrongBoundary(nextText)
+    ) {
+      return true;
+    }
+
+    // Speaker change + complete sentence
+    if (
+      endsWithCompleteSentence(text) &&
+      nextUtterance &&
+      utterance.speaker !== nextUtterance.speaker
+    ) {
+      return true;
+    }
+
+    // Long pause (>2 seconds) + complete sentence
+    const pauseDuration = nextUtterance
+      ? (nextUtterance.start || 0) - (utterance.end || 0)
+      : 0;
+    if (endsWithCompleteSentence(text) && pauseDuration > 2) {
+      return true;
+    }
+
+    return false;
+  };
+
   const pushCurrentChunk = () => {
-    if (currentCount >= minTokens) {
+    if (currentCount >= minTokens && currentChunk.content.trim()) {
       chunks.push({ ...currentChunk });
     }
     currentChunk = {
@@ -246,53 +300,44 @@ function buildChunksFromTranscript({
     currentCount = 0;
   };
 
-  const appendUtterance = (utterance: TranscriptUtterance) => {
+  for (let i = 0; i < transcript.length; i++) {
+    const utterance = transcript[i];
+    const nextUtterance = transcript[i + 1];
     const text = utterance.transcript?.trim();
-    if (!text) {
-      return;
-    }
+
+    if (!text) continue;
 
     const words = text.split(/\s+/);
+
     if (currentCount === 0) {
       currentChunk.startSec = Math.floor(utterance.start ?? 0);
       currentChunk.speaker = utterance.speaker?.toString() ?? null;
     }
 
-    // Check if this utterance starts with a transition phrase
-    const hasTransition = isTransitionPoint(text);
-
-    // If we're near max tokens and hit a transition, prefer to break here
-    if (
-      hasTransition &&
-      currentCount >= minTokens &&
-      currentCount >= maxTokens * 0.7
-    ) {
-      currentChunk.endSec = Math.floor(utterance.start ?? currentChunk.endSec);
-      pushCurrentChunk();
-      currentChunk.startSec = Math.floor(utterance.start ?? 0);
-      currentChunk.speaker = utterance.speaker?.toString() ?? null;
-    }
-
+    // Add content to current chunk
     for (const word of words) {
-      if (currentCount >= maxTokens) {
-        currentChunk.endSec = Math.floor(
-          utterance.start ?? currentChunk.endSec,
-        );
-        pushCurrentChunk();
-        currentChunk.startSec = Math.floor(utterance.start ?? 0);
-        currentChunk.speaker = utterance.speaker?.toString() ?? null;
-      }
-
       currentChunk.content += currentChunk.content ? ` ${word}` : word;
       currentCount += 1;
       currentChunk.endSec = Math.floor(utterance.end ?? currentChunk.endSec);
     }
-  };
 
-  for (const utterance of transcript) {
-    appendUtterance(utterance);
+    // Check if we should break after this utterance
+    const shouldBreak =
+      currentCount >= minTokens &&
+      // Ideal break point: semantic boundary within reasonable size
+      ((currentCount <= maxTokens &&
+        isGoodBreakPoint(utterance, nextUtterance)) ||
+        // Force break: approaching max tokens and we have a sentence ending
+        (currentCount >= maxTokens * 0.8 && endsWithCompleteSentence(text)) ||
+        // Hard limit: must break to avoid oversized chunks
+        currentCount >= maxTokens * 1.2);
+
+    if (shouldBreak) {
+      pushCurrentChunk();
+    }
   }
 
+  // Handle remaining content
   if (currentCount >= minTokens) {
     chunks.push({ ...currentChunk });
   }
