@@ -205,6 +205,34 @@ function buildChunksFromTranscript({
   };
   let currentCount = 0;
 
+  // Transition phrases that indicate topic shifts or complete thoughts
+  const transitionPhrases = [
+    "So ",
+    "Now ",
+    "But here's ",
+    "The thing is",
+    "Let me tell you",
+    "For example",
+    "Speaking of",
+    "Actually",
+    "You know what",
+    "Here's the thing",
+    "What's interesting",
+    "I think",
+    "My point is",
+    "The reality is",
+    "To be honest",
+    "In my experience",
+    "What I've learned",
+    "The bottom line",
+  ];
+
+  const isTransitionPoint = (text: string): boolean => {
+    return transitionPhrases.some((phrase) =>
+      text.toLowerCase().includes(phrase.toLowerCase()),
+    );
+  };
+
   const pushCurrentChunk = () => {
     if (currentCount >= minTokens) {
       chunks.push({ ...currentChunk });
@@ -226,6 +254,21 @@ function buildChunksFromTranscript({
 
     const words = text.split(/\s+/);
     if (currentCount === 0) {
+      currentChunk.startSec = Math.floor(utterance.start ?? 0);
+      currentChunk.speaker = utterance.speaker?.toString() ?? null;
+    }
+
+    // Check if this utterance starts with a transition phrase
+    const hasTransition = isTransitionPoint(text);
+
+    // If we're near max tokens and hit a transition, prefer to break here
+    if (
+      hasTransition &&
+      currentCount >= minTokens &&
+      currentCount >= maxTokens * 0.7
+    ) {
+      currentChunk.endSec = Math.floor(utterance.start ?? currentChunk.endSec);
+      pushCurrentChunk();
       currentChunk.startSec = Math.floor(utterance.start ?? 0);
       currentChunk.speaker = utterance.speaker?.toString() ?? null;
     }

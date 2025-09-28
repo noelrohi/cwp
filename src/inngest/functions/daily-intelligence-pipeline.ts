@@ -330,7 +330,15 @@ export const dailyIntelligenceGenerateSignals = inngest.createFunction(
 );
 
 /**
- * Generate signals for a user based on relevance and importance
+ * Generate signals for a user based on learned relevance patterns
+ *
+ * Following Karpathy's filtering philosophy:
+ * - Process EVERYTHING (no keyword pre-filtering)
+ * - Filter at ranking, not ingestion
+ * - Let the model learn what matters through user actions
+ * - Early phase: show variety (random 30, save 3-5, skip 25-27)
+ * - Later phase: model has learned user preferences
+ *
  * Store top 30 results for daily review at 8:00 AM
  */
 async function generateUserSignals(userId: string): Promise<number> {
@@ -344,7 +352,7 @@ async function generateUserSignals(userId: string): Promise<number> {
   if (candidateChunks.length === 0) return 0;
 
   const scoredChunks = scoreChunksForRelevance(candidateChunks, preferences);
-  const filteredChunks = filterRankedChunks(scoredChunks);
+  const filteredChunks = filterRankedChunks(scoredChunks, preferences);
 
   console.log(
     `User ${userId}: After filtering, ${filteredChunks.length} chunks`,
@@ -459,24 +467,45 @@ function scoreChunksForRelevance(
     : false;
 
   console.log(
-    `Scoring ${chunks.length} chunks for user. Has signal: ${hasSignal}`,
+    `Scoring ${chunks.length} chunks for user. Has signal: ${hasSignal}, saved: ${preferences.totalSaved}, skipped: ${preferences.totalSkipped}`,
   );
 
   return chunks.map((chunk) => {
     const chunkEmbedding = chunk.embedding as number[] | null;
-    const baseScore = 0.5;
+
+    // Start with higher base score early in learning to show more variety
+    const learningPhase =
+      preferences.totalSaved + preferences.totalSkipped < 100;
+    const baseScore = learningPhase ? 0.6 : 0.4;
 
     if (!chunkEmbedding || !hasSignal || !userEmbedding) {
-      return { ...chunk, relevanceScore: baseScore };
+      // During learning phase, add some randomness to ensure variety
+      const randomBoost = learningPhase ? (Math.random() - 0.5) * 0.2 : 0;
+      return {
+        ...chunk,
+        relevanceScore: Math.max(0, Math.min(1, baseScore + randomBoost)),
+      };
     }
 
-    // Use dot product instead of cosine similarity for preference learning
+    // Use dot product for preference learning - this naturally captures user's directional preferences
     const dotProduct = chunkEmbedding.reduce(
       (sum, val, i) => sum + val * userEmbedding[i],
       0,
     );
-    const score = normalizeScore(dotProduct);
-    console.log(`Chunk ${chunk.id}: dot product ${dotProduct}, score ${score}`);
+
+    // Apply confidence scaling based on amount of user feedback
+    const confidenceMultiplier = Math.min(
+      1,
+      (preferences.totalSaved + preferences.totalSkipped) / 500,
+    );
+    const score = normalizeScore(
+      dotProduct * confidenceMultiplier +
+        baseScore * (1 - confidenceMultiplier),
+    );
+
+    console.log(
+      `Chunk ${chunk.id}: dot product ${dotProduct}, confidence ${confidenceMultiplier}, score ${score}`,
+    );
     return {
       ...chunk,
       relevanceScore: score,
@@ -484,15 +513,31 @@ function scoreChunksForRelevance(
   });
 }
 
-function filterRankedChunks(chunks: ScoredChunk[]): ScoredChunk[] {
+function filterRankedChunks(
+  chunks: ScoredChunk[],
+  preferences: UserPreferenceRecord,
+): ScoredChunk[] {
   if (chunks.length === 0) return [];
 
   const sorted = [...chunks].sort(
     (a, b) => b.relevanceScore - a.relevanceScore,
   );
 
+  // During early learning phase, be more lenient with confidence threshold
+  // This implements Karpathy's advice: "show random 30, save 3-5, skip 25-27"
+  const totalUserActions = preferences.totalSaved + preferences.totalSkipped;
+
+  const isLearningPhase = totalUserActions < 200;
+  const dynamicMinConfidence = isLearningPhase
+    ? 0.3
+    : PIPELINE_SETTINGS.minConfidenceScore;
+
+  console.log(
+    `Filtering chunks. Learning phase: ${isLearningPhase}, confidence threshold: ${dynamicMinConfidence}`,
+  );
+
   const confident = sorted.filter(
-    (chunk) => chunk.relevanceScore >= PIPELINE_SETTINGS.minConfidenceScore,
+    (chunk) => chunk.relevanceScore >= dynamicMinConfidence,
   );
 
   if (confident.length >= PIPELINE_SETTINGS.maxDailySignals) {
@@ -502,13 +547,12 @@ function filterRankedChunks(chunks: ScoredChunk[]): ScoredChunk[] {
   if (confident.length > 0) {
     const remainingSlots = PIPELINE_SETTINGS.maxDailySignals - confident.length;
     const fallback = sorted
-      .filter(
-        (chunk) => chunk.relevanceScore < PIPELINE_SETTINGS.minConfidenceScore,
-      )
+      .filter((chunk) => chunk.relevanceScore < dynamicMinConfidence)
       .slice(0, remainingSlots);
     return confident.concat(fallback);
   }
 
+  // Always return something during learning phase to ensure user feedback
   return sorted.slice(
     0,
     Math.min(sorted.length, PIPELINE_SETTINGS.maxDailySignals),
