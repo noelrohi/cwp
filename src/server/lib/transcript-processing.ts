@@ -268,32 +268,64 @@ function createSemanticBreakDetector(
     "What matters",
   ];
 
-  const sentenceEndings = /[.!?]\s*$/;
+  // Enhanced punctuation patterns - prioritize sentence endings
+  const strongPunctuation = /[.!?]+\s*$/;
+  const mediumPunctuation = /[,;:]\s*$/;
 
-  return function isGoodBreakPoint(wordIndex: number): boolean {
-    if (wordIndex >= allWords.length - 1) return true;
+  return function isGoodBreakPoint(wordIndex: number): {
+    shouldBreak: boolean;
+    mustBreak: boolean;
+    priority: "high" | "medium" | "low";
+  } {
+    if (wordIndex >= allWords.length - 1) {
+      return { shouldBreak: true, mustBreak: true, priority: "high" };
+    }
 
     const currentWord = allWords[wordIndex];
     const nextWord = allWords[wordIndex + 1];
 
-    if (!sentenceEndings.test(currentWord.word.trim())) return false;
-
-    if (
-      strongBoundaries.some((phrase) =>
-        nextWord.word.toLowerCase().startsWith(phrase.toLowerCase()),
-      )
-    )
-      return true;
-    if (currentWord.speaker !== nextWord.speaker) return true;
-    if (nextWord.start - currentWord.end > 2) return true;
-
-    if (currentWord.utteranceIndex !== nextWord.utteranceIndex) {
-      const currentUtterance = transcript[currentWord.utteranceIndex];
-      const nextUtterance = transcript[nextWord.utteranceIndex];
-      if (nextUtterance.start - currentUtterance.end > 1) return true;
+    // MUST break on speaker change - this is non-negotiable
+    if (currentWord.speaker !== nextWord.speaker) {
+      return { shouldBreak: true, mustBreak: true, priority: "high" };
     }
 
-    return false;
+    // MUST break on large gaps (likely pauses)
+    if (nextWord.start - currentWord.end > 3) {
+      return { shouldBreak: true, mustBreak: true, priority: "high" };
+    }
+
+    // HIGH priority: Strong punctuation + semantic boundaries
+    if (strongPunctuation.test(currentWord.word.trim())) {
+      if (
+        strongBoundaries.some((phrase) =>
+          nextWord.word.toLowerCase().startsWith(phrase.toLowerCase()),
+        )
+      ) {
+        return { shouldBreak: true, mustBreak: false, priority: "high" };
+      }
+
+      // HIGH priority: sentence ending + utterance boundary
+      if (currentWord.utteranceIndex !== nextWord.utteranceIndex) {
+        const currentUtterance = transcript[currentWord.utteranceIndex];
+        const nextUtterance = transcript[nextWord.utteranceIndex];
+        if (nextUtterance.start - currentUtterance.end > 0.5) {
+          return { shouldBreak: true, mustBreak: false, priority: "high" };
+        }
+      }
+
+      // MEDIUM priority: just sentence ending
+      return { shouldBreak: true, mustBreak: false, priority: "medium" };
+    }
+
+    // MEDIUM priority: Medium punctuation at utterance boundary
+    if (
+      mediumPunctuation.test(currentWord.word.trim()) &&
+      currentWord.utteranceIndex !== nextWord.utteranceIndex
+    ) {
+      return { shouldBreak: true, mustBreak: false, priority: "medium" };
+    }
+
+    return { shouldBreak: false, mustBreak: false, priority: "low" };
   };
 }
 
@@ -309,7 +341,7 @@ function buildChunksFromTranscript({
   const allWords = extractWordsWithTimestamps(transcript);
   if (allWords.length === 0) return [];
 
-  const isGoodBreakPoint = createSemanticBreakDetector(allWords, transcript);
+  const getBreakPoint = createSemanticBreakDetector(allWords, transcript);
   const chunks: BuiltChunk[] = [];
 
   let currentChunk: BuiltChunk = {
@@ -321,8 +353,16 @@ function buildChunksFromTranscript({
   let currentCount = 0;
 
   const pushCurrentChunk = () => {
-    if (currentCount >= minTokens && currentChunk.content.trim()) {
-      chunks.push({ ...currentChunk });
+    if (currentCount > 0 && currentChunk.content.trim()) {
+      // Only push chunks that meet minimum length OR are complete speaker turns
+      if (
+        currentCount >= minTokens ||
+        currentChunk.content.includes(".") ||
+        currentChunk.content.includes("!") ||
+        currentChunk.content.includes("?")
+      ) {
+        chunks.push({ ...currentChunk });
+      }
     }
     currentChunk = { content: "", speaker: null, startSec: 0, endSec: 0 };
     currentCount = 0;
@@ -331,29 +371,64 @@ function buildChunksFromTranscript({
   for (let i = 0; i < allWords.length; i++) {
     const word = allWords[i];
 
+    // Initialize chunk with first word
     if (currentCount === 0) {
       currentChunk.startSec = Math.floor(word.start);
       currentChunk.speaker = word.speaker?.toString() ?? null;
+    }
+
+    // CRITICAL: Verify speaker consistency within chunk
+    const wordSpeaker = word.speaker?.toString() ?? null;
+    if (currentCount > 0 && currentChunk.speaker !== wordSpeaker) {
+      // Force break on speaker change - this should never happen with our new logic
+      // but adding as a safety net
+      pushCurrentChunk();
+
+      // Start new chunk with this word
+      currentChunk.startSec = Math.floor(word.start);
+      currentChunk.speaker = wordSpeaker;
     }
 
     currentChunk.content += currentChunk.content ? ` ${word.word}` : word.word;
     currentCount += 1;
     currentChunk.endSec = Math.ceil(word.end);
 
-    const shouldBreak =
-      currentCount >= minTokens &&
-      ((currentCount <= maxTokens && isGoodBreakPoint(i)) ||
-        (currentCount >= maxTokens * 0.8 &&
-          /[.!?]\s*$/.test(word.word.trim())) ||
-        currentCount >= maxTokens * 1.2);
+    const breakInfo = getBreakPoint(i);
+
+    // Determine if we should break
+    let shouldBreak = false;
+
+    if (breakInfo.mustBreak) {
+      // Mandatory breaks (speaker changes, long pauses)
+      shouldBreak = true;
+    } else if (currentCount >= maxTokens * 1.1) {
+      // Hard limit - must break even if not ideal
+      shouldBreak = true;
+    } else if (currentCount >= minTokens) {
+      // We have minimum content, check for good break points
+      if (breakInfo.priority === "high") {
+        // High priority breaks (sentence endings + semantic boundaries)
+        shouldBreak = true;
+      } else if (
+        currentCount >= maxTokens * 0.8 &&
+        breakInfo.priority === "medium"
+      ) {
+        // Medium priority breaks when approaching max length
+        shouldBreak = true;
+      } else if (currentCount >= maxTokens * 0.9 && breakInfo.shouldBreak) {
+        // Any break point when very close to max length
+        shouldBreak = true;
+      }
+    }
 
     if (shouldBreak) {
       pushCurrentChunk();
     }
   }
 
-  if (currentCount >= minTokens) {
-    chunks.push({ ...currentChunk });
+  // Handle final chunk
+  if (currentCount > 0) {
+    pushCurrentChunk();
   }
 
   return chunks;

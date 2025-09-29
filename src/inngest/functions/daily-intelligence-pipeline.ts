@@ -22,9 +22,10 @@ const DAILY_INTELLIGENCE_GENERATE_SIGNALS_EVENT =
   "app/daily-intelligence.user.generate-signals" as const;
 
 // Configuration from sequence.md - "set once, forget"
+// Optimized for 60-120 second signal segments with complete thoughts
 const CHUNK_SETTINGS = {
-  minWords: 200,
-  maxWords: 300,
+  minWords: 150, // ~45-50 seconds minimum for coherent snippets
+  maxWords: 450, // ~2 minutes maximum to capture complete thoughts
   useSpeakerTurns: true,
 } as const;
 
