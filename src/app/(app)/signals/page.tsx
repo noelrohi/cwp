@@ -95,12 +95,37 @@ export default function SignalsPage() {
             const isPending = pendingSignalId === signal.id;
             const inferredSpeakerName = signal.speakerName?.trim();
             const speakerLabel = signal.chunk.speaker?.trim();
-            const speakerDisplay =
-              inferredSpeakerName && inferredSpeakerName.length > 0
-                ? inferredSpeakerName
-                : speakerLabel
-                  ? `Speaker ${speakerLabel}`
-                  : "Unknown speaker";
+
+            // Better speaker display logic
+            const getSpeakerDisplay = () => {
+              // Use inferredSpeakerName if it exists and isn't just "Speaker X"
+              if (
+                inferredSpeakerName &&
+                inferredSpeakerName.length > 0 &&
+                !inferredSpeakerName.startsWith("Speaker ")
+              ) {
+                return inferredSpeakerName;
+              }
+
+              // For numeric speaker IDs, use more contextual labels
+              if (speakerLabel && /^\d+$/.test(speakerLabel)) {
+                const speakerNum = Number.parseInt(speakerLabel, 10);
+                if (speakerNum === 0) {
+                  return "Host"; // First speaker is usually the host
+                } else {
+                  return `Guest ${speakerNum}`; // Subsequent speakers are guests
+                }
+              }
+
+              // Fallback for non-numeric speaker labels
+              if (speakerLabel) {
+                return `Speaker ${speakerLabel}`;
+              }
+
+              return "Unknown speaker";
+            };
+
+            const speakerDisplay = getSpeakerDisplay();
             const metadata: SignalCardMetadataItem[] = [];
             if (signal.episode) {
               if (signal.episode.podcast?.title) {

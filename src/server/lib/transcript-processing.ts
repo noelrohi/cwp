@@ -1,6 +1,6 @@
 import { createClient as createDeepgramClient } from "@deepgram/sdk";
 import { put } from "@vercel/blob";
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { generateEmbedding } from "@/lib/embedding";
 import type { db as dbInstance } from "@/server/db";
 import {
@@ -122,6 +122,7 @@ interface ChunkTranscriptParams {
   minTokens: number;
   maxTokens: number;
   transcriptData?: TranscriptData;
+  skipEmbeddings?: boolean;
 }
 
 export async function chunkEpisodeTranscript({
@@ -130,6 +131,7 @@ export async function chunkEpisodeTranscript({
   minTokens,
   maxTokens,
   transcriptData,
+  skipEmbeddings = false,
 }: ChunkTranscriptParams): Promise<TranscriptChunkResult> {
   if (!episode.transcriptUrl) {
     throw new Error("Episode or transcript not found");
@@ -150,28 +152,143 @@ export async function chunkEpisodeTranscript({
     .delete(transcriptChunk)
     .where(eq(transcriptChunk.episodeId, episode.id));
 
+  console.time("chunk-transcript-build-chunks");
   const chunks = buildChunksFromTranscript({
     transcript: resolvedTranscript,
     minTokens,
     maxTokens,
   });
+  console.timeEnd("chunk-transcript-build-chunks");
 
-  let index = 0;
-  for (const chunk of chunks) {
-    const embedding = await generateEmbedding(chunk.content);
-    await db.insert(transcriptChunk).values({
-      id: `chunk_${episode.id}_${index}`,
-      episodeId: episode.id,
-      speaker: chunk.speaker,
-      content: chunk.content,
-      startTimeSec: chunk.startSec,
-      endTimeSec: chunk.endSec,
-      embedding,
-    });
-    index += 1;
+  if (chunks.length === 0) {
+    return { chunkCount: 0 };
   }
 
+  // Generate embeddings if not skipped
+  let embeddings: (number[] | null)[] = [];
+
+  if (!skipEmbeddings) {
+    console.time("chunk-transcript-embeddings");
+    const BATCH_SIZE = 10; // Process 10 chunks at a time
+
+    for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
+      const batch = chunks.slice(i, i + BATCH_SIZE);
+      console.log(
+        `Processing embedding batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(chunks.length / BATCH_SIZE)}`,
+      );
+
+      const batchPromises = batch.map((chunk, batchIndex) =>
+        generateEmbedding(chunk.content).catch((error) => {
+          console.error(
+            `Failed to generate embedding for chunk ${i + batchIndex}:`,
+            error,
+          );
+          return null; // Return null for failed embeddings
+        }),
+      );
+      const batchEmbeddings = await Promise.all(batchPromises);
+      embeddings.push(...batchEmbeddings);
+
+      // Small delay between batches to be nice to the API
+      if (i + BATCH_SIZE < chunks.length) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    }
+    console.timeEnd("chunk-transcript-embeddings");
+  } else {
+    // Fill with nulls when skipping embeddings
+    embeddings = new Array(chunks.length).fill(null);
+  }
+
+  // Batch insert all chunks with their embeddings
+  console.time("chunk-transcript-db-insert");
+  const chunksWithEmbeddings = chunks.map((chunk, index) => ({
+    id: `chunk_${episode.id}_${index}`,
+    episodeId: episode.id,
+    speaker: chunk.speaker,
+    content: chunk.content,
+    startTimeSec: Math.floor(chunk.startSec),
+    endTimeSec: Math.ceil(chunk.endSec),
+    wordCount: chunk.content.trim().split(/\s+/).length,
+    embedding: embeddings[index],
+  }));
+
+  await db.insert(transcriptChunk).values(chunksWithEmbeddings);
+  console.timeEnd("chunk-transcript-db-insert");
+
   return { chunkCount: chunks.length };
+}
+
+/**
+ * Generate embeddings for chunks that don't have them yet
+ * This can be run asynchronously after chunking to improve performance
+ */
+export async function generateMissingEmbeddings({
+  db,
+  episode,
+}: {
+  db: DatabaseClient;
+  episode: EpisodeRecord;
+}): Promise<{ embeddingsGenerated: number }> {
+  // Find chunks without embeddings
+  const chunksNeedingEmbeddings = await db
+    .select()
+    .from(transcriptChunk)
+    .where(
+      and(
+        eq(transcriptChunk.episodeId, episode.id),
+        sql`${transcriptChunk.embedding} IS NULL`,
+      ),
+    );
+
+  if (chunksNeedingEmbeddings.length === 0) {
+    return { embeddingsGenerated: 0 };
+  }
+
+  console.log(
+    `Generating embeddings for ${chunksNeedingEmbeddings.length} chunks`,
+  );
+
+  // Process in batches
+  const BATCH_SIZE = 10;
+  let embeddingsGenerated = 0;
+
+  for (let i = 0; i < chunksNeedingEmbeddings.length; i += BATCH_SIZE) {
+    const batch = chunksNeedingEmbeddings.slice(i, i + BATCH_SIZE);
+
+    const updates = await Promise.all(
+      batch.map(async (chunk) => {
+        try {
+          const embedding = await generateEmbedding(chunk.content);
+          return { id: chunk.id, embedding };
+        } catch (error) {
+          console.error(
+            `Failed to generate embedding for chunk ${chunk.id}:`,
+            error,
+          );
+          return null;
+        }
+      }),
+    );
+
+    // Update chunks with successful embeddings
+    for (const update of updates) {
+      if (update) {
+        await db
+          .update(transcriptChunk)
+          .set({ embedding: update.embedding })
+          .where(eq(transcriptChunk.id, update.id));
+        embeddingsGenerated++;
+      }
+    }
+
+    // Small delay between batches
+    if (i + BATCH_SIZE < chunksNeedingEmbeddings.length) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+
+  return { embeddingsGenerated };
 }
 
 interface BuildChunksParams {

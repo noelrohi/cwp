@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, ilike } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import Parser from "rss-parser";
 import { z } from "zod";
@@ -299,10 +299,6 @@ export const podcastsRouter = createTRPCRouter({
           const episodeIdentifier = getEpisodeIdentifier(item);
           const normalizedEpisodeId = `${episodeIdPrefix}${episodeIdentifier}`;
 
-          if (existingEpisodeIds.has(normalizedEpisodeId)) {
-            return [];
-          }
-
           existingEpisodeIds.add(normalizedEpisodeId);
 
           // Extract duration from itunes:duration or other sources
@@ -328,25 +324,65 @@ export const podcastsRouter = createTRPCRouter({
               podcastId: podcastRecord.id,
               userId: podcastRecord.userId,
               title: item.title || "Untitled Episode",
+              description:
+                item.contentSnippet || item.content || item.summary || null,
+              itunesSummary: item.itunes?.summary || null,
+              contentEncoded:
+                item["content:encoded"] || item.contentEncoded || null,
+              creator: item["dc:creator"] || item.creator || null,
               publishedAt: item.pubDate ? new Date(item.pubDate) : null,
               durationSec,
               audioUrl: item.enclosure?.url || null,
               thumbnailUrl: item.itunes?.image || null,
-              series: item.itunes?.season || null,
-              guest: null, // Could be extracted from title or description if needed
-              hostName: null, // Could be extracted from feed metadata
-              language: feedData.language || null,
               transcriptUrl: null, // Not available in RSS feeds typically
+              // iTunes namespace fields
+              itunesTitle: item.itunes?.title || null,
+              itunesEpisodeType: item.itunes?.episodeType || null,
+              itunesEpisode: item.itunes?.episode
+                ? Number(item.itunes.episode)
+                : null,
+              itunesKeywords: item.itunes?.keywords || null,
+              itunesExplicit: item.itunes?.explicit || null,
+              itunesImage: item.itunes?.image || null, // Episode-specific image
+              // Standard RSS fields
+              link: item.link || null,
+              author: item.author || null,
+              comments: item.comments || null,
+              category: Array.isArray(item.categories)
+                ? item.categories.join(", ")
+                : item.category || null,
+              // Dublin Core namespace
+              dcCreator: item["dc:creator"] || null,
+              status: "pending" as const,
             },
           ];
         });
 
-        // Insert episodes with conflict handling
+        // Upsert episodes with enhanced RSS metadata using efficient approach
         if (episodesToInsert.length > 0) {
+          // Create dynamic set object for all fields except id and episodeId
+          const setObject = Object.keys(episodesToInsert[0]).reduce(
+            (acc, key) => {
+              if (key !== "id" && key !== "episodeId") {
+                // Convert camelCase to snake_case for database compatibility
+                const columnName = key.replace(
+                  /[A-Z]/g,
+                  (letter) => `_${letter.toLowerCase()}`,
+                );
+                acc[columnName] = sql.raw(`excluded."${columnName}"`);
+              }
+              return acc;
+            },
+            {} as Record<string, unknown>,
+          );
+
           await ctx.db
             .insert(episode)
             .values(episodesToInsert)
-            .onConflictDoNothing({ target: episode.episodeId });
+            .onConflictDoUpdate({
+              target: episode.episodeId,
+              set: setObject,
+            });
         }
 
         processedCount += episodesToInsert.length;

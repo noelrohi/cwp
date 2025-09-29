@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import Parser from "rss-parser";
 import { db } from "@/server/db";
@@ -207,9 +207,10 @@ async function parseFeedAndUpsertEpisodes(podcastRecord: {
       const episodeIdentifier = getEpisodeIdentifier(item);
       const normalizedEpisodeId = `${episodeIdPrefix}${episodeIdentifier}`;
 
-      if (existingEpisodeIds.has(normalizedEpisodeId)) {
-        return [];
-      }
+      // Process all episodes now - we'll use upsert to handle existing ones
+      // if (existingEpisodeIds.has(normalizedEpisodeId)) {
+      //   return [];
+      // }
 
       existingEpisodeIds.add(normalizedEpisodeId);
 
@@ -236,22 +237,62 @@ async function parseFeedAndUpsertEpisodes(podcastRecord: {
           podcastId: podcastRecord.id,
           userId: podcastRecord.userId,
           title: item.title || "Untitled Episode",
+          description:
+            item.contentSnippet || item.content || item.summary || null,
+          itunesSummary: item.itunes?.summary || null,
+          contentEncoded:
+            item["content:encoded"] || item.contentEncoded || null,
+          creator: item["dc:creator"] || item.creator || null,
           publishedAt: item.pubDate ? new Date(item.pubDate) : null,
           durationSec,
           audioUrl: item.enclosure?.url || null,
           thumbnailUrl: item.itunes?.image || null,
           transcriptUrl: null, // Not available in RSS feeds typically
+          // iTunes namespace fields
+          itunesTitle: item.itunes?.title || null,
+          itunesEpisodeType: item.itunes?.episodeType || null,
+          itunesEpisode: item.itunes?.episode
+            ? Number(item.itunes.episode)
+            : null,
+          itunesKeywords: item.itunes?.keywords || null,
+          itunesExplicit: item.itunes?.explicit || null,
+          itunesImage: item.itunes?.image || null, // Episode-specific image
+          // Standard RSS fields
+          link: item.link || null,
+          author: item.author || null,
+          comments: item.comments || null,
+          category: Array.isArray(item.categories)
+            ? item.categories.join(", ")
+            : item.category || null,
+          // Dublin Core namespace
+          dcCreator: item["dc:creator"] || null,
           status: "pending" as const, // Mark as pending for daily pipeline processing
         },
       ];
     });
 
-    // Insert episodes with conflict handling
+    // Upsert episodes with enhanced RSS metadata using your efficient approach
     if (episodesToInsert.length > 0) {
-      await db
-        .insert(episode)
-        .values(episodesToInsert)
-        .onConflictDoNothing({ target: episode.episodeId });
+      // Create dynamic set object for all fields except id and episodeId
+      const setObject = Object.keys(episodesToInsert[0]).reduce(
+        (acc, key) => {
+          if (key !== "id" && key !== "episodeId") {
+            // Convert camelCase to snake_case for database compatibility
+            const columnName = key.replace(
+              /[A-Z]/g,
+              (letter) => `_${letter.toLowerCase()}`,
+            );
+            acc[columnName] = sql.raw(`excluded."${columnName}"`);
+          }
+          return acc;
+        },
+        {} as Record<string, unknown>,
+      );
+
+      await db.insert(episode).values(episodesToInsert).onConflictDoUpdate({
+        target: episode.episodeId,
+        set: setObject,
+      });
     }
 
     processedCount += episodesToInsert.length;

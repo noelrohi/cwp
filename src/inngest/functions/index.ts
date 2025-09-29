@@ -3,7 +3,6 @@
 export {
   monthlyCleanup,
   updateUserPreferences,
-  weeklyPreferencesOptimization,
 } from "./continuous-learning";
 export {
   dailyIntelligenceGenerateSignals,

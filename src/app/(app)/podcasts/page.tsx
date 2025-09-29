@@ -6,11 +6,13 @@ import {
   Loader2,
   MoreHorizontal,
   PlusIcon,
+  RefreshCw,
   SearchIcon,
   TrashIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { useQueryState } from "nuqs";
+import { toast } from "sonner";
 import { AddPodcastDialog } from "@/components/blocks/podcasts/add-podcast-dialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -54,13 +56,31 @@ export default function Podcasts() {
 
   // Mutations
   const removePodcast = useMutation(trpc.podcasts.remove.mutationOptions());
+  const parseFeed = useMutation(trpc.podcasts.parseFeed.mutationOptions());
+
   const handleRemovePodcast = async (podcastId: string) => {
     try {
       await removePodcast.mutateAsync({ podcastId });
       qc.invalidateQueries({ queryKey: trpc.podcasts.list.queryKey() });
       qc.invalidateQueries({ queryKey: trpc.podcasts.stats.queryKey() });
+      toast.success("Podcast removed from library");
     } catch (error) {
       console.error("Failed to remove podcast:", error);
+      toast.error("Failed to remove podcast");
+    }
+  };
+
+  const handleParseFeed = async (podcastId: string) => {
+    try {
+      const result = await parseFeed.mutateAsync({ podcastId });
+      qc.invalidateQueries({ queryKey: trpc.podcasts.list.queryKey() });
+      qc.invalidateQueries({ queryKey: trpc.podcasts.stats.queryKey() });
+      toast.success(result.message || "Episodes parsed successfully");
+    } catch (error) {
+      console.error("Failed to parse feed:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to parse feed",
+      );
     }
   };
 
@@ -211,9 +231,17 @@ export default function Podcasts() {
                 : "No podcasts in your library yet."}
             </div>
             {!debouncedSearchQuery && (
-              <p className="text-sm text-muted-foreground">
-                Add podcasts to your library to get started.
-              </p>
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Add podcasts to your library to get started.
+                </p>
+                <AddPodcastDialog>
+                  <Button variant="outline">
+                    <PlusIcon className="h-4 w-4 mr-2" />
+                    Add Your First Podcast
+                  </Button>
+                </AddPodcastDialog>
+              </div>
             )}
           </div>
         )}

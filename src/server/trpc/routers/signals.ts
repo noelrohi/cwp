@@ -1,5 +1,14 @@
 import { TRPCError } from "@trpc/server";
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import {
+  and,
+  count,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  sql,
+} from "drizzle-orm";
 import { z } from "zod";
 import { inngest } from "@/inngest/client";
 import {
@@ -236,6 +245,84 @@ export const signalsRouter = createTRPCRouter({
 
       return { success: true };
     }),
+
+  metrics: protectedProcedure.query(async ({ ctx }) => {
+    // Get overall metrics for the user
+    const totalSignals = await ctx.db
+      .select({ count: count() })
+      .from(dailySignal)
+      .where(eq(dailySignal.userId, ctx.user.id));
+
+    const totalPresented = await ctx.db
+      .select({ count: count() })
+      .from(dailySignal)
+      .where(
+        and(
+          eq(dailySignal.userId, ctx.user.id),
+          isNotNull(dailySignal.presentedAt),
+        ),
+      );
+
+    const totalSaved = await ctx.db
+      .select({ count: count() })
+      .from(dailySignal)
+      .where(
+        and(
+          eq(dailySignal.userId, ctx.user.id),
+          eq(dailySignal.userAction, "saved"),
+        ),
+      );
+
+    const totalSkipped = await ctx.db
+      .select({ count: count() })
+      .from(dailySignal)
+      .where(
+        and(
+          eq(dailySignal.userId, ctx.user.id),
+          eq(dailySignal.userAction, "skipped"),
+        ),
+      );
+
+    // Get daily engagement over the last 30 days
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const dailyEngagement = await ctx.db
+      .select({
+        date: sql<string>`DATE(${dailySignal.signalDate})`,
+        presented: count(dailySignal.id),
+        saved: sql<number>`SUM(CASE WHEN ${dailySignal.userAction} = 'saved' THEN 1 ELSE 0 END)`,
+        skipped: sql<number>`SUM(CASE WHEN ${dailySignal.userAction} = 'skipped' THEN 1 ELSE 0 END)`,
+      })
+      .from(dailySignal)
+      .where(
+        and(
+          eq(dailySignal.userId, ctx.user.id),
+          sql`${dailySignal.signalDate} >= ${thirtyDaysAgo}`,
+        ),
+      )
+      .groupBy(sql`DATE(${dailySignal.signalDate})`)
+      .orderBy(sql`DATE(${dailySignal.signalDate}) DESC`);
+
+    const saveRate =
+      totalPresented[0]?.count > 0
+        ? (totalSaved[0]?.count || 0) / totalPresented[0].count
+        : 0;
+
+    const actionRate =
+      totalPresented[0]?.count > 0
+        ? ((totalSaved[0]?.count || 0) + (totalSkipped[0]?.count || 0)) /
+          totalPresented[0].count
+        : 0;
+
+    return {
+      totalSignals: totalSignals[0]?.count || 0,
+      totalPresented: totalPresented[0]?.count || 0,
+      totalSaved: totalSaved[0]?.count || 0,
+      totalSkipped: totalSkipped[0]?.count || 0,
+      saveRate: Math.round(saveRate * 100) / 100, // Round to 2 decimal places
+      actionRate: Math.round(actionRate * 100) / 100,
+      dailyEngagement,
+    };
+  }),
 });
 
 function buildFallbackTitle(content: string): string {

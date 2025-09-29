@@ -66,14 +66,27 @@ export const updateUserPreferences = inngest.createFunction(
       });
     }
 
-    // Step 4: Update user preferences centroid
-    await step.run("update-user-centroid", async () => {
-      await updateUserCentroid(
-        signalData.userId,
-        signalData.embedding as number[],
-        action,
-      );
-    });
+    // Step 4: Update user preferences centroid (only for saves)
+    if (action === "saved") {
+      await step.run("update-user-centroid", async () => {
+        await updateUserCentroid(
+          signalData.userId,
+          signalData.embedding as number[],
+        );
+      });
+    } else if (action === "skipped") {
+      // Just increment skip counter, don't affect centroid
+      await step.run("update-skip-counter", async () => {
+        const prefs = await ensureUserPreferencesRow(signalData.userId);
+        await db
+          .update(userPreferences)
+          .set({
+            totalSkipped: prefs.totalSkipped + 1,
+            lastUpdated: new Date(),
+          })
+          .where(eq(userPreferences.userId, signalData.userId));
+      });
+    }
 
     return {
       message: "User preferences updated successfully",
@@ -85,192 +98,31 @@ export const updateUserPreferences = inngest.createFunction(
 );
 
 /**
- * Weekly background optimization to recompute user centroids
- * Runs every Sunday at 3:00 AM
- */
-export const weeklyPreferencesOptimization = inngest.createFunction(
-  {
-    id: "weekly-preferences-optimization",
-    concurrency: 1,
-  },
-  { cron: "0 3 * * 0" }, // Sunday at 3:00 AM
-  async ({ step }) => {
-    // Get all active users
-    const activeUsers = await step.run("fetch-active-users", async () => {
-      return await db
-        .select({ userId: userPreferences.userId })
-        .from(userPreferences);
-    });
-
-    let optimizedUsers = 0;
-
-    // Step 2: Recompute centroid for each user
-    for (const user of activeUsers) {
-      await step.run(`optimize-user-${user.userId}`, async () => {
-        await recomputeUserCentroid(user.userId);
-        optimizedUsers++;
-      });
-    }
-
-    return {
-      message: "Weekly preferences optimization completed",
-      optimizedUsers,
-      date: new Date().toISOString(),
-    };
-  },
-);
-
-/**
  * Update user centroid using incremental learning
- * Weighted average based on positive/negative feedback
+ * Only positive feedback (saves) - skips are ignored per Karpathy's advice
  */
 async function updateUserCentroid(
   userId: string,
   chunkEmbedding: number[],
-  action: string,
 ): Promise<void> {
   const prefs = await ensureUserPreferencesRow(userId);
   const currentCentroid =
     (prefs.centroidEmbedding as number[]) || new Array(1536).fill(0);
 
-  // Learning rate decreases as user provides more feedback
-  const totalFeedback = prefs.totalSaved + prefs.totalSkipped;
-  const learningRate = Math.max(0.01, 1.0 / (1.0 + totalFeedback * 0.1));
+  // Fixed learning rate of 0.1 as recommended by Karpathy
+  const learningRate = 0.1;
 
-  // Compute new centroid
-  let newCentroid: number[];
-
-  if (action === "saved") {
-    // Move centroid towards saved content (positive feedback)
-    newCentroid = currentCentroid.map(
-      (current, i) => current + learningRate * (chunkEmbedding[i] - current),
-    );
-
-    // Update counters
-    await db
-      .update(userPreferences)
-      .set({
-        centroidEmbedding: newCentroid,
-        totalSaved: prefs.totalSaved + 1,
-        lastUpdated: new Date(),
-      })
-      .where(eq(userPreferences.userId, userId));
-  } else if (action === "skipped") {
-    // Move centroid away from skipped content (negative feedback)
-    newCentroid = currentCentroid.map(
-      (current, i) =>
-        current - learningRate * 0.5 * (chunkEmbedding[i] - current),
-    );
-
-    // Update counters
-    await db
-      .update(userPreferences)
-      .set({
-        centroidEmbedding: newCentroid,
-        totalSkipped: prefs.totalSkipped + 1,
-        lastUpdated: new Date(),
-      })
-      .where(eq(userPreferences.userId, userId));
-  }
-}
-
-/**
- * Recompute user centroid from scratch based on all historical feedback
- * Used for weekly optimization
- */
-export async function recomputeUserCentroid(userId: string): Promise<void> {
-  // Get all saved chunks for this user
-  await ensureUserPreferencesRow(userId);
-
-  const savedChunks = await db
-    .select({
-      embedding: transcriptChunk.embedding,
-    })
-    .from(savedChunk)
-    .innerJoin(transcriptChunk, eq(savedChunk.chunkId, transcriptChunk.id))
-    .where(
-      and(
-        eq(savedChunk.userId, userId),
-        sql`${transcriptChunk.embedding} IS NOT NULL`,
-      ),
-    );
-
-  // Get all skipped signals for this user
-  const skippedSignals = await db
-    .select({
-      embedding: transcriptChunk.embedding,
-    })
-    .from(dailySignal)
-    .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
-    .where(
-      and(
-        eq(dailySignal.userId, userId),
-        eq(dailySignal.userAction, "skipped"),
-        sql`${transcriptChunk.embedding} IS NOT NULL`,
-      ),
-    );
-
-  if (savedChunks.length === 0 && skippedSignals.length === 0) {
-    // No feedback yet, keep default centroid
-    return;
-  }
-
-  let newCentroid = new Array(1536).fill(0);
-
-  // Compute positive centroid (from saved chunks)
-  if (savedChunks.length > 0) {
-    for (const chunk of savedChunks) {
-      const embedding = chunk.embedding as number[];
-      for (let i = 0; i < embedding.length; i++) {
-        newCentroid[i] += embedding[i];
-      }
-    }
-
-    // Average the positive feedback
-    for (let i = 0; i < newCentroid.length; i++) {
-      newCentroid[i] /= savedChunks.length;
-    }
-  }
-
-  // Adjust centroid away from negative feedback (skipped content)
-  if (skippedSignals.length > 0 && savedChunks.length > 0) {
-    // Compute negative centroid
-    const negativeCentroid = new Array(1536).fill(0);
-
-    for (const signal of skippedSignals) {
-      const embedding = signal.embedding as number[];
-      for (let i = 0; i < embedding.length; i++) {
-        negativeCentroid[i] += embedding[i];
-      }
-    }
-
-    // Average the negative feedback
-    for (let i = 0; i < negativeCentroid.length; i++) {
-      negativeCentroid[i] /= skippedSignals.length;
-    }
-
-    // Move away from negative centroid
-    const negativeWeight = 0.3; // How much to weight negative feedback
-    for (let i = 0; i < newCentroid.length; i++) {
-      newCentroid[i] = newCentroid[i] - negativeWeight * negativeCentroid[i];
-    }
-  }
-
-  // Normalize the centroid vector
-  const magnitude = Math.sqrt(
-    newCentroid.reduce((sum, val) => sum + val * val, 0),
+  // Move centroid towards saved content (positive feedback only)
+  const newCentroid = currentCentroid.map(
+    (current, i) => current + learningRate * (chunkEmbedding[i] - current),
   );
-  if (magnitude > 0) {
-    newCentroid = newCentroid.map((val) => val / magnitude);
-  }
 
-  // Update user preferences
+  // Update counters
   await db
     .update(userPreferences)
     .set({
       centroidEmbedding: newCentroid,
-      totalSaved: savedChunks.length,
-      totalSkipped: skippedSignals.length,
+      totalSaved: prefs.totalSaved + 1,
       lastUpdated: new Date(),
     })
     .where(eq(userPreferences.userId, userId));

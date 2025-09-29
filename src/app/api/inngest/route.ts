@@ -9,7 +9,6 @@ import {
   helloWorld,
   monthlyCleanup,
   updateUserPreferences,
-  weeklyPreferencesOptimization,
 } from "@/inngest/functions/index";
 
 export const { GET, POST, PUT } = serve({
@@ -22,7 +21,6 @@ export const { GET, POST, PUT } = serve({
     dailyIntelligenceProcessEpisode,
     dailyIntelligenceGenerateSignals,
     updateUserPreferences,
-    weeklyPreferencesOptimization,
     monthlyCleanup,
   ],
 });

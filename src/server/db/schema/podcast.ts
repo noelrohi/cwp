@@ -48,11 +48,29 @@ export const episode = pgTable(
     }),
     userId: text("user_id").notNull(),
     title: text("title").notNull(),
+    description: text("description"),
+    itunesSummary: text("itunes_summary"),
+    contentEncoded: text("content_encoded"),
+    creator: text("creator"),
     publishedAt: timestamp("published_at", { withTimezone: true }),
     durationSec: integer("duration_sec"),
     audioUrl: text("audio_url"),
     transcriptUrl: text("transcript_url"),
     thumbnailUrl: text("thumbnail_url"),
+    // iTunes namespace fields
+    itunesTitle: text("itunes_title"),
+    itunesEpisodeType: text("itunes_episode_type"), // full, trailer, bonus
+    itunesEpisode: integer("itunes_episode"), // episode number
+    itunesKeywords: text("itunes_keywords"), // comma-separated
+    itunesExplicit: text("itunes_explicit"), // true, false, clean
+    itunesImage: text("itunes_image"), // episode-specific artwork
+    // Standard RSS fields
+    link: text("link"), // episode webpage
+    author: text("author"), // episode author
+    comments: text("comments"), // comments URL
+    category: text("category"), // episode categories
+    // Dublin Core namespace
+    dcCreator: text("dc_creator"), // content creator
     status: episodeStatusEnum("status").default("pending").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -139,6 +157,25 @@ export const userPreferences = pgTable(
   ],
 );
 
+// AI-powered speaker identification cache
+export const episodeSpeakerMapping = pgTable(
+  "episode_speaker_mapping",
+  {
+    id: text("id").primaryKey(),
+    episodeId: text("episode_id")
+      .references(() => episode.id, { onDelete: "cascade" })
+      .notNull()
+      .unique(),
+    speakerMappings: text("speaker_mappings").notNull(), // JSON: {"0": "John Doe", "1": "Jane Smith"}
+    confidence: doublePrecision("confidence").notNull(), // 0.0 to 1.0
+    sourceDescription: text("source_description"), // Original RSS description used
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [index().on(table.episodeId)],
+);
+
 // Optional: for saved items you want to reference later
 export const savedChunk = pgTable(
   "saved_chunk",
@@ -168,6 +205,7 @@ export const episodeRelations = relations(episode, ({ one, many }) => ({
     references: [podcast.id],
   }),
   transcriptChunks: many(transcriptChunk),
+  speakerMapping: one(episodeSpeakerMapping),
 }));
 
 export const transcriptChunkRelations = relations(
@@ -188,6 +226,16 @@ export const dailySignalRelations = relations(dailySignal, ({ one }) => ({
     references: [transcriptChunk.id],
   }),
 }));
+
+export const episodeSpeakerMappingRelations = relations(
+  episodeSpeakerMapping,
+  ({ one }) => ({
+    episode: one(episode, {
+      fields: [episodeSpeakerMapping.episodeId],
+      references: [episode.id],
+    }),
+  }),
+);
 
 export const savedChunkRelations = relations(savedChunk, ({ one }) => ({
   chunk: one(transcriptChunk, {

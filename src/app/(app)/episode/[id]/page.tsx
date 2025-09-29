@@ -130,6 +130,8 @@ export default function EpisodeDetailPage(props: {
     ? episodeData.status.replace(/_/g, " ")
     : null;
 
+  console.log(JSON.stringify(relatedSignals));
+
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
       {/* Back Navigation */}

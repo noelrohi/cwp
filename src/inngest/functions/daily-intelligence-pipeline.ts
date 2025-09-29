@@ -4,6 +4,7 @@ import { db } from "@/server/db";
 import {
   dailySignal,
   episode,
+  episodeSpeakerMapping,
   podcast,
   transcriptChunk,
   userPreferences,
@@ -11,6 +12,7 @@ import {
 import {
   chunkEpisodeTranscript,
   ensureEpisodeTranscript,
+  generateMissingEmbeddings,
 } from "@/server/lib/transcript-processing";
 import { inngest } from "../client";
 
@@ -21,17 +23,15 @@ const DAILY_INTELLIGENCE_EPISODE_EVENT =
 const DAILY_INTELLIGENCE_GENERATE_SIGNALS_EVENT =
   "app/daily-intelligence.user.generate-signals" as const;
 
-// Configuration from sequence.md - "set once, forget"
-// Optimized for 60-120 second signal segments with complete thoughts
 const CHUNK_SETTINGS = {
-  minWords: 150, // ~45-50 seconds minimum for coherent snippets
-  maxWords: 450, // ~2 minutes maximum to capture complete thoughts
+  minWords: 100,
+  maxWords: 800, // ~2 minutes maximum to capture complete thoughts
   useSpeakerTurns: true,
 } as const;
 
 const PIPELINE_SETTINGS = {
   maxDailySignals: 30,
-  minConfidenceScore: 0.4,
+  minConfidenceScore: 0.3,
 } as const;
 
 const PIPELINE_LOOKBACK_HOURS =
@@ -246,13 +246,23 @@ export const dailyIntelligenceProcessEpisode = inngest.createFunction(
       normalisedEpisode.transcriptUrl = transcriptResult.transcriptUrl;
 
       await step.run("chunk-transcript", async () => {
-        await chunkEpisodeTranscript({
+        const { chunkCount } = await chunkEpisodeTranscript({
           db,
           episode: normalisedEpisode,
           minTokens: CHUNK_SETTINGS.minWords,
           maxTokens: CHUNK_SETTINGS.maxWords,
+          skipEmbeddings: true, // Skip embeddings for speed
         });
-        return "ok";
+        return { chunkCount };
+      });
+
+      // Generate embeddings separately for better performance
+      await step.run("generate-embeddings", async () => {
+        const { embeddingsGenerated } = await generateMissingEmbeddings({
+          db,
+          episode: normalisedEpisode,
+        });
+        return { embeddingsGenerated };
       });
     } catch (error) {
       const err =
@@ -331,16 +341,13 @@ export const dailyIntelligenceGenerateSignals = inngest.createFunction(
 );
 
 /**
- * Generate signals for a user based on learned relevance patterns
+ * Generate signals for a user using simplified algorithm per Karpathy's advice:
+ * - Phase 1: Pure random until user has 10 saves
+ * - Phase 2: Simple cosine similarity against user centroid
+ * - No negative feedback, no complex blending, no confidence thresholds
+ * - Let user actions be the filter, not algorithmic assumptions
  *
- * Following Karpathy's filtering philosophy:
- * - Process EVERYTHING (no keyword pre-filtering)
- * - Filter at ranking, not ingestion
- * - Let the model learn what matters through user actions
- * - Early phase: show variety (random 30, save 3-5, skip 25-27)
- * - Later phase: model has learned user preferences
- *
- * Store top 30 results for daily review at 8:00 AM
+ * Store top 30 results for daily review
  */
 async function generateUserSignals(userId: string): Promise<number> {
   const preferences = await getOrCreateUserPreferences(userId);
@@ -449,6 +456,9 @@ async function getNewChunksForUser(userId: string): Promise<ChunkRecord[]> {
         sql`${transcriptChunk.embedding} IS NOT NULL`,
         sql`${dailySignal.id} IS NULL`,
         gte(transcriptChunk.createdAt, twoDaysAgo),
+        // CRITICAL: Filter by word count to match chunking settings
+        sql`${transcriptChunk.wordCount} >= ${CHUNK_SETTINGS.minWords}`,
+        sql`${transcriptChunk.wordCount} <= ${CHUNK_SETTINGS.maxWords}`,
       ),
     );
 
@@ -467,45 +477,30 @@ function scoreChunksForRelevance(
     ? userEmbedding.some((value) => value !== 0)
     : false;
 
-  const totalUserActions = preferences.totalSaved + preferences.totalSkipped;
-  const isEarlyLearning = totalUserActions < 50;
-  const isMidLearning = totalUserActions < 200;
-
   console.log(
-    `Scoring ${chunks.length} chunks for user. Has signal: ${hasSignal}, saved: ${preferences.totalSaved}, skipped: ${preferences.totalSkipped}, early learning: ${isEarlyLearning}`,
+    `Scoring ${chunks.length} chunks for user. Has signal: ${hasSignal}, saved: ${preferences.totalSaved}`,
   );
 
   return chunks.map((chunk) => {
     const chunkEmbedding = chunk.embedding as number[] | null;
 
-    if (!chunkEmbedding || !hasSignal || !userEmbedding) {
-      // Karpathy's advice: "show random 30" during early learning
-      if (isEarlyLearning) {
-        // Much more aggressive randomness to ensure variety
-        return {
-          ...chunk,
-          relevanceScore: 0.3 + Math.random() * 0.6, // Random between 0.3-0.9
-        };
-      }
-
-      // Mid learning: still some variety but less random
-      if (isMidLearning) {
-        const baseScore = 0.5;
-        const randomBoost = (Math.random() - 0.5) * 0.3; // ±0.15
-        return {
-          ...chunk,
-          relevanceScore: Math.max(0.1, Math.min(0.9, baseScore + randomBoost)),
-        };
-      }
-
-      // Later phase: conservative scoring
+    // Phase 1: Pure random until user has 10 saves
+    if (preferences.totalSaved < 10) {
       return {
         ...chunk,
-        relevanceScore: 0.4,
+        relevanceScore: Math.random(),
       };
     }
 
-    // Use cosine similarity instead of raw dot product for better normalization
+    // Phase 2: Simple cosine similarity once we have user signal
+    if (!chunkEmbedding || !hasSignal || !userEmbedding) {
+      return {
+        ...chunk,
+        relevanceScore: 0.5, // Neutral score for missing embeddings
+      };
+    }
+
+    // Calculate cosine similarity
     const magnitude1 = Math.sqrt(
       chunkEmbedding.reduce((sum, val) => sum + val * val, 0),
     );
@@ -522,26 +517,8 @@ function scoreChunksForRelevance(
           (magnitude1 * magnitude2)
         : 0;
 
-    // Apply confidence scaling based on amount of user feedback
-    const confidenceMultiplier = Math.min(1, totalUserActions / 500);
-
-    let score: number;
-    if (isEarlyLearning) {
-      // Early: mostly random with slight preference signal
-      const randomComponent = 0.3 + Math.random() * 0.5; // 0.3-0.8
-      const preferenceComponent = (cosineSimilarity + 1) / 2; // normalize to 0-1
-      score = randomComponent * 0.8 + preferenceComponent * 0.2;
-    } else if (isMidLearning) {
-      // Mid: blend random and learned preferences
-      const randomComponent = 0.4 + (Math.random() - 0.5) * 0.2; // 0.3-0.5
-      const preferenceComponent = (cosineSimilarity + 1) / 2;
-      const blendRatio = confidenceMultiplier;
-      score =
-        randomComponent * (1 - blendRatio) + preferenceComponent * blendRatio;
-    } else {
-      // Later: mostly learned preferences
-      score = (cosineSimilarity + 1) / 2;
-    }
+    // Normalize cosine similarity from [-1, 1] to [0, 1]
+    const score = (cosineSimilarity + 1) / 2;
 
     return {
       ...chunk,
@@ -560,40 +537,11 @@ function filterRankedChunks(
     (a, b) => b.relevanceScore - a.relevanceScore,
   );
 
-  // During early learning phase, be more lenient with confidence threshold
-  // This implements Karpathy's advice: "show random 30, save 3-5, skip 25-27"
-  const totalUserActions = preferences.totalSaved + preferences.totalSkipped;
+  console.log(`Filtering chunks. User has ${preferences.totalSaved} saves`);
 
-  const isLearningPhase = totalUserActions < 200;
-  const dynamicMinConfidence = isLearningPhase
-    ? 0.3
-    : PIPELINE_SETTINGS.minConfidenceScore;
-
-  console.log(
-    `Filtering chunks. Learning phase: ${isLearningPhase}, confidence threshold: ${dynamicMinConfidence}`,
-  );
-
-  const confident = sorted.filter(
-    (chunk) => chunk.relevanceScore >= dynamicMinConfidence,
-  );
-
-  if (confident.length >= PIPELINE_SETTINGS.maxDailySignals) {
-    return confident.slice(0, PIPELINE_SETTINGS.maxDailySignals);
-  }
-
-  if (confident.length > 0) {
-    const remainingSlots = PIPELINE_SETTINGS.maxDailySignals - confident.length;
-    const fallback = sorted
-      .filter((chunk) => chunk.relevanceScore < dynamicMinConfidence)
-      .slice(0, remainingSlots);
-    return confident.concat(fallback);
-  }
-
-  // Always return something during learning phase to ensure user feedback
-  return sorted.slice(
-    0,
-    Math.min(sorted.length, PIPELINE_SETTINGS.maxDailySignals),
-  );
+  // Simple approach: always return top 30 regardless of confidence
+  // Let the user's save/skip actions be the filter, not algorithmic thresholds
+  return sorted.slice(0, PIPELINE_SETTINGS.maxDailySignals);
 }
 
 async function storeDailySignals(
@@ -620,26 +568,44 @@ async function storeDailySignals(
 
   if (newChunks.length === 0) return;
 
+  // 🚀 BATCH SPEAKER LOOKUP - Single query instead of 200+
+  const episodeIds = [...new Set(newChunks.map((chunk) => chunk.episodeId))];
+
+  const speakerMappings = await db
+    .select()
+    .from(episodeSpeakerMapping)
+    .where(inArray(episodeSpeakerMapping.episodeId, episodeIds));
+
+  // Build lookup map
+  const speakerMap = new Map<string, Record<string, string>>();
+  speakerMappings.forEach((mapping) => {
+    speakerMap.set(mapping.episodeId, JSON.parse(mapping.speakerMappings));
+  });
+
   const signalDate = new Date();
 
-  await db.insert(dailySignal).values(
-    newChunks.map((chunk) => {
-      return {
-        id: randomUUID(),
-        chunkId: chunk.id,
-        userId,
-        signalDate,
-        relevanceScore: chunk.relevanceScore,
-        title: null,
-        summary: null,
-        excerpt: chunk.content,
-        speakerName: chunk.speaker
-          ? `Speaker ${Number(chunk.speaker) + 1}`
-          : "Unknown Speaker",
-        userAction: null,
-        presentedAt: null,
-        actionedAt: null,
-      };
-    }),
-  );
+  // Create signals with cached speaker names
+  const signals = newChunks.map((chunk) => {
+    const episodeSpeakers = speakerMap.get(chunk.episodeId);
+    const speakerName =
+      episodeSpeakers?.[chunk.speaker || "0"] ||
+      (chunk.speaker === "0" ? "Host" : `Guest ${chunk.speaker}`);
+
+    return {
+      id: randomUUID(),
+      chunkId: chunk.id,
+      userId,
+      signalDate,
+      relevanceScore: chunk.relevanceScore,
+      title: null,
+      summary: null,
+      excerpt: chunk.content,
+      speakerName,
+      userAction: null,
+      presentedAt: null,
+      actionedAt: null,
+    };
+  });
+
+  await db.insert(dailySignal).values(signals);
 }
