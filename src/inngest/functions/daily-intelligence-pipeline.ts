@@ -466,49 +466,85 @@ function scoreChunksForRelevance(
     ? userEmbedding.some((value) => value !== 0)
     : false;
 
+  const totalUserActions = preferences.totalSaved + preferences.totalSkipped;
+  const isEarlyLearning = totalUserActions < 50;
+  const isMidLearning = totalUserActions < 200;
+
   console.log(
-    `Scoring ${chunks.length} chunks for user. Has signal: ${hasSignal}, saved: ${preferences.totalSaved}, skipped: ${preferences.totalSkipped}`,
+    `Scoring ${chunks.length} chunks for user. Has signal: ${hasSignal}, saved: ${preferences.totalSaved}, skipped: ${preferences.totalSkipped}, early learning: ${isEarlyLearning}`,
   );
 
   return chunks.map((chunk) => {
     const chunkEmbedding = chunk.embedding as number[] | null;
 
-    // Start with higher base score early in learning to show more variety
-    const learningPhase =
-      preferences.totalSaved + preferences.totalSkipped < 100;
-    const baseScore = learningPhase ? 0.6 : 0.4;
-
     if (!chunkEmbedding || !hasSignal || !userEmbedding) {
-      // During learning phase, add some randomness to ensure variety
-      const randomBoost = learningPhase ? (Math.random() - 0.5) * 0.2 : 0;
+      // Karpathy's advice: "show random 30" during early learning
+      if (isEarlyLearning) {
+        // Much more aggressive randomness to ensure variety
+        return {
+          ...chunk,
+          relevanceScore: 0.3 + Math.random() * 0.6, // Random between 0.3-0.9
+        };
+      }
+
+      // Mid learning: still some variety but less random
+      if (isMidLearning) {
+        const baseScore = 0.5;
+        const randomBoost = (Math.random() - 0.5) * 0.3; // ±0.15
+        return {
+          ...chunk,
+          relevanceScore: Math.max(0.1, Math.min(0.9, baseScore + randomBoost)),
+        };
+      }
+
+      // Later phase: conservative scoring
       return {
         ...chunk,
-        relevanceScore: Math.max(0, Math.min(1, baseScore + randomBoost)),
+        relevanceScore: 0.4,
       };
     }
 
-    // Use dot product for preference learning - this naturally captures user's directional preferences
-    const dotProduct = chunkEmbedding.reduce(
-      (sum, val, i) => sum + val * userEmbedding[i],
-      0,
+    // Use cosine similarity instead of raw dot product for better normalization
+    const magnitude1 = Math.sqrt(
+      chunkEmbedding.reduce((sum, val) => sum + val * val, 0),
     );
+    const magnitude2 = Math.sqrt(
+      userEmbedding.reduce((sum, val) => sum + val * val, 0),
+    );
+
+    const cosineSimilarity =
+      magnitude1 > 0 && magnitude2 > 0
+        ? chunkEmbedding.reduce(
+            (sum, val, i) => sum + val * userEmbedding[i],
+            0,
+          ) /
+          (magnitude1 * magnitude2)
+        : 0;
 
     // Apply confidence scaling based on amount of user feedback
-    const confidenceMultiplier = Math.min(
-      1,
-      (preferences.totalSaved + preferences.totalSkipped) / 500,
-    );
-    const score = normalizeScore(
-      dotProduct * confidenceMultiplier +
-        baseScore * (1 - confidenceMultiplier),
-    );
+    const confidenceMultiplier = Math.min(1, totalUserActions / 500);
 
-    console.log(
-      `Chunk ${chunk.id}: dot product ${dotProduct}, confidence ${confidenceMultiplier}, score ${score}`,
-    );
+    let score: number;
+    if (isEarlyLearning) {
+      // Early: mostly random with slight preference signal
+      const randomComponent = 0.3 + Math.random() * 0.5; // 0.3-0.8
+      const preferenceComponent = (cosineSimilarity + 1) / 2; // normalize to 0-1
+      score = randomComponent * 0.8 + preferenceComponent * 0.2;
+    } else if (isMidLearning) {
+      // Mid: blend random and learned preferences
+      const randomComponent = 0.4 + (Math.random() - 0.5) * 0.2; // 0.3-0.5
+      const preferenceComponent = (cosineSimilarity + 1) / 2;
+      const blendRatio = confidenceMultiplier;
+      score =
+        randomComponent * (1 - blendRatio) + preferenceComponent * blendRatio;
+    } else {
+      // Later: mostly learned preferences
+      score = (cosineSimilarity + 1) / 2;
+    }
+
     return {
       ...chunk,
-      relevanceScore: score,
+      relevanceScore: Math.max(0.1, Math.min(0.9, score)),
     };
   });
 }
@@ -605,9 +641,4 @@ async function storeDailySignals(
       };
     }),
   );
-}
-
-function normalizeScore(raw: number): number {
-  const clamped = Math.max(-1, Math.min(1, raw));
-  return (clamped + 1) / 2;
 }
