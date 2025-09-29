@@ -72,9 +72,11 @@ export default function SignalsPage() {
   }, [signals, audioPlayer]);
 
   return (
-    <main className="mx-auto w-full max-w-6xl space-y-6 px-6 py-8">
+    <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
       <header className="space-y-2">
-        <h1 className="text-xl font-semibold font-serif">Today's Signals</h1>
+        <h1 className="text-lg font-semibold font-serif sm:text-xl">
+          Today's Signals
+        </h1>
         <p className="text-sm text-muted-foreground">
           Review the AI-generated intelligence pulled from your follow list.
           Saving or skipping tunes tomorrow's rankings.
@@ -141,6 +143,7 @@ export default function SignalsPage() {
                 <Button
                   variant="outline"
                   size="sm"
+                  className="flex-1 sm:flex-none"
                   onClick={() => handleAction(signal.id, "skipped")}
                   disabled={isPending}
                 >
@@ -153,6 +156,7 @@ export default function SignalsPage() {
                 </Button>
                 <Button
                   size="sm"
+                  className="flex-1 sm:flex-none"
                   onClick={() => handleAction(signal.id, "saved")}
                   disabled={isPending}
                 >
@@ -178,25 +182,28 @@ function SignalSkeletonList() {
       {Array.from({ length: 4 }).map((_, index) => (
         <div
           key={index}
-          className="rounded-xl border border-border bg-background/70 p-6 shadow-sm"
+          className="rounded-xl border border-border bg-background/70 p-4 shadow-sm sm:p-6"
         >
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div className="flex flex-wrap gap-3">
-              <Skeleton className="h-6 w-28 rounded-full" />
-              <Skeleton className="h-6 w-32 rounded-full" />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+            <div className="flex flex-wrap gap-2 sm:gap-3">
+              <Skeleton className="h-6 w-24 rounded-full sm:w-28" />
+              <Skeleton className="h-6 w-28 rounded-full sm:w-32" />
             </div>
             <div className="flex gap-2">
-              <Skeleton className="h-9 w-20" />
-              <Skeleton className="h-9 w-20" />
+              <Skeleton className="h-9 w-16 sm:w-20" />
+              <Skeleton className="h-9 w-16 sm:w-20" />
             </div>
           </div>
-          <div className="mt-4 rounded-lg bg-muted/50 p-4">
-            <div className="flex gap-3">
-              <Skeleton className="h-3 w-12 rounded" />
-              <div className="flex-1 space-y-2">
-                <Skeleton className="h-3 w-24 rounded" />
+          <div className="mt-3 rounded-lg bg-muted/50 p-3 sm:mt-4 sm:p-4">
+            <div className="space-y-2">
+              <div className="flex flex-col gap-1 sm:flex-row sm:gap-3">
+                <Skeleton className="h-3 w-12 rounded" />
+                <Skeleton className="h-3 w-20 rounded" />
+              </div>
+              <div className="space-y-2">
                 <Skeleton className="h-4 w-full rounded" />
                 <Skeleton className="h-4 w-4/5 rounded" />
+                <Skeleton className="h-4 w-3/4 rounded" />
               </div>
             </div>
           </div>
@@ -208,7 +215,7 @@ function SignalSkeletonList() {
 
 function ErrorState({ message }: { message?: string }) {
   return (
-    <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-6 text-sm">
+    <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm sm:p-6">
       <h2 className="mb-2 font-medium text-destructive">
         Unable to load signals
       </h2>
@@ -221,7 +228,7 @@ function ErrorState({ message }: { message?: string }) {
 
 function EmptyState() {
   return (
-    <div className="rounded-xl border border-dashed border-muted/70 bg-muted/20 p-10 text-center text-sm text-muted-foreground">
+    <div className="rounded-xl border border-dashed border-muted/70 bg-muted/20 p-8 text-center text-sm text-muted-foreground sm:p-10">
       No pending signals right now. Check back after the next daily run.
     </div>
   );

@@ -81,55 +81,59 @@ const AudioPlayerBar = memo(function AudioPlayerBar({
         className,
       )}
     >
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-2 px-6 py-3">
-        <div className="flex items-center gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-medium text-foreground">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-2 px-3 py-3 sm:px-6">
+        <div className="flex items-center gap-1 sm:gap-3">
+          <div className="min-w-0 flex-1 pr-2">
+            <div className="text-xs font-medium text-foreground sm:text-sm sm:truncate">
               {currentTrack.title}
             </div>
             {currentTrack.subtitle ? (
-              <div className="truncate text-xs text-muted-foreground">
+              <div className="text-[11px] text-muted-foreground sm:text-xs sm:truncate">
                 {currentTrack.subtitle}
               </div>
             ) : null}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-0.5 sm:gap-2">
             <Button
               size="icon"
               variant="ghost"
+              className="h-8 w-8 sm:h-10 sm:w-10"
               onClick={handleSkipBack}
               aria-label="Go back 10 seconds"
             >
-              <SkipBackIcon className="h-4 w-4" />
+              <SkipBackIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             </Button>
             <Button
               size="icon"
+              className="h-8 w-8 sm:h-10 sm:w-10"
               onClick={handlePlayPause}
               aria-label={
                 hasReachedEnd ? "Replay" : isPlaying ? "Pause" : "Play"
               }
             >
               {isLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="h-3.5 w-3.5 animate-spin sm:h-4 sm:w-4" />
               ) : hasReachedEnd ? (
-                <RotateCcwIcon className="h-4 w-4" />
+                <RotateCcwIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               ) : isPlaying ? (
-                <PauseIcon className="h-4 w-4" />
+                <PauseIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               ) : (
-                <PlayIcon className="h-4 w-4" />
+                <PlayIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               )}
             </Button>
             <Button
               size="icon"
               variant="ghost"
+              className="h-8 w-8 sm:h-10 sm:w-10"
               onClick={handleSkipForward}
               aria-label="Skip ahead 10 seconds"
             >
-              <SkipForwardIcon className="h-4 w-4" />
+              <SkipForwardIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             </Button>
             <Button
               variant="secondary"
               size="sm"
+              className="h-7 min-w-[2.5rem] px-1.5 text-[11px] sm:h-9 sm:min-w-[3rem] sm:px-3 sm:text-sm"
               onClick={cycleRate}
               aria-label="Change playback rate"
             >
@@ -137,12 +141,12 @@ const AudioPlayerBar = memo(function AudioPlayerBar({
             </Button>
           </div>
         </div>
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <span className="font-mono text-muted-foreground/90 min-w-[3ch]">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground sm:gap-3">
+          <span className="font-mono text-muted-foreground/90 min-w-[2.5ch] text-[10px] sm:min-w-[3ch] sm:text-xs">
             {currentLabel}
           </span>
-          <Progress value={progressValue} className="h-1 flex-1" />
-          <span className="font-mono text-muted-foreground/90 min-w-[4ch] text-right">
+          <Progress value={progressValue} className="h-2 flex-1 sm:h-1" />
+          <span className="font-mono text-muted-foreground/90 min-w-[3ch] text-right text-[10px] sm:min-w-[4ch] sm:text-xs">
             {durationLabel}
           </span>
         </div>
