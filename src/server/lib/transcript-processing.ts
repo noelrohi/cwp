@@ -471,14 +471,24 @@ function buildChunksFromTranscript({
 
   const pushCurrentChunk = () => {
     if (currentCount > 0 && currentChunk.content.trim()) {
+      const hasEnding = /[.!?]\s*$/.test(currentChunk.content.trim());
+      const meetsMinWords = currentCount >= minTokens;
+
+      console.log(
+        `[CHUNK] ${currentCount} words, hasEnding: ${hasEnding}, speaker: ${currentChunk.speaker}`,
+      );
+      console.log(
+        `[CHUNK] Preview: "${currentChunk.content.slice(0, 100)}..."`,
+      );
+
       // Only push chunks that meet minimum length OR are complete speaker turns
-      if (
-        currentCount >= minTokens ||
-        currentChunk.content.includes(".") ||
-        currentChunk.content.includes("!") ||
-        currentChunk.content.includes("?")
-      ) {
+      if (meetsMinWords || hasEnding) {
+        console.log(
+          `[CHUNK] ✓ KEPT (minWords: ${meetsMinWords}, ending: ${hasEnding})`,
+        );
         chunks.push({ ...currentChunk });
+      } else {
+        console.log(`[CHUNK] ✗ DROPPED (too short, no ending)`);
       }
     }
     currentChunk = { content: "", speaker: null, startSec: 0, endSec: 0 };
@@ -547,6 +557,18 @@ function buildChunksFromTranscript({
   if (currentCount > 0) {
     pushCurrentChunk();
   }
+
+  // Log summary statistics
+  const wordCounts = chunks.map((c) => c.content.split(/\s+/).length);
+  const avgWords = wordCounts.length
+    ? Math.round(wordCounts.reduce((a, b) => a + b, 0) / wordCounts.length)
+    : 0;
+  console.log(
+    `[CHUNK SUMMARY] Created ${chunks.length} chunks from ${allWords.length} words`,
+  );
+  console.log(
+    `[CHUNK SUMMARY] Word count: min=${Math.min(...wordCounts)}, max=${Math.max(...wordCounts)}, avg=${avgWords}`,
+  );
 
   return chunks;
 }
