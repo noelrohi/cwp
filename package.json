@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "biome check",
     "format": "biome format --write",
+    "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
@@ -15,6 +16,8 @@
     "db:studio": "drizzle-kit studio",
     "db:studio:dev": "drizzle-kit studio --config=drizzle.config.dev.ts",
     "db:backfill:user-preferences": "tsx scripts/backfill-user-preferences.ts",
+    "validate:embeddings": "tsx scripts/validate-user-embeddings.ts",
+    "validate:stats": "tsx scripts/check-user-stats.ts",
     "ui": "pnpm dlx shadcn@latest"
   },
   "dependencies": {

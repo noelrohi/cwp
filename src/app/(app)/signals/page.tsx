@@ -7,11 +7,12 @@ import {
   BookmarkRemove01Icon,
   Calendar03Icon,
   Delete01Icon,
+  FilterIcon,
   SparklesIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   SignalCard,
@@ -19,6 +20,13 @@ import {
 } from "@/blocks/signals/signal-card";
 import { useAudioPlayer } from "@/components/audio-player/audio-player-provider";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useTRPC } from "@/server/trpc/client";
@@ -28,7 +36,10 @@ type SignalAction = "saved" | "skipped";
 export default function SignalsPage() {
   const trpc = useTRPC();
   const savedQuery = useQuery(trpc.signals.saved.queryOptions());
+  const metricsQuery = useQuery(trpc.signals.metrics.queryOptions());
+
   const savedCount = savedQuery.data?.length ?? 0;
+  const skippedCount = metricsQuery.data?.totalSkipped ?? 0;
 
   return (
     <main className="mx-auto w-full container space-y-6 px-4 py-6 sm:px-6 sm:py-8">
@@ -40,9 +51,17 @@ export default function SignalsPage() {
             tune future rankings.
           </p>
         </div>
-        <div className="flex flex-col items-end gap-1">
-          <div className="text-3xl font-bold font-serif">{savedCount}</div>
-          <div className="text-sm text-muted-foreground">Saved</div>
+        <div className="flex gap-6">
+          <div className="flex flex-col items-end gap-1">
+            <div className="text-3xl font-bold font-serif">{savedCount}</div>
+            <div className="text-sm text-muted-foreground">Saved</div>
+          </div>
+          <div className="flex flex-col items-end gap-1">
+            <div className="text-3xl font-bold font-serif text-muted-foreground/70">
+              {skippedCount}
+            </div>
+            <div className="text-sm text-muted-foreground">Skipped</div>
+          </div>
         </div>
       </header>
 
@@ -71,8 +90,9 @@ function PendingSignalsTab() {
   const [pendingSignalId, setPendingSignalId] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<SignalAction | null>(null);
   const [isSkippingAll, setIsSkippingAll] = useState(false);
+  const [selectedEpisodeId, setSelectedEpisodeId] = useState<string>("all");
 
-  const signalsQuery = useQuery(trpc.signals.list.queryOptions({ limit: 30 }));
+  const signalsQuery = useQuery(trpc.signals.list.queryOptions({ limit: 100 }));
 
   const actionMutation = useMutation(trpc.signals.action.mutationOptions());
   const skipAllMutation = useMutation(trpc.signals.skipAll.mutationOptions());
@@ -97,9 +117,15 @@ function PendingSignalsTab() {
   const handleSkipAll = async () => {
     setIsSkippingAll(true);
     try {
-      const result = await skipAllMutation.mutateAsync();
+      const result = await skipAllMutation.mutateAsync({
+        episodeId: selectedEpisodeId === "all" ? undefined : selectedEpisodeId,
+      });
       queryClient.invalidateQueries({ queryKey: trpc.signals.list.queryKey() });
-      toast.success(`Skipped ${result.skippedCount} signals`);
+      const message =
+        selectedEpisodeId === "all"
+          ? `Skipped ${result.skippedCount} signals`
+          : `Skipped ${result.skippedCount} signals from this episode`;
+      toast.success(message);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unable to skip signals.";
@@ -113,23 +139,63 @@ function PendingSignalsTab() {
   const fetchError = signalsQuery.error;
   const fetchErrorMessage =
     fetchError && fetchError instanceof Error ? fetchError.message : undefined;
-  const signals = (signalsQuery.data ?? []).sort((a, b) => {
-    // First sort by episode publish date (most recent first)
-    const dateA = a.episode?.publishedAt
-      ? new Date(a.episode.publishedAt)
-      : new Date(0);
-    const dateB = b.episode?.publishedAt
-      ? new Date(b.episode.publishedAt)
-      : new Date(0);
-    const dateComparison = dateB.getTime() - dateA.getTime();
 
-    if (dateComparison !== 0) return dateComparison;
+  const allSignals = useMemo(() => {
+    return (signalsQuery.data ?? []).sort((a, b) => {
+      // First sort by episode publish date (most recent first)
+      const dateA = a.episode?.publishedAt
+        ? new Date(a.episode.publishedAt)
+        : new Date(0);
+      const dateB = b.episode?.publishedAt
+        ? new Date(b.episode.publishedAt)
+        : new Date(0);
+      const dateComparison = dateB.getTime() - dateA.getTime();
 
-    // If dates are the same, sort by timestamp within episode (earliest first)
-    const timestampA = a.chunk.startTimeSec ?? 0;
-    const timestampB = b.chunk.startTimeSec ?? 0;
-    return timestampA - timestampB;
-  });
+      if (dateComparison !== 0) return dateComparison;
+
+      // If dates are the same, sort by timestamp within episode (earliest first)
+      const timestampA = a.chunk.startTimeSec ?? 0;
+      const timestampB = b.chunk.startTimeSec ?? 0;
+      return timestampA - timestampB;
+    });
+  }, [signalsQuery.data]);
+
+  // Extract unique episodes for filter
+  const episodeOptions = useMemo(() => {
+    const episodeMap = new Map<
+      string,
+      { id: string; title: string; podcastTitle: string; count: number }
+    >();
+
+    allSignals.forEach((signal) => {
+      if (signal.episode) {
+        const episodeId = signal.episode.id;
+        const existing = episodeMap.get(episodeId);
+        if (existing) {
+          existing.count++;
+        } else {
+          episodeMap.set(episodeId, {
+            id: episodeId,
+            title: signal.episode.title || "Untitled Episode",
+            podcastTitle: signal.episode.podcast?.title || "Unknown Podcast",
+            count: 1,
+          });
+        }
+      }
+    });
+
+    return Array.from(episodeMap.values()).sort((a, b) => b.count - a.count);
+  }, [allSignals]);
+
+  // Filter signals by selected episode
+  const signals = useMemo(() => {
+    if (selectedEpisodeId === "all") {
+      return allSignals;
+    }
+    return allSignals.filter(
+      (signal) => signal.episode?.id === selectedEpisodeId,
+    );
+  }, [allSignals, selectedEpisodeId]);
 
   // Preload audio for unique episodes when signals are loaded
   useEffect(() => {
@@ -149,13 +215,43 @@ function PendingSignalsTab() {
 
   return (
     <>
-      {!isLoading && !fetchError && signals.length > 0 && (
-        <div className="mb-4 flex justify-end">
+      {!isLoading && !fetchError && allSignals.length > 0 && (
+        <div className="mb-4 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">
+            <HugeiconsIcon
+              icon={FilterIcon}
+              size={16}
+              className="text-muted-foreground"
+            />
+            <Select
+              value={selectedEpisodeId}
+              onValueChange={setSelectedEpisodeId}
+            >
+              <SelectTrigger className="w-full sm:w-[400px]">
+                <SelectValue placeholder="Filter by episode" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">
+                  All Episodes ({allSignals.length} signals)
+                </SelectItem>
+                {episodeOptions.map((episode) => (
+                  <SelectItem key={episode.id} value={episode.id}>
+                    <div className="flex flex-col">
+                      <span className="font-medium">{episode.title}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {episode.podcastTitle} · {episode.count} signals
+                      </span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <Button
             variant="outline"
             size="sm"
             onClick={handleSkipAll}
-            disabled={isSkippingAll}
+            disabled={isSkippingAll || signals.length === 0}
           >
             {isSkippingAll ? (
               <HugeiconsIcon
@@ -166,7 +262,9 @@ function PendingSignalsTab() {
             ) : (
               <HugeiconsIcon icon={BookmarkRemove01Icon} size={16} />
             )}
-            Skip All
+            {selectedEpisodeId === "all"
+              ? "Skip All"
+              : `Skip All (${signals.length})`}
           </Button>
         </div>
       )}
@@ -278,6 +376,7 @@ function SavedSignalsTab() {
   const queryClient = useQueryClient();
   const audioPlayer = useAudioPlayer();
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [selectedEpisodeId, setSelectedEpisodeId] = useState<string>("all");
 
   const savedQuery = useQuery(trpc.signals.saved.queryOptions());
   const unsaveMutation = useMutation(trpc.signals.unsave.mutationOptions());
@@ -286,7 +385,42 @@ function SavedSignalsTab() {
   const fetchError = savedQuery.error;
   const fetchErrorMessage =
     fetchError && fetchError instanceof Error ? fetchError.message : undefined;
-  const savedSignals = savedQuery.data ?? [];
+  const allSavedSignals = savedQuery.data ?? [];
+
+  // Extract unique episodes for filter
+  const episodeOptions = useMemo(() => {
+    const episodeMap = new Map<
+      string,
+      { id: string; title: string; podcastTitle: string; count: number }
+    >();
+
+    allSavedSignals.forEach((signal) => {
+      const episodeId = signal.episode.id;
+      const existing = episodeMap.get(episodeId);
+      if (existing) {
+        existing.count++;
+      } else {
+        episodeMap.set(episodeId, {
+          id: episodeId,
+          title: signal.episode.title || "Untitled Episode",
+          podcastTitle: signal.episode.podcast?.title || "Unknown Podcast",
+          count: 1,
+        });
+      }
+    });
+
+    return Array.from(episodeMap.values()).sort((a, b) => b.count - a.count);
+  }, [allSavedSignals]);
+
+  // Filter signals by selected episode
+  const savedSignals = useMemo(() => {
+    if (selectedEpisodeId === "all") {
+      return allSavedSignals;
+    }
+    return allSavedSignals.filter(
+      (signal) => signal.episode.id === selectedEpisodeId,
+    );
+  }, [allSavedSignals, selectedEpisodeId]);
 
   const handleUnsave = async (savedChunkId: string) => {
     setDeletingId(savedChunkId);
@@ -322,14 +456,50 @@ function SavedSignalsTab() {
 
   return (
     <>
+      {!isLoading && !fetchError && allSavedSignals.length > 0 && (
+        <div className="mb-4 flex items-center gap-2">
+          <HugeiconsIcon
+            icon={FilterIcon}
+            size={16}
+            className="text-muted-foreground"
+          />
+          <Select
+            value={selectedEpisodeId}
+            onValueChange={setSelectedEpisodeId}
+          >
+            <SelectTrigger className="w-full sm:w-[400px]">
+              <SelectValue placeholder="Filter by episode" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">
+                All Episodes ({allSavedSignals.length} signals)
+              </SelectItem>
+              {episodeOptions.map((episode) => (
+                <SelectItem key={episode.id} value={episode.id}>
+                  <div className="flex flex-col">
+                    <span className="font-medium">{episode.title}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {episode.podcastTitle} · {episode.count} signals
+                    </span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
       {isLoading ? (
         <SignalSkeletonList />
       ) : fetchError ? (
         <ErrorState message={fetchErrorMessage} />
-      ) : savedSignals.length === 0 ? (
+      ) : allSavedSignals.length === 0 ? (
         <div className="rounded-xl border border-dashed border-muted/70 bg-muted/20 p-8 text-center text-muted-foreground sm:p-10">
           No saved signals yet. Save signals from the Pending tab to see them
           here.
+        </div>
+      ) : savedSignals.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-muted/70 bg-muted/20 p-8 text-center text-muted-foreground sm:p-10">
+          No signals found for this episode.
         </div>
       ) : (
         <section className="space-y-4">
@@ -348,15 +518,6 @@ function SavedSignalsTab() {
               icon: <HugeiconsIcon icon={Calendar03Icon} size={12} />,
               label: formatDate(signal.episode.publishedAt),
             });
-            if (
-              signal.relevanceScore !== null &&
-              signal.relevanceScore !== undefined
-            ) {
-              metadata.push({
-                icon: <HugeiconsIcon icon={SparklesIcon} size={12} />,
-                label: `${Math.round(signal.relevanceScore * 100)}%`,
-              });
-            }
 
             const audioSource = signal.episode.audioUrl
               ? {

@@ -1,0 +1,288 @@
+# Signal Validation Context
+
+## System Overview
+
+This application uses embedding-based personalization to recommend podcast content ("signals") to users. The system:
+
+1. **Phase 1 (0-9 saves)**: Shows random signals to collect initial training data
+2. **Phase 2 (10+ saves)**: Uses cosine similarity to user's centroid embedding to rank content
+3. **Continuous Learning**: Updates centroid as user saves/skips signals
+
+## Key Concepts
+
+### Centroid
+The average embedding vector of all saved chunks. Represents the user's preference center in embedding space.
+
+### Similarity Score
+Cosine similarity between a chunk's embedding and the user's centroid. Range: -1 to 1 (typically 0 to 1 for text).
+- **Important**: Raw cosine similarity = relevance score. Do NOT normalize with `(similarity + 1) / 2` - this inflates scores by 30-40%.
+
+### Separation
+The gap between saved content similarity and random content similarity to centroid. Good separation (>50% higher) means ranking works.
+
+## Validation Scripts
+
+### 1. validate-user-embeddings.ts
+**Usage**: `pnpm validate:embeddings <userId>`
+
+**What it checks**:
+- Pairwise similarity of saved chunks (are saved items related?)
+- Saved chunks → centroid similarity (does centroid represent preferences?)
+- Random chunks → centroid similarity (baseline comparison)
+- Separation score (can system distinguish saved from random?)
+
+**Good results**:
+- Saved → centroid: 65-80%
+- Random → centroid: 30-50%
+- Separation: >50% higher (saved vs random)
+
+**Bad results**:
+- Saved and random both 70%+ → centroid update broken
+- Everything 40-60% → embedding space too uniform or need more data
+- Separation <20% → system can't distinguish preferences
+
+### 2. check-pending-signals.ts
+**Usage**: `pnpm tsx scripts/check-pending-signals.ts <userId>`
+
+**What it shows**:
+- Score distribution of pending signals
+- Top 5 highest scoring signals
+- Bottom 5 lowest scoring signals
+
+**Expected distribution after fix**:
+- 70-80%: 5-10% (highly relevant)
+- 50-70%: 30-40% (somewhat relevant)
+- 30-50%: 30-40% (weakly relevant)
+- 0-30%: 10-20% (not relevant)
+
+**Bad distribution** (before fix):
+- 70-90%: 60%+ (everything clustered high)
+- This indicates the normalization bug: `(similarity + 1) / 2`
+
+### 3. analyze-saved-content.ts
+**Usage**: `pnpm tsx scripts/analyze-saved-content.ts <userId>`
+
+**What it shows**:
+- Full content of all saved chunks
+- Score when each chunk was saved
+- Keyword frequency analysis
+
+**Use this to**:
+- Verify user is saving coherent content
+- Check if saved content matches their stated preferences
+- Find themes in saved content
+
+### 4. find-and-test-signal.ts
+**Usage**: `pnpm tsx scripts/find-and-test-signal.ts <keyword>`
+
+**What it does**:
+- Searches pending signals for keyword
+- Tests highest-scoring match
+- Shows similarity to each saved chunk
+- Compares model's predicted score vs actual average similarity
+
+**Use this to**:
+- Debug why specific content scores high/low
+- Validate model predictions match reality
+- Find examples of mis-scored content
+
+**Good result**: Model score ≈ average similarity (within 5%)
+**Bad result**: Model score differs by >20% from actual similarity
+
+### 5. check-user-stats.ts
+**Usage**: `pnpm tsx scripts/check-user-stats.ts <userId>`
+
+**What it shows**:
+- Total signals seen
+- Saved, skipped, pending counts
+- Save rate percentage
+
+**Healthy save rate**: 5-20%
+- <5%: User too picky or content quality poor
+- >30%: User not selective enough, hurts training
+
+## Common Validation Workflow
+
+### Initial Setup (New User)
+```bash
+# 1. Check current state
+pnpm tsx scripts/check-user-stats.ts <userId>
+
+# 2. If user has 10+ saves, validate embeddings
+pnpm validate:embeddings <userId>
+
+# 3. Check pending signals distribution
+pnpm tsx scripts/check-pending-signals.ts <userId>
+```
+
+### After User Reports Bad Recommendations
+```bash
+# 1. Check what they actually saved
+pnpm tsx scripts/analyze-saved-content.ts <userId>
+
+# 2. Validate embedding space
+pnpm validate:embeddings <userId>
+
+# 3. Test a specific bad recommendation
+pnpm tsx scripts/find-and-test-signal.ts "keyword from bad signal"
+
+# 4. Check score distribution
+pnpm tsx scripts/check-pending-signals.ts <userId>
+```
+
+## Key Files
+
+### Signal Generation
+- `src/inngest/functions/daily-intelligence-pipeline.ts`
+  - Line ~534: Phase 1 (random) vs Phase 2 (embedding-based)
+  - Line ~569-589: Scoring logic using cosine similarity
+  - Line ~500: Time filter (only chunks from last 2 days for daily runs)
+
+### Centroid Updates
+- `src/inngest/functions/continuous-learning.ts`
+  - Updates user preferences on save/skip actions
+  - Weekly recomputation from all historical data
+
+### Validation Endpoint
+- `src/server/trpc/routers/signals.ts`
+  - Line ~687: `validationMetrics` endpoint
+  - Powers the /debug page Validation tab
+
+## Known Issues & Fixes
+
+### Issue 1: All scores clustered at 70-90%
+**Cause**: Normalization bug `(similarity + 1) / 2`
+**Location**: `daily-intelligence-pipeline.ts` line ~582
+**Fix**: Use raw similarity: `const relevanceScore = Math.max(0, similarity)`
+
+### Issue 2: No new signals generated
+**Cause**: Time filter only includes chunks from last 2 days
+**Location**: `daily-intelligence-pipeline.ts` line ~500
+**Solution**: Either add new episodes or manually trigger generation without time filter
+
+### Issue 3: High scores for irrelevant content
+**Diagnosis**:
+1. Run `find-and-test-signal.ts` on the content
+2. Check actual similarity vs model score
+3. If score differs by >20%: Check scoring calculation
+4. If score matches but wrong: Check saved content coherence
+
+**Common cause**: User saved diverse content early on, centroid is too broad
+**Solution**: Save more focused content to refine centroid
+
+### Issue 4: Separation score too low (<30%)
+**Causes**:
+- Not enough training data (<10 saves)
+- Saved content too diverse (unrelated topics)
+- Embeddings not generated properly
+
+**Diagnosis**:
+```bash
+pnpm validate:embeddings <userId>
+pnpm tsx scripts/analyze-saved-content.ts <userId>
+```
+
+## Interpretation Guide
+
+### Pairwise Similarity of Saved Chunks
+- **>60%**: Very coherent interests (e.g., all about Cursor)
+- **40-60%**: Diverse but related (e.g., AI tools, coding, prompting)
+- **<40%**: Too diverse, may hurt personalization
+
+### Saved → Centroid Similarity
+- **>75%**: Excellent - centroid strongly represents preferences
+- **65-75%**: Good - centroid is well-defined
+- **50-65%**: Weak - need more focused training data
+- **<50%**: Poor - centroid is noise
+
+### Random → Centroid Similarity
+- **<35%**: Good baseline - clear distinction possible
+- **35-45%**: Medium baseline - some overlap expected
+- **>45%**: High baseline - centroid may be too generic
+
+### Separation Score
+- **>100%**: Excellent - saved content 2x more similar than random
+- **50-100%**: Good - clear preference signal
+- **20-50%**: Weak - ranking works but needs more data
+- **<20%**: Poor - can't distinguish preferences
+
+## Testing Changes
+
+After modifying scoring logic:
+
+1. **Don't regenerate signals immediately** - existing signals show the problem
+2. **Test with validation script first**: `pnpm validate:embeddings <userId>`
+3. **Check a few specific signals**: `pnpm tsx scripts/find-and-test-signal.ts "keyword"`
+4. **Verify score calculation manually** if needed
+5. **Then regenerate signals** to test with fresh data
+
+## Debug Panel
+
+Web UI at `/debug` shows:
+- **Overview**: User stats, learning phase, training progress
+- **Distribution**: Score distribution of pending signals
+- **Training Data**: Recent saved/skipped signals with content
+- **Validation**: All embedding space metrics from validation script
+
+The Validation tab runs the same checks as `validate-user-embeddings.ts` but in the UI.
+
+## Example Session
+
+```bash
+# User reports: "90% scores but content not relevant"
+
+# Step 1: Validate embeddings
+$ pnpm validate:embeddings J2tMunffPYoZWSzGXbjwihHDoU6Ol5Gc
+# Result: Saved→centroid 76%, Random→centroid 35%, Separation 117%
+# ✓ Embedding space looks good
+
+# Step 2: Check pending signals
+$ pnpm tsx scripts/check-pending-signals.ts J2tMunffPYoZWSzGXbjwihHDoU6Ol5Gc
+# Result: 70-80%: 14 signals (40%), 80-90%: 1 signal (3%)
+# ✗ Everything clustered at 70-90% - normalization bug!
+
+# Step 3: Test specific high-scoring irrelevant signal
+$ pnpm tsx scripts/find-and-test-signal.ts "marketing"
+# Result: Model says 82%, actual similarity 49%
+# ✗ 33% difference - confirms scoring bug
+
+# Step 4: Check what user actually saved
+$ pnpm tsx scripts/analyze-saved-content.ts J2tMunffPYoZWSzGXbjwihHDoU6Ol5Gc
+# Keywords: cursor (10), claude (4), coding (2)
+# ✓ User has coherent preferences
+
+# Conclusion: Normalization bug inflating all scores by ~30%
+# Fix: Remove (similarity + 1) / 2 normalization
+```
+
+## Quick Reference
+
+```bash
+# Get user ID from session (if needed)
+# Check browser dev console or database
+
+# Full validation suite
+pnpm validate:embeddings <userId>
+pnpm tsx scripts/check-user-stats.ts <userId>
+pnpm tsx scripts/check-pending-signals.ts <userId>
+pnpm tsx scripts/analyze-saved-content.ts <userId>
+
+# Test specific content
+pnpm tsx scripts/find-and-test-signal.ts "<keyword>"
+
+# Web UI
+# Navigate to /debug in browser
+```
+
+## Success Criteria
+
+A working system should show:
+- ✅ Separation score >50%
+- ✅ Saved→centroid >65%
+- ✅ Random→centroid <50%
+- ✅ Score distribution spread across 0-100%
+- ✅ High scores (70%+) correlate with user preferences
+- ✅ Model predicted scores ≈ actual similarities (within 10%)
+- ✅ User save rate 5-20%
+
+If all criteria met: System is working correctly. Poor recommendations = need more diverse content or more training data.

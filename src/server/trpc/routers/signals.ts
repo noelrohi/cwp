@@ -1,4 +1,5 @@
 import { TRPCError } from "@trpc/server";
+import { cosineSimilarity } from "ai";
 import {
   and,
   count,
@@ -27,7 +28,7 @@ export const signalsRouter = createTRPCRouter({
     .input(
       z
         .object({
-          limit: z.number().int().min(1).max(50).optional(),
+          limit: z.number().int().min(1).max(200).optional(),
         })
         .optional(),
     )
@@ -442,34 +443,412 @@ export const signalsRouter = createTRPCRouter({
       return { success: true };
     }),
 
-  skipAll: protectedProcedure.mutation(async ({ ctx }) => {
-    const pendingSignals = await ctx.db
-      .select({ id: dailySignal.id })
+  skipAll: protectedProcedure
+    .input(
+      z
+        .object({
+          episodeId: z.string().optional(),
+        })
+        .optional(),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const episodeId = input?.episodeId;
+
+      // If episodeId is provided, only skip signals from that episode
+      let pendingSignalsQuery = ctx.db
+        .select({ id: dailySignal.id })
+        .from(dailySignal)
+        .where(
+          and(
+            eq(dailySignal.userId, ctx.user.id),
+            isNull(dailySignal.userAction),
+          ),
+        );
+
+      if (episodeId) {
+        // Need to join with transcript_chunk to filter by episode
+        pendingSignalsQuery = ctx.db
+          .select({ id: dailySignal.id })
+          .from(dailySignal)
+          .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
+          .where(
+            and(
+              eq(dailySignal.userId, ctx.user.id),
+              isNull(dailySignal.userAction),
+              eq(transcriptChunk.episodeId, episodeId),
+            ),
+          );
+      }
+
+      const pendingSignals = await pendingSignalsQuery;
+
+      if (pendingSignals.length === 0) {
+        return { success: true, skippedCount: 0 };
+      }
+
+      // Skip the selected signals
+      await ctx.db
+        .update(dailySignal)
+        .set({ userAction: "skipped", actionedAt: new Date() })
+        .where(inArray(dailySignal.id, pendingSignals.map((s) => s.id)));
+
+      return { success: true, skippedCount: pendingSignals.length };
+    }),
+
+  // Debug endpoints
+  debug: protectedProcedure.query(async ({ ctx }) => {
+    const { userPreferences } = await import("@/server/db/schema/podcast");
+
+    // Get user preferences
+    const prefs = await ctx.db
+      .select()
+      .from(userPreferences)
+      .where(eq(userPreferences.userId, ctx.user.id))
+      .limit(1);
+
+    const userPref = prefs[0] || {
+      totalSaved: 0,
+      totalSkipped: 0,
+    };
+
+    // Count saved chunks with embeddings
+    const savedWithEmbeddings = await ctx.db
+      .select({ count: count() })
+      .from(dailySignal)
+      .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
+      .where(
+        and(
+          eq(dailySignal.userId, ctx.user.id),
+          eq(dailySignal.userAction, "saved"),
+          sql`${transcriptChunk.embedding} IS NOT NULL`,
+        ),
+      );
+
+    return {
+      totalSaved: userPref.totalSaved,
+      totalSkipped: userPref.totalSkipped,
+      savedChunksWithEmbeddings: savedWithEmbeddings[0]?.count || 0,
+    };
+  }),
+
+  scoreDistribution: protectedProcedure.query(async ({ ctx }) => {
+    const results = await ctx.db
+      .select({
+        bucket: sql<string>`CASE 
+          WHEN ${dailySignal.relevanceScore} < 0.1 THEN '0-10%'
+          WHEN ${dailySignal.relevanceScore} < 0.2 THEN '10-20%'
+          WHEN ${dailySignal.relevanceScore} < 0.3 THEN '20-30%'
+          WHEN ${dailySignal.relevanceScore} < 0.4 THEN '30-40%'
+          WHEN ${dailySignal.relevanceScore} < 0.5 THEN '40-50%'
+          WHEN ${dailySignal.relevanceScore} < 0.6 THEN '50-60%'
+          WHEN ${dailySignal.relevanceScore} < 0.7 THEN '60-70%'
+          WHEN ${dailySignal.relevanceScore} < 0.8 THEN '70-80%'
+          WHEN ${dailySignal.relevanceScore} < 0.9 THEN '80-90%'
+          ELSE '90-100%'
+        END`,
+        count: count(),
+      })
       .from(dailySignal)
       .where(
         and(
           eq(dailySignal.userId, ctx.user.id),
           isNull(dailySignal.userAction),
         ),
+      )
+      .groupBy(
+        sql`CASE 
+          WHEN ${dailySignal.relevanceScore} < 0.1 THEN '0-10%'
+          WHEN ${dailySignal.relevanceScore} < 0.2 THEN '10-20%'
+          WHEN ${dailySignal.relevanceScore} < 0.3 THEN '20-30%'
+          WHEN ${dailySignal.relevanceScore} < 0.4 THEN '30-40%'
+          WHEN ${dailySignal.relevanceScore} < 0.5 THEN '40-50%'
+          WHEN ${dailySignal.relevanceScore} < 0.6 THEN '50-60%'
+          WHEN ${dailySignal.relevanceScore} < 0.7 THEN '60-70%'
+          WHEN ${dailySignal.relevanceScore} < 0.8 THEN '70-80%'
+          WHEN ${dailySignal.relevanceScore} < 0.9 THEN '80-90%'
+          ELSE '90-100%'
+        END`,
       );
 
-    if (pendingSignals.length === 0) {
-      return { success: true, skippedCount: 0 };
-    }
+    // Ensure all buckets are present
+    const buckets = [
+      "0-10%",
+      "10-20%",
+      "20-30%",
+      "30-40%",
+      "40-50%",
+      "50-60%",
+      "60-70%",
+      "70-80%",
+      "80-90%",
+      "90-100%",
+    ];
 
-    await ctx.db
-      .update(dailySignal)
-      .set({ userAction: "skipped", actionedAt: new Date() })
+    const distribution = buckets.map((bucket) => {
+      const found = results.find((r) => r.bucket === bucket);
+      return {
+        bucket,
+        count: found?.count || 0,
+      };
+    });
+
+    return distribution;
+  }),
+
+  recentSamples: protectedProcedure.query(async ({ ctx }) => {
+    const savedSignals = await ctx.db
+      .select({
+        id: dailySignal.id,
+        content: transcriptChunk.content,
+        relevanceScore: dailySignal.relevanceScore,
+        savedAt: dailySignal.actionedAt,
+      })
+      .from(dailySignal)
+      .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
       .where(
         and(
           eq(dailySignal.userId, ctx.user.id),
-          isNull(dailySignal.userAction),
+          eq(dailySignal.userAction, "saved"),
+        ),
+      )
+      .orderBy(desc(dailySignal.actionedAt))
+      .limit(10);
+
+    const skippedSignals = await ctx.db
+      .select({
+        id: dailySignal.id,
+        content: transcriptChunk.content,
+        relevanceScore: dailySignal.relevanceScore,
+        skippedAt: dailySignal.actionedAt,
+      })
+      .from(dailySignal)
+      .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
+      .where(
+        and(
+          eq(dailySignal.userId, ctx.user.id),
+          eq(dailySignal.userAction, "skipped"),
+        ),
+      )
+      .orderBy(desc(dailySignal.actionedAt))
+      .limit(10);
+
+    return {
+      saved: savedSignals,
+      skipped: skippedSignals,
+    };
+  }),
+
+  regenerateForUser: protectedProcedure.mutation(async ({ ctx }) => {
+    await inngest.send({
+      name: "app/daily-intelligence.user.generate-signals",
+      data: {
+        pipelineRunId: "manual-trigger",
+        userId: ctx.user.id,
+      },
+    });
+
+    return { success: true };
+  }),
+
+  embeddingDiagnostics: protectedProcedure.query(async ({ ctx }) => {
+    // Total saved signals
+    const totalSaved = await ctx.db
+      .select({ count: count() })
+      .from(dailySignal)
+      .where(
+        and(
+          eq(dailySignal.userId, ctx.user.id),
+          eq(dailySignal.userAction, "saved"),
         ),
       );
 
-    return { success: true, skippedCount: pendingSignals.length };
+    // Saved signals with embeddings
+    const savedWithEmbeddings = await ctx.db
+      .select({ count: count() })
+      .from(dailySignal)
+      .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
+      .where(
+        and(
+          eq(dailySignal.userId, ctx.user.id),
+          eq(dailySignal.userAction, "saved"),
+          sql`${transcriptChunk.embedding} IS NOT NULL`,
+        ),
+      );
+
+    // Total chunks with embeddings
+    const totalChunksWithEmbeddings = await ctx.db
+      .select({ count: count() })
+      .from(transcriptChunk)
+      .where(sql`${transcriptChunk.embedding} IS NOT NULL`);
+
+    // Sample saved signals with embedding status
+    const sampleSavedSignals = await ctx.db
+      .select({
+        signalId: dailySignal.id,
+        chunkId: transcriptChunk.id,
+        hasEmbedding: sql<boolean>`${transcriptChunk.embedding} IS NOT NULL`,
+        actionedAt: dailySignal.actionedAt,
+        relevanceScore: dailySignal.relevanceScore,
+      })
+      .from(dailySignal)
+      .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
+      .where(
+        and(
+          eq(dailySignal.userId, ctx.user.id),
+          eq(dailySignal.userAction, "saved"),
+        ),
+      )
+      .orderBy(desc(dailySignal.actionedAt))
+      .limit(10);
+
+    return {
+      totalSaved: totalSaved[0]?.count || 0,
+      savedWithEmbeddings: savedWithEmbeddings[0]?.count || 0,
+      totalChunksWithEmbeddings: totalChunksWithEmbeddings[0]?.count || 0,
+      sampleSignals: sampleSavedSignals,
+    };
+  }),
+
+  validationMetrics: protectedProcedure.query(async ({ ctx }) => {
+    // Get saved chunks with embeddings
+    const savedChunks = await ctx.db
+      .select({
+        chunkId: transcriptChunk.id,
+        embedding: transcriptChunk.embedding,
+        content: transcriptChunk.content,
+      })
+      .from(transcriptChunk)
+      .innerJoin(dailySignal, eq(transcriptChunk.id, dailySignal.chunkId))
+      .where(
+        and(
+          eq(dailySignal.userId, ctx.user.id),
+          eq(dailySignal.userAction, "saved"),
+          sql`${transcriptChunk.embedding} IS NOT NULL`,
+        ),
+      )
+      .limit(50);
+
+    if (savedChunks.length === 0) {
+      return {
+        hasSavedChunks: false,
+        savedChunkCount: 0,
+        pairwiseSimilarity: null,
+        randomChunksSimilarity: null,
+        centroidNorm: null,
+      };
+    }
+
+    const embeddings = savedChunks.map((c) => c.embedding as number[]);
+
+    // Calculate centroid
+    const centroid = calculateCentroid(embeddings);
+    const centroidNorm = Math.sqrt(
+      centroid.reduce((sum, val) => sum + val * val, 0),
+    );
+
+    // Compute pairwise similarity among saved chunks
+    const pairwiseSimilarities: number[] = [];
+    for (let i = 0; i < embeddings.length; i++) {
+      for (let j = i + 1; j < embeddings.length; j++) {
+        const sim = cosineSimilarity(embeddings[i], embeddings[j]);
+        pairwiseSimilarities.push(sim);
+      }
+    }
+
+    const avgPairwiseSim =
+      pairwiseSimilarities.length > 0
+        ? pairwiseSimilarities.reduce((a, b) => a + b, 0) /
+          pairwiseSimilarities.length
+        : 0;
+
+    // Compute each saved chunk's similarity to centroid
+    const savedToCentroid = embeddings.map((emb) =>
+      cosineSimilarity(emb, centroid),
+    );
+    const avgSavedToCentroid =
+      savedToCentroid.reduce((a, b) => a + b, 0) / savedToCentroid.length;
+
+    // Get 50 random chunks with embeddings
+    const randomChunks = await ctx.db
+      .select({
+        chunkId: transcriptChunk.id,
+        embedding: transcriptChunk.embedding,
+      })
+      .from(transcriptChunk)
+      .where(sql`${transcriptChunk.embedding} IS NOT NULL`)
+      .orderBy(sql`RANDOM()`)
+      .limit(50);
+
+    // Compute random chunks' similarity to centroid
+    const randomToCentroid = randomChunks
+      .filter((c) => c.embedding)
+      .map((c) => cosineSimilarity(c.embedding as number[], centroid));
+
+    const avgRandomToCentroid =
+      randomToCentroid.length > 0
+        ? randomToCentroid.reduce((a, b) => a + b, 0) / randomToCentroid.length
+        : 0;
+
+    // Build distribution histograms
+    const buildHistogram = (similarities: number[]) => {
+      const buckets = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // 10 buckets for -1 to 1
+      for (const sim of similarities) {
+        const normalized = (sim + 1) / 2; // Convert -1..1 to 0..1
+        const bucketIndex = Math.min(9, Math.floor(normalized * 10));
+        buckets[bucketIndex]++;
+      }
+      return buckets;
+    };
+
+    return {
+      hasSavedChunks: true,
+      savedChunkCount: savedChunks.length,
+      pairwiseSimilarity: {
+        avg: avgPairwiseSim,
+        min: Math.min(...pairwiseSimilarities),
+        max: Math.max(...pairwiseSimilarities),
+        distribution: buildHistogram(pairwiseSimilarities),
+      },
+      savedToCentroid: {
+        avg: avgSavedToCentroid,
+        min: Math.min(...savedToCentroid),
+        max: Math.max(...savedToCentroid),
+        distribution: buildHistogram(savedToCentroid),
+      },
+      randomChunksSimilarity: {
+        avg: avgRandomToCentroid,
+        min: Math.min(...randomToCentroid),
+        max: Math.max(...randomToCentroid),
+        distribution: buildHistogram(randomToCentroid),
+        sampleSize: randomToCentroid.length,
+      },
+      centroidNorm,
+    };
   }),
 });
+
+function calculateCentroid(embeddings: number[][]): number[] {
+  if (embeddings.length === 0) {
+    throw new Error("Cannot calculate centroid of empty embedding set");
+  }
+
+  const dimensions = embeddings[0].length;
+  const centroid = new Array(dimensions).fill(0);
+
+  for (const embedding of embeddings) {
+    for (let i = 0; i < dimensions; i++) {
+      centroid[i] += embedding[i];
+    }
+  }
+
+  for (let i = 0; i < dimensions; i++) {
+    centroid[i] /= embeddings.length;
+  }
+
+  return centroid;
+}
+
+// Using cosineSimilarity from 'ai' package (imported above)
 
 function buildFallbackTitle(content: string): string {
   return truncate(content, 80, "Insight");

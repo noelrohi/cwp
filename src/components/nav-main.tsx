@@ -4,6 +4,7 @@ import {
   AiMicIcon,
   AiSecurity01Icon,
   DashboardBrowsingIcon,
+  HierarchySquare01Icon,
   Idea01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -65,6 +66,11 @@ export function NavMain() {
     ...items,
     ...(isAdmin
       ? [
+          {
+            title: "Debug",
+            icon: HierarchySquare01Icon,
+            url: "/debug",
+          },
           {
             title: "Admin",
             icon: AiSecurity01Icon,

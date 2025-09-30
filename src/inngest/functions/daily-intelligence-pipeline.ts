@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { cosineSimilarity } from "ai";
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import { db } from "@/server/db";
 import {
@@ -394,7 +395,11 @@ async function generateUserSignals(userId: string): Promise<number> {
 
   if (candidateChunks.length === 0) return 0;
 
-  const scoredChunks = scoreChunksForRelevance(candidateChunks, preferences);
+  const scoredChunks = await scoreChunksForRelevance(
+    candidateChunks,
+    preferences,
+    userId,
+  );
   const filteredChunks = filterRankedChunks(scoredChunks, preferences);
 
   console.log(
@@ -506,42 +511,81 @@ async function getNewChunksForUser(userId: string): Promise<ChunkRecord[]> {
   return chunks;
 }
 
-function scoreChunksForRelevance(
+async function scoreChunksForRelevance(
   chunks: ChunkRecord[],
   preferences: UserPreferenceRecord,
-): ScoredChunk[] {
+  userId: string,
+): Promise<ScoredChunk[]> {
   console.log(
-    `Scoring ${chunks.length} chunks for user with behavioral preferences. Saved: ${preferences.totalSaved}`,
+    `Scoring ${chunks.length} chunks for user ${userId}. Total saved: ${preferences.totalSaved}`,
   );
 
-  // Use simple behavioral rules instead of embeddings
+  // PHASE 1: Random scoring until we have 10 saves
+  // This avoids cold-start bias and lets the user train the system
+  if (preferences.totalSaved < 10) {
+    console.log(
+      `User ${userId} has < 10 saves. Using random distribution for exploration.`,
+    );
+    return chunks.map((chunk) => ({
+      ...chunk,
+      relevanceScore: Math.random(), // Pure random 0.0-1.0
+    }));
+  }
+
+  // PHASE 2: Embedding-based similarity against saved chunks
+  // Get embeddings of all saved chunks to calculate centroid
+  const savedChunks = await db
+    .select({
+      embedding: transcriptChunk.embedding,
+    })
+    .from(transcriptChunk)
+    .innerJoin(dailySignal, eq(dailySignal.chunkId, transcriptChunk.id))
+    .where(
+      and(
+        eq(dailySignal.userId, userId),
+        eq(dailySignal.userAction, "saved"),
+        sql`${transcriptChunk.embedding} IS NOT NULL`,
+      ),
+    );
+
+  if (savedChunks.length === 0) {
+    console.log(
+      `User ${userId} has saves but no embeddings. Falling back to random.`,
+    );
+    return chunks.map((chunk) => ({
+      ...chunk,
+      relevanceScore: Math.random(),
+    }));
+  }
+
+  console.log(
+    `User ${userId}: Computing similarity against ${savedChunks.length} saved chunk embeddings`,
+  );
+
+  // Calculate centroid (average embedding vector)
+  const centroid = calculateCentroid(
+    savedChunks.map((c) => c.embedding as number[]),
+  );
+
+  // Score each chunk by cosine similarity to centroid
+  // Use manual calculation since we already have chunks in memory
   return chunks.map((chunk) => {
-    let score = 0.5; // Base score
-
-    // Strong recency bias - most important signal
-    const hoursOld =
-      (Date.now() - chunk.createdAt.getTime()) / (1000 * 60 * 60);
-    if (hoursOld < 24) score += 0.3;
-    else if (hoursOld < 48) score += 0.2;
-
-    // Quality signals
-    const contentLength = chunk.content.length;
-    if (contentLength > 500 && contentLength < 2000) score += 0.2;
-
-    // Speaker quality (host is usually better content)
-    if (
-      chunk.speaker === "0" ||
-      chunk.speaker?.toLowerCase().includes("host")
-    ) {
-      score += 0.1;
+    if (!chunk.embedding) {
+      return {
+        ...chunk,
+        relevanceScore: 0.3, // Default low score for missing embeddings
+      };
     }
 
-    // Random factor to ensure variety
-    score += Math.random() * 0.1;
+    const similarity = cosineSimilarity(chunk.embedding, centroid);
+
+    // Text embeddings are already normalized to [0, 1] range
+    // No need to normalize - use raw similarity as score
+    const relevanceScore = Math.max(0, similarity); // Clamp to ensure non-negative
 
     return {
       ...chunk,
-      relevanceScore: Math.max(0.1, Math.min(0.9, score)),
+      relevanceScore,
     };
   });
 }
@@ -639,3 +683,32 @@ async function storeDailySignals(
       },
     });
 }
+
+/**
+ * Calculate the centroid (average) of embedding vectors
+ */
+function calculateCentroid(embeddings: number[][]): number[] {
+  if (embeddings.length === 0) {
+    throw new Error("Cannot calculate centroid of empty embedding set");
+  }
+
+  const dimensions = embeddings[0].length;
+  const centroid = new Array(dimensions).fill(0);
+
+  // Sum all embeddings
+  for (const embedding of embeddings) {
+    for (let i = 0; i < dimensions; i++) {
+      centroid[i] += embedding[i];
+    }
+  }
+
+  // Average
+  for (let i = 0; i < dimensions; i++) {
+    centroid[i] /= embeddings.length;
+  }
+
+  return centroid;
+}
+
+// Using cosineSimilarity from 'ai' package (imported above)
+// Returns value between -1 (opposite) and 1 (identical)
