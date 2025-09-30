@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 
-import { and, count, eq } from "drizzle-orm";
+import { and, count, eq, isNull } from "drizzle-orm";
 import { db } from "@/server/db";
 import { dailySignal, savedChunk } from "@/server/db/schema/podcast";
 
@@ -37,9 +37,7 @@ async function checkUserStats() {
   const pending = await db
     .select({ count: count() })
     .from(dailySignal)
-    .where(
-      and(eq(dailySignal.userId, userId), eq(dailySignal.userAction, null)),
-    );
+    .where(and(eq(dailySignal.userId, userId), isNull(dailySignal.userAction)));
 
   const totalCount = totalSignals[0]?.count || 0;
   const savedCount = saved[0]?.count || 0;
@@ -47,11 +45,18 @@ async function checkUserStats() {
   const pendingCount = pending[0]?.count || 0;
 
   console.log(`Total Signals:   ${totalCount}`);
-  console.log(`Saved:           ${savedCount} (${((savedCount / totalCount) * 100).toFixed(1)}%)`);
-  console.log(`Skipped:         ${skippedCount} (${((skippedCount / totalCount) * 100).toFixed(1)}%)`);
-  console.log(`Pending:         ${pendingCount} (${((pendingCount / totalCount) * 100).toFixed(1)}%)`);
+  console.log(
+    `Saved:           ${savedCount} (${((savedCount / totalCount) * 100).toFixed(1)}%)`,
+  );
+  console.log(
+    `Skipped:         ${skippedCount} (${((skippedCount / totalCount) * 100).toFixed(1)}%)`,
+  );
+  console.log(
+    `Pending:         ${pendingCount} (${((pendingCount / totalCount) * 100).toFixed(1)}%)`,
+  );
 
-  const saveRate = totalCount > 0 ? (savedCount / (savedCount + skippedCount)) * 100 : 0;
+  const saveRate =
+    totalCount > 0 ? (savedCount / (savedCount + skippedCount)) * 100 : 0;
   console.log(`\nSave Rate:       ${saveRate.toFixed(1)}% (saved / actioned)`);
 
   console.log();
