@@ -7,6 +7,7 @@ import {
   BookmarkRemove01Icon,
   Calendar03Icon,
   Delete01Icon,
+  SparklesIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -25,14 +26,24 @@ import { useTRPC } from "@/server/trpc/client";
 type SignalAction = "saved" | "skipped";
 
 export default function SignalsPage() {
+  const trpc = useTRPC();
+  const savedQuery = useQuery(trpc.signals.saved.queryOptions());
+  const savedCount = savedQuery.data?.length ?? 0;
+
   return (
     <main className="mx-auto w-full container space-y-6 px-4 py-6 sm:px-6 sm:py-8">
-      <header className="space-y-2">
-        <h1 className="text-2xl font-semibold font-serif">Signals</h1>
-        <p className="text-muted-foreground">
-          Review AI-generated intelligence from your podcasts. Save or skip to
-          tune future rankings.
-        </p>
+      <header className="flex items-start justify-between gap-4">
+        <div className="space-y-2">
+          <h1 className="text-2xl font-semibold font-serif">Signals</h1>
+          <p className="text-muted-foreground">
+            Review AI-generated intelligence from your podcasts. Save or skip to
+            tune future rankings.
+          </p>
+        </div>
+        <div className="flex flex-col items-end gap-1">
+          <div className="text-3xl font-bold font-serif">{savedCount}</div>
+          <div className="text-sm text-muted-foreground">Saved</div>
+        </div>
       </header>
 
       <Tabs defaultValue="pending" className="w-full">
@@ -183,6 +194,15 @@ function PendingSignalsTab() {
                 label: formatDate(signal.episode.publishedAt),
               });
             }
+            if (
+              signal.relevanceScore !== null &&
+              signal.relevanceScore !== undefined
+            ) {
+              metadata.push({
+                icon: <HugeiconsIcon icon={SparklesIcon} size={12} />,
+                label: `${Math.round(signal.relevanceScore * 100)}%`,
+              });
+            }
             const audioSource = signal.episode?.audioUrl
               ? {
                   id: `${signal.id}-${signal.chunk.id}`,
@@ -328,6 +348,15 @@ function SavedSignalsTab() {
               icon: <HugeiconsIcon icon={Calendar03Icon} size={12} />,
               label: formatDate(signal.episode.publishedAt),
             });
+            if (
+              signal.relevanceScore !== null &&
+              signal.relevanceScore !== undefined
+            ) {
+              metadata.push({
+                icon: <HugeiconsIcon icon={SparklesIcon} size={12} />,
+                label: `${Math.round(signal.relevanceScore * 100)}%`,
+              });
+            }
 
             const audioSource = signal.episode.audioUrl
               ? {

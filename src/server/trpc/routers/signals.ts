@@ -345,6 +345,7 @@ export const signalsRouter = createTRPCRouter({
         podcastTitle: podcast.title,
         podcastImageUrl: podcast.imageUrl,
         speakerName: dailySignal.speakerName,
+        relevanceScore: dailySignal.relevanceScore,
       })
       .from(savedChunk)
       .innerJoin(transcriptChunk, eq(savedChunk.chunkId, transcriptChunk.id))
@@ -397,6 +398,7 @@ export const signalsRouter = createTRPCRouter({
         highlightQuote: row.highlightExtractedQuote,
         highlightExtractedAt: row.highlightExtractedAt,
         savedAt: row.savedAt,
+        relevanceScore: row.relevanceScore,
         episode: {
           id: row.episodeId,
           title: row.episodeTitle,
