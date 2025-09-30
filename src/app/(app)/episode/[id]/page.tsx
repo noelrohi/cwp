@@ -7,7 +7,6 @@ import {
   Download01Icon,
   File01Icon,
   Loading03Icon,
-  PlayCircleIcon,
   SparklesIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -21,7 +20,6 @@ import {
   type SignalCardMetadataItem,
 } from "@/blocks/signals/signal-card";
 import { TranscriptDisplay } from "@/components/transcript-display";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -97,7 +95,7 @@ export default function EpisodeDetailPage(props: {
 
   if (episode.isLoading) {
     return (
-      <main className="mx-auto w-full max-w-4xl px-6 py-8">
+      <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
         <div className="animate-pulse">
           <div className="h-8 w-32 bg-muted rounded mb-6" />
           <div className="space-y-4">
@@ -112,16 +110,16 @@ export default function EpisodeDetailPage(props: {
 
   if (episode.error) {
     return (
-      <main className="mx-auto w-full max-w-4xl px-6 py-8">
+      <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
         <Link
           href="/podcasts"
-          className="inline-flex items-center gap-2 text-base text-muted-foreground mb-6 hover:text-foreground"
+          className="inline-flex items-center gap-2 text-base text-muted-foreground hover:text-foreground"
         >
           <HugeiconsIcon icon={ArrowLeft01Icon} size={16} />
           Back to Podcasts
         </Link>
-        <div className="text-center py-12">
-          <div className="text-lg font-semibold text-destructive mb-4">
+        <div className="text-center py-8 sm:py-12">
+          <div className="text-base sm:text-lg font-semibold text-destructive mb-3 sm:mb-4">
             Episode not found
           </div>
           <p className="text-base text-muted-foreground">
@@ -143,14 +141,9 @@ export default function EpisodeDetailPage(props: {
     if (isProcessed) return "Re-run Processing";
     return "Process Episode";
   })();
-  const statusLabel = episodeData?.status
-    ? episodeData.status.replace(/_/g, " ")
-    : null;
-
-  console.log(JSON.stringify(relatedSignals));
 
   return (
-    <main className="mx-auto w-full max-w-4xl px-6 py-8">
+    <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
       {/* Back Navigation */}
       <Link
         href={
@@ -158,69 +151,41 @@ export default function EpisodeDetailPage(props: {
             ? `/podcast/${episodeData.podcast.id}`
             : "/podcasts"
         }
-        className="inline-flex items-center gap-2 text-base text-muted-foreground mb-6 hover:text-foreground"
+        className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
       >
         <HugeiconsIcon icon={ArrowLeft01Icon} size={16} />
         Back to {episodeData?.podcast?.title || "Podcasts"}
       </Link>
 
       {/* Episode Header */}
-      <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:gap-8">
-        {/* Episode Thumbnail */}
-        {episodeData?.thumbnailUrl && (
-          <div className="relative h-32 w-32 shrink-0 overflow-hidden rounded-xl bg-muted">
-            <Image
-              src={episodeData.thumbnailUrl}
-              alt={episodeData.title}
-              className="h-full w-full object-cover"
-              fill
-            />
-            {/* Play Button Overlay */}
-            {episodeData?.audioUrl && (
-              <a
-                href={episodeData.audioUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity duration-200 hover:opacity-100"
-              >
-                <div className="rounded-full bg-background p-3 shadow-lg">
-                  <HugeiconsIcon
-                    icon={PlayCircleIcon}
-                    size={24}
-                    color="currentColor"
-                  />
-                </div>
-              </a>
-            )}
-          </div>
-        )}
-
-        <div className="flex-1 space-y-4">
-          <div className="space-y-2">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <h1 className="text-2xl font-semibold leading-tight">
-                {episodeData?.title}
-              </h1>
-              {statusLabel && (
-                <Badge
-                  variant="secondary"
-                  className="self-start bg-muted text-muted-foreground hover:bg-muted capitalize"
-                >
-                  {statusLabel}
-                </Badge>
-              )}
+      <div className="space-y-4">
+        <div className="flex gap-4">
+          {episodeData?.thumbnailUrl && (
+            <div className="relative h-32 w-32 shrink-0 overflow-hidden rounded-lg bg-muted">
+              <Image
+                src={episodeData.thumbnailUrl}
+                alt={episodeData.title}
+                className="h-full w-full object-cover"
+                fill
+              />
             </div>
+          )}
 
-            <dl className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-xl sm:text-2xl font-semibold leading-tight mb-2">
+              {episodeData?.title}
+            </h1>
+
+            <dl className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground mb-3">
               {episodeData?.publishedAt && (
-                <div className="flex items-center gap-2">
-                  <HugeiconsIcon icon={Calendar03Icon} size={16} />
+                <div className="flex items-center gap-1.5">
+                  <HugeiconsIcon icon={Calendar03Icon} size={14} />
                   <dt className="sr-only">Published</dt>
                   <dd>
                     {new Date(episodeData.publishedAt).toLocaleDateString(
                       "en-US",
                       {
-                        month: "long",
+                        month: "short",
                         day: "numeric",
                         year: "numeric",
                       },
@@ -229,91 +194,22 @@ export default function EpisodeDetailPage(props: {
                 </div>
               )}
               {episodeData?.durationSec && (
-                <div className="flex items-center gap-2">
-                  <HugeiconsIcon icon={Clock01Icon} size={16} />
+                <div className="flex items-center gap-1.5">
+                  <HugeiconsIcon icon={Clock01Icon} size={14} />
                   <dt className="sr-only">Duration</dt>
                   <dd>{Math.floor(episodeData.durationSec / 60)} min</dd>
                 </div>
               )}
             </dl>
-          </div>
 
-          {/* Action Buttons */}
-          <div className="flex flex-wrap gap-2">
-            {episodeData?.transcriptUrl && (
-              <>
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        fetchTranscript(episodeData.transcriptUrl as string)
-                      }
-                    >
-                      <HugeiconsIcon icon={File01Icon} size={16} />
-                      View Transcript
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden">
-                    <DialogHeader>
-                      <DialogTitle>Episode Transcript</DialogTitle>
-                    </DialogHeader>
-                    <div className="overflow-auto">
-                      {transcript && (
-                        <TranscriptDisplay
-                          transcript={transcript}
-                          onClose={() => {}}
-                          speakerMappings={
-                            episodeData?.speakerMapping?.speakerMappings
-                              ? JSON.parse(
-                                  episodeData.speakerMapping.speakerMappings,
-                                )
-                              : null
-                          }
-                        />
-                      )}
-                    </div>
-                  </DialogContent>
-                </Dialog>
-                <Button variant="outline" size="sm" asChild>
-                  <a
-                    href={episodeData.transcriptUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <HugeiconsIcon icon={Download01Icon} size={16} />
-                    Download
-                  </a>
-                </Button>
-              </>
-            )}
-            <Button
-              onClick={() => processEpisode.mutate({ episodeId: params.id })}
-              disabled={isProcessing}
-              size="sm"
-            >
-              {isProcessing ? (
-                <HugeiconsIcon
-                  icon={Loading03Icon}
-                  size={16}
-                  className="animate-spin"
-                />
-              ) : (
-                <HugeiconsIcon icon={SparklesIcon} size={16} />
-              )}
-              {processButtonLabel}
-            </Button>
-            {isProcessed && (
+            {/* Action Buttons */}
+            <div className="flex flex-wrap gap-2">
               <Button
-                onClick={() =>
-                  regenerateSignals.mutate({ episodeId: params.id })
-                }
-                disabled={isRegenerating}
-                variant="outline"
+                onClick={() => processEpisode.mutate({ episodeId: params.id })}
+                disabled={isProcessing}
                 size="sm"
               >
-                {isRegenerating ? (
+                {isProcessing ? (
                   <HugeiconsIcon
                     icon={Loading03Icon}
                     size={16}
@@ -322,18 +218,89 @@ export default function EpisodeDetailPage(props: {
                 ) : (
                   <HugeiconsIcon icon={SparklesIcon} size={16} />
                 )}
-                Regenerate Signals
+                {processButtonLabel}
               </Button>
-            )}
+
+              {isProcessed && (
+                <Button
+                  onClick={() =>
+                    regenerateSignals.mutate({ episodeId: params.id })
+                  }
+                  disabled={isRegenerating}
+                  variant="outline"
+                  size="sm"
+                >
+                  {isRegenerating ? (
+                    <HugeiconsIcon
+                      icon={Loading03Icon}
+                      size={16}
+                      className="animate-spin"
+                    />
+                  ) : (
+                    <HugeiconsIcon icon={SparklesIcon} size={16} />
+                  )}
+                  Regenerate Signals
+                </Button>
+              )}
+
+              {episodeData?.transcriptUrl && (
+                <>
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          fetchTranscript(episodeData.transcriptUrl as string)
+                        }
+                      >
+                        <HugeiconsIcon icon={File01Icon} size={16} />
+                        View Transcript
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden">
+                      <DialogHeader>
+                        <DialogTitle>Episode Transcript</DialogTitle>
+                      </DialogHeader>
+                      <div className="overflow-auto">
+                        {transcript && (
+                          <TranscriptDisplay
+                            transcript={transcript}
+                            onClose={() => {}}
+                            speakerMappings={
+                              episodeData?.speakerMapping?.speakerMappings
+                                ? JSON.parse(
+                                    episodeData.speakerMapping.speakerMappings,
+                                  )
+                                : null
+                            }
+                          />
+                        )}
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                  <Button variant="outline" size="sm" asChild>
+                    <a
+                      href={episodeData.transcriptUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <HugeiconsIcon icon={Download01Icon} size={16} />
+                      Download
+                    </a>
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
       {/* Related Signals */}
-      <section className="mt-12 space-y-5">
-        <div className="space-y-1">
-          <h2 className="text-lg font-semibold font-serif">Related Signals</h2>
-        </div>
+      <section className="space-y-3 sm:space-y-4">
+        <h2 className="text-base sm:text-lg font-semibold font-serif">
+          Related Signals
+        </h2>
 
         {signals.isLoading ? (
           <div className="grid gap-3 sm:grid-cols-2">

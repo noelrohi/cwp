@@ -85,13 +85,15 @@ export default function Podcasts() {
   };
 
   return (
-    <main className="mx-auto w-full max-w-4xl px-6 py-8">
+    <main className="mx-auto w-full container space-y-6 px-4 py-6 sm:px-6 sm:py-8">
       {/* Header */}
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold font-serif">Your Podcast List</h1>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-xl sm:text-2xl font-semibold font-serif">
+          Your Podcast List
+        </h1>
 
         <AddPodcastDialog>
-          <Button>
+          <Button className="w-full sm:w-auto">
             <HugeiconsIcon icon={Add01Icon} size={16} />
             Add Podcast
           </Button>
@@ -99,7 +101,7 @@ export default function Podcasts() {
       </div>
 
       {/* Search and Filters */}
-      <div className="mb-6 flex gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
         <div className="relative flex-1">
           <HugeiconsIcon
             icon={Search01Icon}
@@ -116,7 +118,7 @@ export default function Podcasts() {
         </div>
 
         <Select value={sortBy} onValueChange={setSortBy}>
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-full sm:w-40">
             <SelectValue placeholder="Sort by Date" />
           </SelectTrigger>
           <SelectContent>
@@ -127,7 +129,7 @@ export default function Podcasts() {
       </div>
 
       {/* Podcasts List */}
-      <div className="space-y-3">
+      <div>
         {isLoading ? (
           <div className="space-y-3">
             {Array.from({ length: 5 }).map((_, index) => (

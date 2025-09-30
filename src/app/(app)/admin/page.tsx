@@ -22,20 +22,18 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="container mx-auto py-8">
-      <div className="mb-8">
+    <main className="mx-auto w-full container space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+      <div>
         <h1 className="text-3xl font-bold">Admin Panel</h1>
         <p className="text-muted-foreground">
           Manage users and system settings
         </p>
       </div>
 
-      <div className="space-y-8">
-        <div>
-          <h2 className="text-2xl font-semibold mb-4">Users</h2>
-          <UsersTable />
-        </div>
+      <div>
+        <h2 className="text-2xl font-semibold mb-4">Users</h2>
+        <UsersTable />
       </div>
-    </div>
+    </main>
   );
 }

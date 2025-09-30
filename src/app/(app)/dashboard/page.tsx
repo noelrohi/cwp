@@ -45,9 +45,9 @@ function EpisodeCard({
 }) {
   return (
     <Link href={`/episode/${episode.id}`}>
-      <div className="flex gap-4 mb-4 p-4 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer">
+      <div className="flex gap-3 sm:gap-4 mb-3 sm:mb-4 p-3 sm:p-4 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer">
         {/* Podcast Image */}
-        <div className="relative h-16 w-16 rounded-lg bg-muted flex-shrink-0 overflow-hidden">
+        <div className="relative h-12 w-12 sm:h-16 sm:w-16 rounded-lg bg-muted flex-shrink-0 overflow-hidden">
           {episode.podcast?.imageUrl ? (
             <Image
               src={episode.podcast.imageUrl}
@@ -63,10 +63,10 @@ function EpisodeCard({
         </div>
 
         <div className="flex-1 min-w-0">
-          <h3 className="text-base font-semibold leading-tight line-clamp-2 mb-1">
+          <h3 className="text-sm sm:text-base font-semibold leading-tight line-clamp-2 mb-1">
             {episode.title}
           </h3>
-          <p className="text-muted-foreground text-sm">
+          <p className="text-muted-foreground text-xs sm:text-sm">
             {episode.podcast?.title}
           </p>
         </div>
@@ -101,7 +101,7 @@ export default function Dashboard() {
 
   if (isLoading) {
     return (
-      <main className="mx-auto w-full max-w-4xl px-6 py-8">
+      <main className="mx-auto w-full container space-y-6 px-4 py-6 sm:px-6 sm:py-8">
         <div className="animate-pulse">
           <div className="h-8 w-48 bg-muted rounded mb-6" />
           <div className="space-y-4">
@@ -121,13 +121,13 @@ export default function Dashboard() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-4xl px-6 py-8">
-      <h1 className="text-2xl font-bold mb-8">
+    <main className="mx-auto w-full container space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+      <h1 className="text-xl sm:text-2xl font-bold">
         Hi! What are we breaking down today?
       </h1>
 
       {totalEpisodes > 0 ? (
-        <div className="space-y-8">
+        <div className="space-y-6 sm:space-y-8">
           {Object.entries(groupedEpisodes)
             .sort(([a], [b]) => {
               // Sort by priority: Today, Yesterday, then chronologically
@@ -146,9 +146,9 @@ export default function Dashboard() {
             })
             .map(([dateGroup, episodes]) => (
               <div key={dateGroup}>
-                <div className="mb-6">
-                  <h3 className="text-lg font-semibold">{dateGroup}</h3>
-                </div>
+                <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">
+                  {dateGroup}
+                </h3>
                 <div className="space-y-0">
                   {episodes.map((episode) => (
                     <EpisodeCard key={episode.id} episode={episode} />

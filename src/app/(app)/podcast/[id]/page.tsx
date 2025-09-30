@@ -41,7 +41,7 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
 
   if (podcast.isLoading) {
     return (
-      <main className="mx-auto w-full max-w-4xl px-6 py-8">
+      <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
         <div className="animate-pulse">
           <div className="h-8 w-32 bg-muted rounded mb-6" />
           <div className="flex gap-6 mb-8">
@@ -59,15 +59,15 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
 
   if (podcast.error) {
     return (
-      <main className="mx-auto w-full max-w-4xl px-6 py-8">
+      <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
         <Link
           href="/podcasts"
-          className="inline-flex items-center gap-2 text-sm text-muted-foreground mb-6 hover:text-foreground"
+          className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
         >
           <HugeiconsIcon icon={ArrowLeft01Icon} size={16} />
           Back to Podcasts
         </Link>
-        <div className="text-center py-12">
+        <div className="text-center py-8 sm:py-12">
           <div className="text-destructive mb-4">Podcast not found</div>
           <p className="text-sm text-muted-foreground">
             The podcast you're looking for doesn't exist or has been removed.
@@ -80,75 +80,75 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
   const podcastData = podcast.data;
 
   return (
-    <main className="mx-auto w-full max-w-4xl px-6 py-8">
+    <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
       {/* Back Navigation */}
       <Link
         href="/podcasts"
-        className="inline-flex items-center gap-2 text-sm text-muted-foreground mb-6 hover:text-foreground"
+        className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
       >
         <HugeiconsIcon icon={ArrowLeft01Icon} size={16} />
         Back to Podcasts
       </Link>
 
       {/* Podcast Header */}
-      <div className="flex gap-6 mb-8">
-        <div className="h-32 w-32 rounded-lg bg-muted flex-shrink-0">
-          {podcastData?.imageUrl ? (
-            // biome-ignore lint/performance/noImgElement: **
-            <img
-              src={podcastData.imageUrl}
-              alt={podcastData.title}
-              className="h-full w-full rounded-lg object-cover"
-            />
-          ) : (
-            <div className="h-full w-full rounded-lg bg-gradient-to-br from-blue-500 to-purple-600" />
-          )}
-        </div>
+      <div className="space-y-4">
+        <div className="flex gap-4">
+          <div className="h-32 w-32 rounded-lg bg-muted flex-shrink-0">
+            {podcastData?.imageUrl ? (
+              // biome-ignore lint/performance/noImgElement: **
+              <img
+                src={podcastData.imageUrl}
+                alt={podcastData.title}
+                className="h-full w-full rounded-lg object-cover"
+              />
+            ) : (
+              <div className="h-full w-full rounded-lg bg-gradient-to-br from-blue-500 to-purple-600" />
+            )}
+          </div>
 
-        <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-bold mb-2">{podcastData?.title}</h1>
-          {podcastData?.description && (
-            <p className="text-base text-muted-foreground mb-4 line-clamp-3">
-              {podcastData.description}
-            </p>
-          )}
-          <div className="flex items-center gap-4 text-sm text-muted-foreground">
-            <div className="flex items-center gap-1">
-              <HugeiconsIcon icon={Calendar03Icon} size={16} />
-              Added{" "}
-              {new Date(podcastData?.createdAt || "").toLocaleDateString(
-                "en-US",
-                {
-                  month: "long",
-                  day: "numeric",
-                  year: "numeric",
-                },
+          <div className="flex-1 min-w-0 space-y-3">
+            <div>
+              <h1 className="text-xl sm:text-2xl font-semibold mb-2">
+                {podcastData?.title}
+              </h1>
+              {podcastData?.description && (
+                <p className="text-sm text-muted-foreground line-clamp-2">
+                  {podcastData.description}
+                </p>
               )}
             </div>
-            <div className="flex items-center gap-1">
-              <HugeiconsIcon icon={Clock01Icon} size={16} />
-              {podcastData?.episodes?.length || 0} episodes
-            </div>
+
+            <dl className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+              <div className="flex items-center gap-1.5">
+                <HugeiconsIcon icon={Calendar03Icon} size={14} />
+                <dt className="sr-only">Added</dt>
+                <dd>
+                  Added{" "}
+                  {new Date(podcastData?.createdAt || "").toLocaleDateString(
+                    "en-US",
+                    {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    },
+                  )}
+                </dd>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <HugeiconsIcon icon={Clock01Icon} size={14} />
+                <dt className="sr-only">Episodes</dt>
+                <dd>{podcastData?.episodes?.length || 0} episodes</dd>
+              </div>
+            </dl>
           </div>
         </div>
 
-        <div className="flex gap-2">
-          {podcastData?.feedUrl && (
-            <Button variant="outline" size="sm" asChild>
-              <a
-                href={podcastData.feedUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <HugeiconsIcon icon={Link01Icon} size={16} />
-                RSS Feed
-              </a>
-            </Button>
-          )}
+        <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 sm:flex-wrap sm:overflow-x-visible">
           {podcastData?.feedUrl && (
             <Button
               variant="outline"
               size="sm"
+              className="shrink-0"
               onClick={() =>
                 parseFeedMutation.mutate({
                   podcastId: params.id,
@@ -160,12 +160,24 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
               {parseFeedMutation.isPending ? "Parsing..." : "Parse Feed"}
             </Button>
           )}
+          {podcastData?.feedUrl && (
+            <Button variant="outline" size="sm" className="shrink-0" asChild>
+              <a
+                href={podcastData.feedUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <HugeiconsIcon icon={Link01Icon} size={16} />
+                RSS Feed
+              </a>
+            </Button>
+          )}
         </div>
       </div>
 
       {/* Feed Parsing Progress */}
       {parseFeedMutation.isPending && (
-        <div className="mb-6 rounded-lg border bg-muted/50 p-4">
+        <div className="rounded-lg border bg-muted/50 p-4">
           <div className="mb-2 flex items-center justify-between">
             <span className="text-sm font-medium">Parsing Feed</span>
           </div>
@@ -180,22 +192,23 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
 
       {/* Episodes List */}
       <div className="space-y-4">
-        <h2 className="text-lg font-semibold">Episodes</h2>
+        <h2 className="text-base sm:text-lg font-semibold">Episodes</h2>
 
         {podcastData?.episodes && podcastData.episodes.length > 0 ? (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {podcastData.episodes.map((episode) => (
               <Link
                 key={episode.id}
                 href={`/episode/${episode.id}`}
-                className="flex items-start gap-4 rounded-lg border bg-background p-4 hover:bg-muted/50 transition-colors"
+                className="block rounded-lg border bg-background p-4 hover:bg-muted/50 transition-colors"
               >
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-medium text-base mb-1 hover:text-primary">
-                    {episode.title}
-                  </h3>
+                <h3 className="font-medium text-base mb-1.5 hover:text-primary">
+                  {episode.title}
+                </h3>
 
-                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                <div className="flex items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-1.5">
+                    <HugeiconsIcon icon={Calendar03Icon} size={14} />
                     <span>
                       {episode.publishedAt
                         ? new Date(episode.publishedAt).toLocaleDateString(
@@ -215,10 +228,13 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
                             },
                           )}
                     </span>
-                    {episode.durationSec && (
-                      <span>{Math.floor(episode.durationSec / 60)} min</span>
-                    )}
                   </div>
+                  {episode.durationSec && (
+                    <div className="flex items-center gap-1.5">
+                      <HugeiconsIcon icon={Clock01Icon} size={14} />
+                      <span>{Math.floor(episode.durationSec / 60)} min</span>
+                    </div>
+                  )}
                 </div>
               </Link>
             ))}
