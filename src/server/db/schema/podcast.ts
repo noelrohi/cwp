@@ -7,6 +7,7 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
   vector,
 } from "drizzle-orm/pg-core";
 
@@ -15,6 +16,7 @@ export const episodeStatusEnum = pgEnum("episode_status", [
   "processing",
   "processed",
   "failed",
+  "retrying",
 ]);
 
 export const podcast = pgTable(
@@ -72,6 +74,12 @@ export const episode = pgTable(
     // Dublin Core namespace
     dcCreator: text("dc_creator"), // content creator
     status: episodeStatusEnum("status").default("pending").notNull(),
+    errorMessage: text("error_message"),
+    retryCount: integer("retry_count").default(0).notNull(),
+    lastProcessedAt: timestamp("last_processed_at", { withTimezone: true }),
+    processingStartedAt: timestamp("processing_started_at", {
+      withTimezone: true,
+    }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -132,6 +140,7 @@ export const dailySignal = pgTable(
     index().on(table.userId, table.signalDate),
     index().on(table.userAction),
     index().on(table.relevanceScore),
+    unique().on(table.chunkId, table.userId),
   ],
 );
 

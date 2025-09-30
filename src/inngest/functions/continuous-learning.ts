@@ -82,6 +82,17 @@ export const updateUserPreferences = inngest.createFunction(
       });
 
       await step.run("extract-highlight", async () => {
+        const existingChunk = await db.query.savedChunk.findFirst({
+          where: eq(savedChunk.id, savedChunkId),
+          columns: {
+            highlightExtractedQuote: true,
+          },
+        });
+
+        if (existingChunk?.highlightExtractedQuote) {
+          return;
+        }
+
         try {
           const highlightQuote = await extractImpactfulQuote({
             content: signalData.content,

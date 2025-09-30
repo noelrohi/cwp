@@ -233,6 +233,12 @@ export const dailyIntelligenceProcessEpisode = inngest.createFunction(
         publishedAt: episodeRecord.publishedAt
           ? new Date(episodeRecord.publishedAt)
           : null,
+        lastProcessedAt: episodeRecord.lastProcessedAt
+          ? new Date(episodeRecord.lastProcessedAt)
+          : null,
+        processingStartedAt: episodeRecord.processingStartedAt
+          ? new Date(episodeRecord.processingStartedAt)
+          : null,
       };
 
       const transcriptResult = await step.run("ensure-transcript", async () => {
@@ -591,5 +597,16 @@ async function storeDailySignals(
     };
   });
 
-  await db.insert(dailySignal).values(signals);
+  await db
+    .insert(dailySignal)
+    .values(signals)
+    .onConflictDoUpdate({
+      target: [dailySignal.chunkId, dailySignal.userId],
+      set: {
+        relevanceScore: sql`excluded.relevance_score`,
+        excerpt: sql`excluded.excerpt`,
+        speakerName: sql`excluded.speaker_name`,
+        signalDate: sql`excluded.signal_date`,
+      },
+    });
 }

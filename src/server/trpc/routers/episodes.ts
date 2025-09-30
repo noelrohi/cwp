@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
+import { TRPCError } from "@trpc/server";
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { inngest } from "@/inngest/client";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { episode } from "@/server/db/schema/podcast";
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "../init";
 
@@ -83,6 +85,21 @@ export const episodesRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const rateLimitResult = await checkRateLimit(
+        `episode-process:${ctx.user.id}`,
+        RATE_LIMITS.EPISODE_PROCESSING,
+      );
+
+      if (!rateLimitResult.success) {
+        const resetIn = Math.ceil(
+          (rateLimitResult.resetAt - Date.now()) / 1000 / 60,
+        );
+        throw new TRPCError({
+          code: "TOO_MANY_REQUESTS",
+          message: `Rate limit exceeded. Try again in ${resetIn} minutes.`,
+        });
+      }
+
       const episodeRecord = await ctx.db.query.episode.findFirst({
         where: and(
           eq(episode.id, input.episodeId),
@@ -91,6 +108,7 @@ export const episodesRouter = createTRPCRouter({
         columns: {
           id: true,
           status: true,
+          processingStartedAt: true,
         },
       });
 
@@ -99,15 +117,38 @@ export const episodesRouter = createTRPCRouter({
       }
 
       if (episodeRecord.status === "processing") {
-        return { status: "processing" as const };
+        const processingStarted = episodeRecord.processingStartedAt;
+        if (processingStarted) {
+          const hoursSinceStart =
+            (Date.now() - processingStarted.getTime()) / (1000 * 60 * 60);
+          if (hoursSinceStart < 1) {
+            return { status: "processing" as const };
+          }
+        }
       }
 
-      if (episodeRecord.status !== "processed") {
-        await ctx.db
-          .update(episode)
-          .set({ status: "processing" })
-          .where(eq(episode.id, input.episodeId));
+      const now = new Date();
+      const updateData: {
+        status: "processing";
+        processingStartedAt: Date;
+        errorMessage?: null;
+        retryCount?: number;
+      } = {
+        status: "processing" as const,
+        processingStartedAt: now,
+      };
+
+      if (
+        episodeRecord.status === "failed" ||
+        episodeRecord.status === "retrying"
+      ) {
+        updateData.errorMessage = null;
       }
+
+      await ctx.db
+        .update(episode)
+        .set(updateData)
+        .where(eq(episode.id, input.episodeId));
 
       const pipelineRunId = randomUUID();
 
@@ -133,6 +174,21 @@ export const episodesRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const rateLimitResult = await checkRateLimit(
+        `signal-regenerate:${ctx.user.id}`,
+        RATE_LIMITS.SIGNAL_REGENERATION,
+      );
+
+      if (!rateLimitResult.success) {
+        const resetIn = Math.ceil(
+          (rateLimitResult.resetAt - Date.now()) / 1000 / 60,
+        );
+        throw new TRPCError({
+          code: "TOO_MANY_REQUESTS",
+          message: `Rate limit exceeded. Try again in ${resetIn} minutes.`,
+        });
+      }
+
       const episodeRecord = await ctx.db.query.episode.findFirst({
         where: and(
           eq(episode.id, input.episodeId),
