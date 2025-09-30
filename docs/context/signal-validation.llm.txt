@@ -8,6 +8,25 @@ This application uses embedding-based personalization to recommend podcast conte
 2. **Phase 2 (10+ saves)**: Uses cosine similarity to user's centroid embedding to rank content
 3. **Continuous Learning**: Updates centroid as user saves/skips signals
 
+## Recent Changes (2025-09-30)
+
+### Critical Bug Fix: Wrong Table for Training Data
+**Problem**: Centroid calculations queried `daily_signal` with `userAction='saved'` instead of `saved_chunk` table.
+
+**Impact**: System could miss saves that exist in `saved_chunk` but not in `daily_signal`, resulting in incomplete training data.
+
+**Fix**: All files now use `saved_chunk` as the source of truth:
+- Signal generation (`daily-intelligence-pipeline.ts`)
+- All validation scripts
+- User stats calculations
+
+**Why Two Tables?**
+- `saved_chunk`: Created when user saves content. Source of truth for user's library and training data.
+- `daily_signal`: Tracks signal lifecycle (created → saved/skipped). Used for showing signals in UI.
+- Both should usually match, but `saved_chunk` is authoritative for machine learning.
+
+**Best Practice**: Always query `saved_chunk` when calculating centroids or validating embeddings.
+
 ## Key Concepts
 
 ### Centroid
@@ -94,12 +113,29 @@ The gap between saved content similarity and random content similarity to centro
 
 **What it shows**:
 - Total signals seen
-- Saved, skipped, pending counts
+- Saved, skipped, pending counts (from both `saved_chunk` and `daily_signal`)
 - Save rate percentage
 
 **Healthy save rate**: 5-20%
 - <5%: User too picky or content quality poor
 - >30%: User not selective enough, hurts training
+
+### 6. analyze-skip-patterns.ts
+**Usage**: `pnpm tsx scripts/analyze-skip-patterns.ts <userId>`
+
+**What it shows**:
+- Average similarity of skipped chunks to user's centroid
+- Comparison of saved vs skipped similarity
+- Skip score distribution
+- Whether skip is meaningful negative signal or noise
+
+**Use this to**:
+- Decide if skipped content should be used for negative training
+- Validate that skips represent genuine dislikes vs "not now"
+- Understand skip behavior before implementing negative examples
+
+**Good result**: Saved-Skip difference >20% (skip is meaningful)
+**Weak result**: Saved-Skip difference <10% (skip is noisy, don't use)
 
 ## Common Validation Workflow
 
@@ -135,32 +171,54 @@ pnpm tsx scripts/check-pending-signals.ts <userId>
 ### Signal Generation
 - `src/inngest/functions/daily-intelligence-pipeline.ts`
   - Line ~534: Phase 1 (random) vs Phase 2 (embedding-based)
+  - Line ~542-549: **CRITICAL**: Queries `saved_chunk` table (not `daily_signal`) for centroid
   - Line ~569-589: Scoring logic using cosine similarity
   - Line ~500: Time filter (only chunks from last 2 days for daily runs)
 
 ### Centroid Updates
 - `src/inngest/functions/continuous-learning.ts`
-  - Updates user preferences on save/skip actions
-  - Weekly recomputation from all historical data
+  - Line ~72-82: Creates `saved_chunk` record when user saves
+  - Updates behavioral preferences (podcasts, speakers, content length)
+  - NOTE: No longer uses embedding centroid updates (switched to behavioral tracking)
 
 ### Validation Endpoint
 - `src/server/trpc/routers/signals.ts`
   - Line ~687: `validationMetrics` endpoint
   - Powers the /debug page Validation tab
 
+### Data Model
+**IMPORTANT**: Two tables track saves with different purposes:
+- `saved_chunk`: Source of truth for user's saved content (used for training)
+- `daily_signal` with `userAction='saved'`: Tracks which signals were saved
+- Always use `saved_chunk` for centroid calculations and validation
+
 ## Known Issues & Fixes
 
-### Issue 1: All scores clustered at 70-90%
+### Issue 1: Centroid using wrong table (FIXED 2025-09-30)
+**Cause**: System queried `daily_signal.userAction='saved'` instead of `saved_chunk` table
+**Impact**: Missing training data - could only see saves that came through daily signals
+**Location**: Multiple files queried wrong table
+**Fix**: All centroid calculations and validation scripts now use `saved_chunk` as source of truth
+**Files fixed**:
+- `daily-intelligence-pipeline.ts` line ~542
+- `validate-user-embeddings.ts` line ~46
+- `analyze-saved-content.ts` line ~27
+- `check-user-stats.ts` line ~22
+- `find-and-test-signal.ts` line ~63
+- `test-specific-signal.ts` line ~67
+
+### Issue 2: All scores clustered at 70-90%
 **Cause**: Normalization bug `(similarity + 1) / 2`
 **Location**: `daily-intelligence-pipeline.ts` line ~582
 **Fix**: Use raw similarity: `const relevanceScore = Math.max(0, similarity)`
+**Status**: FIXED - now uses raw cosine similarity
 
-### Issue 2: No new signals generated
+### Issue 3: No new signals generated
 **Cause**: Time filter only includes chunks from last 2 days
 **Location**: `daily-intelligence-pipeline.ts` line ~500
 **Solution**: Either add new episodes or manually trigger generation without time filter
 
-### Issue 3: High scores for irrelevant content
+### Issue 4: High scores for irrelevant content
 **Diagnosis**:
 1. Run `find-and-test-signal.ts` on the content
 2. Check actual similarity vs model score
@@ -170,7 +228,7 @@ pnpm tsx scripts/check-pending-signals.ts <userId>
 **Common cause**: User saved diverse content early on, centroid is too broad
 **Solution**: Save more focused content to refine centroid
 
-### Issue 4: Separation score too low (<30%)
+### Issue 5: Separation score too low (<30%)
 **Causes**:
 - Not enough training data (<10 saves)
 - Saved content too diverse (unrelated topics)
@@ -266,6 +324,9 @@ pnpm validate:embeddings <userId>
 pnpm tsx scripts/check-user-stats.ts <userId>
 pnpm tsx scripts/check-pending-signals.ts <userId>
 pnpm tsx scripts/analyze-saved-content.ts <userId>
+
+# Analyze skip behavior (optional - for deciding if skips should be used for training)
+pnpm tsx scripts/analyze-skip-patterns.ts <userId>
 
 # Test specific content
 pnpm tsx scripts/find-and-test-signal.ts "<keyword>"
