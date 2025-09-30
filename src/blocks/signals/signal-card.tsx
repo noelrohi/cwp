@@ -1,9 +1,20 @@
 "use client";
 
-import { PauseIcon, PlayIcon, RotateCcwIcon } from "lucide-react";
+import {
+  ChevronDownIcon,
+  PauseIcon,
+  PlayIcon,
+  RotateCcwIcon,
+} from "lucide-react";
 import type { ReactNode } from "react";
+import { useState } from "react";
 import { useAudioPlayer } from "@/components/audio-player/audio-player-provider";
 import { Button } from "@/components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { formatTimecode } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
@@ -14,6 +25,7 @@ export type SignalCardMetadataItem = {
 
 export type SignalCardProps = {
   chunkContent: string;
+  highlightContent?: string | null;
   speakerLabel?: string | null;
   startTimeSec?: number | null;
   endTimeSec?: number | null;
@@ -34,6 +46,7 @@ export type SignalCardProps = {
 export function SignalCard(props: SignalCardProps) {
   const {
     chunkContent,
+    highlightContent,
     speakerLabel,
     startTimeSec,
     endTimeSec,
@@ -42,6 +55,9 @@ export function SignalCard(props: SignalCardProps) {
     children,
     className,
   } = props;
+
+  const [isExpanded, setIsExpanded] = useState(false);
+  const hasHighlight = Boolean(highlightContent);
 
   const timestampLabel =
     startTimeSec && endTimeSec
@@ -141,9 +157,39 @@ export function SignalCard(props: SignalCardProps) {
               </>
             )}
           </div>
-          <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-line">
-            {chunkContent.trim()}
-          </p>
+          {hasHighlight ? (
+            <div className="space-y-2">
+              <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-line">
+                {highlightContent?.trim()}
+              </p>
+              <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
+                <CollapsibleTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    <ChevronDownIcon
+                      className={cn(
+                        "mr-1 h-3 w-3 transition-transform",
+                        isExpanded && "rotate-180",
+                      )}
+                    />
+                    {isExpanded ? "Hide" : "View"} full context
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-2 pt-2 border-t border-muted">
+                  <p className="text-sm leading-relaxed text-muted-foreground whitespace-pre-line">
+                    {chunkContent.trim()}
+                  </p>
+                </CollapsibleContent>
+              </Collapsible>
+            </div>
+          ) : (
+            <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-line">
+              {chunkContent.trim()}
+            </p>
+          )}
         </div>
       </div>
     </article>

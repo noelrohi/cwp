@@ -17,11 +17,41 @@ import {
 import { useAudioPlayer } from "@/components/audio-player/audio-player-provider";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useTRPC } from "@/server/trpc/client";
 
 type SignalAction = "saved" | "skipped";
 
 export default function SignalsPage() {
+  return (
+    <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+      <header className="space-y-2">
+        <h1 className="text-lg font-semibold font-serif sm:text-xl">Signals</h1>
+        <p className="text-sm text-muted-foreground">
+          Review AI-generated intelligence from your podcasts. Save or skip to
+          tune future rankings.
+        </p>
+      </header>
+
+      <Tabs defaultValue="pending" className="w-full">
+        <TabsList>
+          <TabsTrigger value="pending">Pending</TabsTrigger>
+          <TabsTrigger value="saved">Saved</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="pending" className="mt-6">
+          <PendingSignalsTab />
+        </TabsContent>
+
+        <TabsContent value="saved" className="mt-6">
+          <SavedSignalsTab />
+        </TabsContent>
+      </Tabs>
+    </main>
+  );
+}
+
+function PendingSignalsTab() {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const audioPlayer = useAudioPlayer();
@@ -88,17 +118,7 @@ export default function SignalsPage() {
   }, [signals, audioPlayer]);
 
   return (
-    <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
-      <header className="space-y-2">
-        <h1 className="text-lg font-semibold font-serif sm:text-xl">
-          Today's Signals
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Review the AI-generated intelligence pulled from your follow list.
-          Saving or skipping tunes tomorrow's rankings.
-        </p>
-      </header>
-
+    <>
       {isLoading ? (
         <SignalSkeletonList />
       ) : fetchError ? (
@@ -112,9 +132,7 @@ export default function SignalsPage() {
             const inferredSpeakerName = signal.speakerName?.trim();
             const speakerLabel = signal.chunk.speaker?.trim();
 
-            // Better speaker display logic
             const getSpeakerDisplay = () => {
-              // Use inferredSpeakerName if it exists and isn't just "Speaker X"
               if (
                 inferredSpeakerName &&
                 inferredSpeakerName.length > 0 &&
@@ -123,17 +141,15 @@ export default function SignalsPage() {
                 return inferredSpeakerName;
               }
 
-              // For numeric speaker IDs, use more contextual labels
               if (speakerLabel && /^\d+$/.test(speakerLabel)) {
                 const speakerNum = Number.parseInt(speakerLabel, 10);
                 if (speakerNum === 0) {
-                  return "Host"; // First speaker is usually the host
+                  return "Host";
                 } else {
-                  return `Guest ${speakerNum}`; // Subsequent speakers are guests
+                  return `Guest ${speakerNum}`;
                 }
               }
 
-              // Fallback for non-numeric speaker labels
               if (speakerLabel) {
                 return `Speaker ${speakerLabel}`;
               }
@@ -213,7 +229,92 @@ export default function SignalsPage() {
           })}
         </section>
       )}
-    </main>
+    </>
+  );
+}
+
+function SavedSignalsTab() {
+  const trpc = useTRPC();
+  const audioPlayer = useAudioPlayer();
+
+  const savedQuery = useQuery(trpc.signals.saved.queryOptions());
+
+  const isLoading = savedQuery.isLoading;
+  const fetchError = savedQuery.error;
+  const fetchErrorMessage =
+    fetchError && fetchError instanceof Error ? fetchError.message : undefined;
+  const savedSignals = savedQuery.data ?? [];
+
+  useEffect(() => {
+    if (savedSignals.length > 0) {
+      const uniqueAudioUrls = Array.from(
+        new Set(
+          savedSignals
+            .map((signal) => signal.episode.audioUrl)
+            .filter((url): url is string => Boolean(url)),
+        ),
+      );
+      if (uniqueAudioUrls.length > 0) {
+        audioPlayer.preloadAudio(uniqueAudioUrls);
+      }
+    }
+  }, [savedSignals, audioPlayer]);
+
+  return (
+    <>
+      {isLoading ? (
+        <SignalSkeletonList />
+      ) : fetchError ? (
+        <ErrorState message={fetchErrorMessage} />
+      ) : savedSignals.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-muted/70 bg-muted/20 p-8 text-center text-sm text-muted-foreground sm:p-10">
+          No saved signals yet. Save signals from the Pending tab to see them
+          here.
+        </div>
+      ) : (
+        <section className="space-y-4">
+          {savedSignals.map((signal) => {
+            const speakerDisplay = signal.speaker ?? "Unknown speaker";
+            const metadata: SignalCardMetadataItem[] = [];
+            if (signal.episode.podcast?.title) {
+              metadata.push({
+                icon: <PodcastIcon className="h-3 w-3" />,
+                label: signal.episode.podcast.title,
+              });
+            }
+            metadata.push({
+              icon: <CalendarDaysIcon className="h-3 w-3" />,
+              label: formatDate(signal.episode.publishedAt),
+            });
+
+            const audioSource = signal.episode.audioUrl
+              ? {
+                  id: `saved-${signal.id}`,
+                  title: signal.episode.title ?? "Episode",
+                  subtitle: speakerDisplay,
+                  audioUrl: signal.episode.audioUrl,
+                  startTimeSec: signal.startTimeSec ?? undefined,
+                  endTimeSec: signal.endTimeSec ?? undefined,
+                }
+              : undefined;
+
+            return (
+              <SignalCard
+                key={signal.id}
+                className="border-border bg-background/70"
+                chunkContent={signal.content}
+                highlightContent={signal.highlightQuote}
+                speakerLabel={speakerDisplay}
+                startTimeSec={signal.startTimeSec}
+                endTimeSec={signal.endTimeSec}
+                metadata={metadata}
+                audio={audioSource}
+              />
+            );
+          })}
+        </section>
+      )}
+    </>
   );
 }
 

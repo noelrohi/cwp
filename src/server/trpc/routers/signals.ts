@@ -15,6 +15,7 @@ import {
   dailySignal,
   episode,
   podcast,
+  savedChunk,
   transcriptChunk,
 } from "@/server/db/schema/podcast";
 import { createTRPCRouter, protectedProcedure } from "../init";
@@ -318,10 +319,97 @@ export const signalsRouter = createTRPCRouter({
       totalPresented: totalPresented[0]?.count || 0,
       totalSaved: totalSaved[0]?.count || 0,
       totalSkipped: totalSkipped[0]?.count || 0,
-      saveRate: Math.round(saveRate * 100) / 100, // Round to 2 decimal places
+      saveRate: Math.round(saveRate * 100) / 100,
       actionRate: Math.round(actionRate * 100) / 100,
       dailyEngagement,
     };
+  }),
+
+  saved: protectedProcedure.query(async ({ ctx }) => {
+    const savedChunksWithSignals = await ctx.db
+      .select({
+        savedChunkId: savedChunk.id,
+        chunkId: savedChunk.chunkId,
+        chunkContent: transcriptChunk.content,
+        speaker: transcriptChunk.speaker,
+        startTimeSec: transcriptChunk.startTimeSec,
+        endTimeSec: transcriptChunk.endTimeSec,
+        highlightExtractedQuote: savedChunk.highlightExtractedQuote,
+        highlightExtractedAt: savedChunk.highlightExtractedAt,
+        savedAt: savedChunk.savedAt,
+        episodeId: episode.id,
+        episodeTitle: episode.title,
+        episodePublishedAt: episode.publishedAt,
+        episodeAudioUrl: episode.audioUrl,
+        podcastId: podcast.id,
+        podcastTitle: podcast.title,
+        podcastImageUrl: podcast.imageUrl,
+        speakerName: dailySignal.speakerName,
+      })
+      .from(savedChunk)
+      .innerJoin(transcriptChunk, eq(savedChunk.chunkId, transcriptChunk.id))
+      .innerJoin(episode, eq(transcriptChunk.episodeId, episode.id))
+      .innerJoin(podcast, eq(episode.podcastId, podcast.id))
+      .leftJoin(
+        dailySignal,
+        and(
+          eq(dailySignal.chunkId, savedChunk.chunkId),
+          eq(dailySignal.userId, ctx.user.id),
+        ),
+      )
+      .where(eq(savedChunk.userId, ctx.user.id))
+      .orderBy(desc(savedChunk.savedAt));
+
+    return savedChunksWithSignals.map((row) => {
+      const inferredSpeakerName = row.speakerName?.trim();
+      const speakerLabel = row.speaker?.trim();
+
+      const getSpeakerDisplay = () => {
+        if (
+          inferredSpeakerName &&
+          inferredSpeakerName.length > 0 &&
+          !inferredSpeakerName.startsWith("Speaker ")
+        ) {
+          return inferredSpeakerName;
+        }
+
+        if (speakerLabel && /^\d+$/.test(speakerLabel)) {
+          const speakerNum = Number.parseInt(speakerLabel, 10);
+          if (speakerNum === 0) {
+            return "Host";
+          }
+          return `Guest ${speakerNum}`;
+        }
+
+        if (speakerLabel) {
+          return `Speaker ${speakerLabel}`;
+        }
+
+        return "Unknown speaker";
+      };
+
+      return {
+        id: row.savedChunkId,
+        content: row.chunkContent,
+        speaker: getSpeakerDisplay(),
+        startTimeSec: row.startTimeSec,
+        endTimeSec: row.endTimeSec,
+        highlightQuote: row.highlightExtractedQuote,
+        highlightExtractedAt: row.highlightExtractedAt,
+        savedAt: row.savedAt,
+        episode: {
+          id: row.episodeId,
+          title: row.episodeTitle,
+          publishedAt: row.episodePublishedAt,
+          audioUrl: row.episodeAudioUrl,
+          podcast: {
+            id: row.podcastId,
+            title: row.podcastTitle,
+            imageUrl: row.podcastImageUrl,
+          },
+        },
+      };
+    });
   }),
 });
 

@@ -192,11 +192,19 @@ export const savedChunk = pgTable(
     userId: text("user_id").notNull(),
     tags: text("tags"), // comma-separated, user-defined
     notes: text("notes"),
+    highlightExtractedQuote: text("highlight_extracted_quote"),
+    highlightExtractedAt: timestamp("highlight_extracted_at", {
+      withTimezone: true,
+    }),
     savedAt: timestamp("saved_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
   },
-  (table) => [index().on(table.userId), index().on(table.savedAt)],
+  (table) => [
+    index().on(table.userId),
+    index().on(table.savedAt),
+    index().on(table.highlightExtractedAt),
+  ],
 );
 
 // Relations

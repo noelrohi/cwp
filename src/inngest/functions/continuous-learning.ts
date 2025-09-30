@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { generateText } from "ai";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/server/db";
 import {
@@ -10,6 +12,10 @@ import {
   userPreferences,
 } from "@/server/db/schema";
 import { inngest } from "../client";
+
+const openrouter = createOpenRouter({
+  apiKey: process.env.OPENROUTER_API_KEY,
+});
 
 /**
  * Update user preferences when they save or skip a signal
@@ -33,6 +39,7 @@ export const updateUserPreferences = inngest.createFunction(
           speaker: transcriptChunk.speaker,
           podcastId: episode.podcastId,
           podcastTitle: podcast.title,
+          episodeTitle: episode.title,
           contentLength: sql<number>`LENGTH(${transcriptChunk.content})`,
         })
         .from(dailySignal)
@@ -60,16 +67,41 @@ export const updateUserPreferences = inngest.createFunction(
         .where(eq(dailySignal.id, signalId));
     });
 
-    // Step 3: If saved, create a saved chunk record
+    // Step 3: If saved, create a saved chunk record and extract highlight
     if (action === "saved") {
-      await step.run("create-saved-chunk", async () => {
+      const savedChunkId = await step.run("create-saved-chunk", async () => {
+        const chunkId = randomUUID();
         await db.insert(savedChunk).values({
-          id: randomUUID(),
+          id: chunkId,
           chunkId: signalData.chunkId,
           userId: signalData.userId,
           tags: null,
           notes: null,
         });
+        return chunkId;
+      });
+
+      await step.run("extract-highlight", async () => {
+        try {
+          const highlightQuote = await extractImpactfulQuote({
+            content: signalData.content,
+            speaker: signalData.speaker,
+            podcastTitle: signalData.podcastTitle,
+            episodeTitle: signalData.episodeTitle,
+          });
+
+          if (highlightQuote) {
+            await db
+              .update(savedChunk)
+              .set({
+                highlightExtractedQuote: highlightQuote,
+                highlightExtractedAt: new Date(),
+              })
+              .where(eq(savedChunk.id, savedChunkId));
+          }
+        } catch (error) {
+          console.error("Failed to extract highlight:", error);
+        }
       });
     }
 
@@ -208,6 +240,49 @@ async function ensureUserPreferencesRow(userId: string) {
   return created;
 }
 
+async function extractImpactfulQuote(context: {
+  content: string;
+  speaker: string | null;
+  podcastTitle: string;
+  episodeTitle: string;
+}): Promise<string | null> {
+  const prompt = `You are an expert at extracting impactful, quotable insights from podcast transcripts.
+
+Context:
+- Podcast: ${context.podcastTitle}
+- Episode: ${context.episodeTitle}
+${context.speaker ? `- Speaker: ${context.speaker}` : ""}
+
+Transcript chunk:
+"""
+${context.content}
+"""
+
+Extract a 1-2 sentence quote that is:
+- Highly impactful and memorable
+- Perfect for sharing in a newsletter or social media
+- Captures a key insight, surprising fact, or actionable advice
+- Stands alone without needing additional context
+- Avoids filler words or rambling
+
+If the chunk contains no quotable insight, respond with "NO_QUOTE".
+
+Return ONLY the extracted quote, nothing else.`;
+
+  const result = await generateText({
+    model: openrouter("anthropic/claude-3.5-sonnet"),
+    prompt,
+  });
+
+  const quote = result.text.trim();
+
+  if (quote === "NO_QUOTE" || quote.length < 20) {
+    return null;
+  }
+
+  return quote;
+}
+
 /**
  * Clean up old signals to keep the database lean
  * Runs monthly on the 1st at 4:00 AM
@@ -217,11 +292,10 @@ export const monthlyCleanup = inngest.createFunction(
     id: "monthly-signal-cleanup",
     concurrency: 1,
   },
-  { cron: "0 4 1 * *" }, // 1st of every month at 4:00 AM
+  { cron: "0 4 1 * *" },
   async ({ step }) => {
-    const cutoffDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000); // 90 days ago
+    const cutoffDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
 
-    // Delete old signals that were never acted upon
     const deletedSignals = await step.run("cleanup-old-signals", async () => {
       const result = await db
         .delete(dailySignal)
