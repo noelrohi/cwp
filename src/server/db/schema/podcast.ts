@@ -135,15 +135,23 @@ export const dailySignal = pgTable(
   ],
 );
 
-// Your personalization engine
+// Simple behavioral preferences - no embeddings needed
 export const userPreferences = pgTable(
   "user_preferences",
   {
     id: text("id").primaryKey(),
     userId: text("user_id").notNull().unique(),
-    centroidEmbedding: vector("centroid_embedding", { dimensions: 1536 }),
     totalSaved: integer("total_saved").default(0).notNull(),
     totalSkipped: integer("total_skipped").default(0).notNull(),
+    // Simple behavioral tracking
+    preferredPodcasts: text("preferred_podcasts"), // JSON array of podcast IDs
+    preferredSpeakers: text("preferred_speakers"), // JSON array of speaker names
+    preferredContentLength: text("preferred_content_length")
+      .$type<"short" | "medium" | "long">()
+      .default("medium"),
+    averageEngagementScore: doublePrecision("average_engagement_score").default(
+      0.5,
+    ),
     lastUpdated: timestamp("last_updated", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -151,10 +159,7 @@ export const userPreferences = pgTable(
       .defaultNow()
       .notNull(),
   },
-  (table) => [
-    index().on(table.userId),
-    index().using("hnsw", table.centroidEmbedding.op("vector_cosine_ops")),
-  ],
+  (table) => [index().on(table.userId)],
 );
 
 // AI-powered speaker identification cache

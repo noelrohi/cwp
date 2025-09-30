@@ -6,7 +6,6 @@ import {
   Loader2,
   MoreHorizontal,
   PlusIcon,
-  RefreshCw,
   SearchIcon,
   TrashIcon,
 } from "lucide-react";
@@ -70,7 +69,7 @@ export default function Podcasts() {
     }
   };
 
-  const handleParseFeed = async (podcastId: string) => {
+  const _handleParseFeed = async (podcastId: string) => {
     try {
       const result = await parseFeed.mutateAsync({ podcastId });
       qc.invalidateQueries({ queryKey: trpc.podcasts.list.queryKey() });

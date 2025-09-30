@@ -3,6 +3,8 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/server/db";
 import {
   dailySignal,
+  episode,
+  podcast,
   savedChunk,
   transcriptChunk,
   userPreferences,
@@ -11,7 +13,7 @@ import { inngest } from "../client";
 
 /**
  * Update user preferences when they save or skip a signal
- * This is the core of the continuous learning system
+ * Now uses simple behavioral tracking instead of embedding centroids
  */
 export const updateUserPreferences = inngest.createFunction(
   { id: "update-user-preferences" },
@@ -19,7 +21,7 @@ export const updateUserPreferences = inngest.createFunction(
   async ({ event, step }) => {
     const { signalId, action } = event.data; // action: "saved" | "skipped"
 
-    // Step 1: Get the signal and its associated chunk
+    // Step 1: Get the signal and its associated chunk with podcast info
     const signalData = await step.run("fetch-signal-data", async () => {
       const signals = await db
         .select({
@@ -27,11 +29,16 @@ export const updateUserPreferences = inngest.createFunction(
           userId: dailySignal.userId,
           chunkId: dailySignal.chunkId,
           relevanceScore: dailySignal.relevanceScore,
-          embedding: transcriptChunk.embedding,
           content: transcriptChunk.content,
+          speaker: transcriptChunk.speaker,
+          podcastId: episode.podcastId,
+          podcastTitle: podcast.title,
+          contentLength: sql<number>`LENGTH(${transcriptChunk.content})`,
         })
         .from(dailySignal)
         .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
+        .innerJoin(episode, eq(transcriptChunk.episodeId, episode.id))
+        .innerJoin(podcast, eq(episode.podcastId, podcast.id))
         .where(eq(dailySignal.id, signalId))
         .limit(1);
 
@@ -66,27 +73,15 @@ export const updateUserPreferences = inngest.createFunction(
       });
     }
 
-    // Step 4: Update user preferences centroid (only for saves)
-    if (action === "saved") {
-      await step.run("update-user-centroid", async () => {
-        await updateUserCentroid(
-          signalData.userId,
-          signalData.embedding as number[],
-        );
+    // Step 4: Update behavioral preferences based on action
+    await step.run("update-behavioral-preferences", async () => {
+      await updateUserBehavioralPreferences(signalData.userId, action, {
+        podcastId: signalData.podcastId || "",
+        speaker: signalData.speaker,
+        contentLength: signalData.contentLength,
+        podcastTitle: signalData.podcastTitle,
       });
-    } else if (action === "skipped") {
-      // Just increment skip counter, don't affect centroid
-      await step.run("update-skip-counter", async () => {
-        const prefs = await ensureUserPreferencesRow(signalData.userId);
-        await db
-          .update(userPreferences)
-          .set({
-            totalSkipped: prefs.totalSkipped + 1,
-            lastUpdated: new Date(),
-          })
-          .where(eq(userPreferences.userId, signalData.userId));
-      });
-    }
+    });
 
     return {
       message: "User preferences updated successfully",
@@ -98,34 +93,81 @@ export const updateUserPreferences = inngest.createFunction(
 );
 
 /**
- * Update user centroid using incremental learning
- * Only positive feedback (saves) - skips are ignored per Karpathy's advice
+ * Update user behavioral preferences based on save/skip actions
+ * Much simpler than centroid approach - just tracks what users engage with
  */
-async function updateUserCentroid(
+async function updateUserBehavioralPreferences(
   userId: string,
-  chunkEmbedding: number[],
+  action: "saved" | "skipped",
+  signalData: {
+    podcastId: string;
+    speaker: string | null;
+    contentLength: number;
+    podcastTitle: string | null;
+  },
 ): Promise<void> {
   const prefs = await ensureUserPreferencesRow(userId);
-  const currentCentroid =
-    (prefs.centroidEmbedding as number[]) || new Array(1536).fill(0);
 
-  // Fixed learning rate of 0.1 as recommended by Karpathy
-  const learningRate = 0.1;
+  if (action === "saved") {
+    // Update preferred podcasts
+    const currentPodcasts = JSON.parse(
+      prefs.preferredPodcasts || "[]",
+    ) as string[];
+    if (!currentPodcasts.includes(signalData.podcastId)) {
+      currentPodcasts.push(signalData.podcastId);
+      // Keep only top 10 preferred podcasts
+      if (currentPodcasts.length > 10) {
+        currentPodcasts.shift();
+      }
+    }
 
-  // Move centroid towards saved content (positive feedback only)
-  const newCentroid = currentCentroid.map(
-    (current, i) => current + learningRate * (chunkEmbedding[i] - current),
-  );
+    // Update preferred speakers
+    const currentSpeakers = JSON.parse(
+      prefs.preferredSpeakers || "[]",
+    ) as string[];
+    if (signalData.speaker && !currentSpeakers.includes(signalData.speaker)) {
+      currentSpeakers.push(signalData.speaker);
+      // Keep only top 10 preferred speakers
+      if (currentSpeakers.length > 10) {
+        currentSpeakers.shift();
+      }
+    }
 
-  // Update counters
-  await db
-    .update(userPreferences)
-    .set({
-      centroidEmbedding: newCentroid,
-      totalSaved: prefs.totalSaved + 1,
-      lastUpdated: new Date(),
-    })
-    .where(eq(userPreferences.userId, userId));
+    // Update preferred content length
+    let preferredLength: "short" | "medium" | "long" = "medium";
+    if (signalData.contentLength < 300) preferredLength = "short";
+    else if (signalData.contentLength > 1000) preferredLength = "long";
+
+    // Update engagement score (simple average of save rate)
+    const totalActions = prefs.totalSaved + prefs.totalSkipped + 1;
+    const newSaveCount = prefs.totalSaved + 1;
+    const newEngagementScore = newSaveCount / totalActions;
+
+    await db
+      .update(userPreferences)
+      .set({
+        preferredPodcasts: JSON.stringify(currentPodcasts),
+        preferredSpeakers: JSON.stringify(currentSpeakers),
+        preferredContentLength: preferredLength,
+        averageEngagementScore: newEngagementScore,
+        totalSaved: prefs.totalSaved + 1,
+        lastUpdated: new Date(),
+      })
+      .where(eq(userPreferences.userId, userId));
+  } else if (action === "skipped") {
+    // Just update counters and engagement score
+    const totalActions = prefs.totalSaved + prefs.totalSkipped + 1;
+    const newEngagementScore = prefs.totalSaved / totalActions;
+
+    await db
+      .update(userPreferences)
+      .set({
+        totalSkipped: prefs.totalSkipped + 1,
+        averageEngagementScore: newEngagementScore,
+        lastUpdated: new Date(),
+      })
+      .where(eq(userPreferences.userId, userId));
+  }
 }
 
 async function ensureUserPreferencesRow(userId: string) {
@@ -139,13 +181,16 @@ async function ensureUserPreferencesRow(userId: string) {
     return existing[0];
   }
 
-  const emptyVector = new Array(1536).fill(0);
+  // Initialize with simple defaults - no embeddings needed
   await db.insert(userPreferences).values({
     id: randomUUID(),
     userId,
-    centroidEmbedding: emptyVector,
     totalSaved: 0,
     totalSkipped: 0,
+    preferredPodcasts: "[]",
+    preferredSpeakers: "[]",
+    preferredContentLength: "medium",
+    averageEngagementScore: 0.5,
     lastUpdated: new Date(),
     createdAt: new Date(),
   });

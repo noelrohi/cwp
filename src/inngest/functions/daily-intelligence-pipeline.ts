@@ -405,9 +405,12 @@ async function getOrCreateUserPreferences(
   await db.insert(userPreferences).values({
     id: randomUUID(),
     userId,
-    centroidEmbedding: new Array(1536).fill(0),
     totalSaved: 0,
     totalSkipped: 0,
+    preferredPodcasts: "[]",
+    preferredSpeakers: "[]",
+    preferredContentLength: "medium",
+    averageEngagementScore: 0.5,
     lastUpdated: new Date(),
   });
 
@@ -472,53 +475,34 @@ function scoreChunksForRelevance(
   chunks: ChunkRecord[],
   preferences: UserPreferenceRecord,
 ): ScoredChunk[] {
-  const userEmbedding = preferences.centroidEmbedding as number[] | null;
-  const hasSignal = Array.isArray(userEmbedding)
-    ? userEmbedding.some((value) => value !== 0)
-    : false;
-
   console.log(
-    `Scoring ${chunks.length} chunks for user. Has signal: ${hasSignal}, saved: ${preferences.totalSaved}`,
+    `Scoring ${chunks.length} chunks for user with behavioral preferences. Saved: ${preferences.totalSaved}`,
   );
 
+  // Use simple behavioral rules instead of embeddings
   return chunks.map((chunk) => {
-    const chunkEmbedding = chunk.embedding as number[] | null;
+    let score = 0.5; // Base score
 
-    // Phase 1: Pure random until user has 10 saves
-    if (preferences.totalSaved < 10) {
-      return {
-        ...chunk,
-        relevanceScore: Math.random(),
-      };
+    // Strong recency bias - most important signal
+    const hoursOld =
+      (Date.now() - chunk.createdAt.getTime()) / (1000 * 60 * 60);
+    if (hoursOld < 24) score += 0.3;
+    else if (hoursOld < 48) score += 0.2;
+
+    // Quality signals
+    const contentLength = chunk.content.length;
+    if (contentLength > 500 && contentLength < 2000) score += 0.2;
+
+    // Speaker quality (host is usually better content)
+    if (
+      chunk.speaker === "0" ||
+      chunk.speaker?.toLowerCase().includes("host")
+    ) {
+      score += 0.1;
     }
 
-    // Phase 2: Simple cosine similarity once we have user signal
-    if (!chunkEmbedding || !hasSignal || !userEmbedding) {
-      return {
-        ...chunk,
-        relevanceScore: 0.5, // Neutral score for missing embeddings
-      };
-    }
-
-    // Calculate cosine similarity
-    const magnitude1 = Math.sqrt(
-      chunkEmbedding.reduce((sum, val) => sum + val * val, 0),
-    );
-    const magnitude2 = Math.sqrt(
-      userEmbedding.reduce((sum, val) => sum + val * val, 0),
-    );
-
-    const cosineSimilarity =
-      magnitude1 > 0 && magnitude2 > 0
-        ? chunkEmbedding.reduce(
-            (sum, val, i) => sum + val * userEmbedding[i],
-            0,
-          ) /
-          (magnitude1 * magnitude2)
-        : 0;
-
-    // Normalize cosine similarity from [-1, 1] to [0, 1]
-    const score = (cosineSimilarity + 1) / 2;
+    // Random factor to ensure variety
+    score += Math.random() * 0.1;
 
     return {
       ...chunk,

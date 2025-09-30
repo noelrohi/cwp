@@ -53,7 +53,23 @@ export default function SignalsPage() {
   const fetchError = signalsQuery.error;
   const fetchErrorMessage =
     fetchError && fetchError instanceof Error ? fetchError.message : undefined;
-  const signals = signalsQuery.data ?? [];
+  const signals = (signalsQuery.data ?? []).sort((a, b) => {
+    // First sort by episode publish date (most recent first)
+    const dateA = a.episode?.publishedAt
+      ? new Date(a.episode.publishedAt)
+      : new Date(0);
+    const dateB = b.episode?.publishedAt
+      ? new Date(b.episode.publishedAt)
+      : new Date(0);
+    const dateComparison = dateB.getTime() - dateA.getTime();
+
+    if (dateComparison !== 0) return dateComparison;
+
+    // If dates are the same, sort by timestamp within episode (earliest first)
+    const timestampA = a.chunk.startTimeSec ?? 0;
+    const timestampB = b.chunk.startTimeSec ?? 0;
+    return timestampA - timestampB;
+  });
 
   // Preload audio for unique episodes when signals are loaded
   useEffect(() => {

@@ -82,7 +82,7 @@ export function SignalCard(props: SignalCardProps) {
   return (
     <article
       className={cn(
-        "rounded-xl border border-border/70 bg-background/80 p-4 shadow-sm sm:p-6",
+        "rounded-xl border border-border/70 bg-background/80 p-4 sm:p-6",
         className,
       )}
     >
