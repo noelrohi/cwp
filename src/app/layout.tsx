@@ -1,17 +1,17 @@
 import { Analytics } from "@vercel/analytics/next";
 import type { Metadata } from "next";
-import { Geist_Mono, Inter, Inter_Tight } from "next/font/google";
+import { Geist_Mono, Rethink_Sans } from "next/font/google";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { TRPCProviders } from "@/components/providers/trpc-provider";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
-const sans = Inter({
+const sans = Rethink_Sans({
   variable: "--font-sans",
   subsets: ["latin"],
 });
 
-const serif = Inter_Tight({
+const serif = Rethink_Sans({
   variable: "--font-serif",
   subsets: ["latin"],
 });

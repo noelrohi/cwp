@@ -1,14 +1,15 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  AlertCircle,
-  Loader2,
-  MoreHorizontal,
-  PlusIcon,
-  SearchIcon,
-  TrashIcon,
-} from "lucide-react";
+  Add01Icon,
+  Alert01Icon,
+  ArrowReloadHorizontalIcon,
+  Delete01Icon,
+  MoreHorizontalCircle01Icon,
+  Search01Icon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useQueryState } from "nuqs";
 import { toast } from "sonner";
@@ -87,11 +88,11 @@ export default function Podcasts() {
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
       {/* Header */}
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-xl font-semibold font-serif">Your Podcast List</h1>
+        <h1 className="text-2xl font-semibold font-serif">Your Podcast List</h1>
 
         <AddPodcastDialog>
           <Button>
-            <PlusIcon className="h-4 w-4 mr-2" />
+            <HugeiconsIcon icon={Add01Icon} size={16} />
             Add Podcast
           </Button>
         </AddPodcastDialog>
@@ -100,7 +101,11 @@ export default function Podcasts() {
       {/* Search and Filters */}
       <div className="mb-6 flex gap-4">
         <div className="relative flex-1">
-          <SearchIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <HugeiconsIcon
+            icon={Search01Icon}
+            size={16}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+          />
           <Input
             type="text"
             placeholder="Search items..."
@@ -142,12 +147,16 @@ export default function Podcasts() {
         ) : error ? (
           <div className="text-center py-12">
             <div className="flex items-center justify-center mb-4">
-              <AlertCircle className="h-8 w-8 text-destructive" />
+              <HugeiconsIcon
+                icon={Alert01Icon}
+                size={32}
+                className="text-destructive"
+              />
             </div>
-            <h3 className="text-lg font-medium mb-2">
+            <h3 className="text-lg font-semibold mb-2">
               Failed to load podcasts
             </h3>
-            <p className="text-sm text-muted-foreground mb-4">
+            <p className="text-base text-muted-foreground mb-4">
               {error.message ||
                 "An error occurred while loading your podcasts."}
             </p>
@@ -178,10 +187,10 @@ export default function Podcasts() {
 
               {/* Podcast Info */}
               <div className="flex-1 min-w-0">
-                <h3 className="font-medium text-sm truncate">
+                <h3 className="font-semibold text-base truncate">
                   {podcast.title}
                 </h3>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-sm text-muted-foreground">
                   {new Date(podcast.createdAt).toLocaleDateString("en-US", {
                     month: "long",
                     day: "numeric",
@@ -199,7 +208,10 @@ export default function Podcasts() {
                     className="h-8 w-8 p-0"
                     onClick={(e) => e.preventDefault()}
                   >
-                    <MoreHorizontal className="h-4 w-4" />
+                    <HugeiconsIcon
+                      icon={MoreHorizontalCircle01Icon}
+                      size={16}
+                    />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
@@ -211,9 +223,13 @@ export default function Podcasts() {
                     disabled={removePodcast.isPending}
                     className="text-destructive"
                   >
-                    <TrashIcon className="h-4 w-4 mr-2" />
+                    <HugeiconsIcon icon={Delete01Icon} size={16} />
                     {removePodcast.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <HugeiconsIcon
+                        icon={ArrowReloadHorizontalIcon}
+                        size={16}
+                        className="animate-spin"
+                      />
                     ) : (
                       "Remove"
                     )}
@@ -224,19 +240,19 @@ export default function Podcasts() {
           ))
         ) : (
           <div className="text-center py-12">
-            <div className="text-muted-foreground mb-4">
+            <div className="text-base text-muted-foreground mb-4">
               {debouncedSearchQuery
                 ? "No podcasts found."
                 : "No podcasts in your library yet."}
             </div>
             {!debouncedSearchQuery && (
               <div className="space-y-4">
-                <p className="text-sm text-muted-foreground">
+                <p className="text-base text-muted-foreground">
                   Add podcasts to your library to get started.
                 </p>
                 <AddPodcastDialog>
                   <Button variant="outline">
-                    <PlusIcon className="h-4 w-4 mr-2" />
+                    <HugeiconsIcon icon={Add01Icon} size={16} />
                     Add Your First Podcast
                   </Button>
                 </AddPodcastDialog>
@@ -249,7 +265,7 @@ export default function Podcasts() {
       {/* Pagination */}
       {data?.data && data.data.length > 0 && (
         <div className="mt-8 flex items-center justify-center gap-4">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-base text-muted-foreground">
             Showing 1 to {Math.min(5, data.data.length)} of {data.data.length}{" "}
             results
           </p>

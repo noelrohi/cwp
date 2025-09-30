@@ -24,6 +24,8 @@
     "@deepgram/sdk": "^4.11.2",
     "@electric-sql/pglite": "^0.3.8",
     "@hookform/resolvers": "^5.2.2",
+    "@hugeicons/core-free-icons": "^1.1.0",
+    "@hugeicons/react": "^1.1.1",
     "@inngest/realtime": "^0.4.0",
     "@openrouter/ai-sdk-provider": "^1.2.0",
     "@radix-ui/react-avatar": "^1.1.10",

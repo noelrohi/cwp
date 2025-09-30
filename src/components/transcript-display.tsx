@@ -1,6 +1,7 @@
 "use client";
 
-import { Search, X } from "lucide-react";
+import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -171,7 +172,7 @@ export function TranscriptDisplay({
   const getSpeakerName = (speakerIndex: number | undefined): string => {
     if (speakerIndex === undefined) return "";
     const speakerKey = speakerIndex.toString();
-    if (speakerMappings && speakerMappings[speakerKey]) {
+    if (speakerMappings?.[speakerKey]) {
       return speakerMappings[speakerKey];
     }
     return `Speaker ${speakerIndex}`;
@@ -186,7 +187,11 @@ export function TranscriptDisplay({
         <div className="flex items-center gap-2">
           {/* Search */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+            <HugeiconsIcon
+              icon={Search01Icon}
+              size={16}
+              className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground"
+            />
             <Input
               placeholder="Search transcript..."
               value={searchTerm}
@@ -200,12 +205,12 @@ export function TranscriptDisplay({
                 className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0"
                 onClick={() => handleSearch("")}
               >
-                <X className="h-3 w-3" />
+                <HugeiconsIcon icon={Cancel01Icon} size={12} />
               </Button>
             )}
           </div>
           <Button variant="ghost" size="sm" onClick={onClose}>
-            <X className="h-4 w-4 mr-1" />
+            <HugeiconsIcon icon={Cancel01Icon} size={16} />
             Hide
           </Button>
         </div>

@@ -1,16 +1,17 @@
 "use client";
 
-import { useMutation, useQuery } from "@tanstack/react-query";
 import {
-  ArrowLeft,
-  Calendar,
-  Clock,
-  Download,
-  FileText,
-  Loader2,
-  Play,
-  Sparkles,
-} from "lucide-react";
+  ArrowLeft01Icon,
+  Calendar03Icon,
+  Clock01Icon,
+  Download01Icon,
+  File01Icon,
+  Loading03Icon,
+  PlayCircleIcon,
+  SparklesIcon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
 import { use, useState } from "react";
@@ -114,14 +115,16 @@ export default function EpisodeDetailPage(props: {
       <main className="mx-auto w-full max-w-4xl px-6 py-8">
         <Link
           href="/podcasts"
-          className="inline-flex items-center gap-2 text-sm text-muted-foreground mb-6 hover:text-foreground"
+          className="inline-flex items-center gap-2 text-base text-muted-foreground mb-6 hover:text-foreground"
         >
-          <ArrowLeft className="h-4 w-4" />
+          <HugeiconsIcon icon={ArrowLeft01Icon} size={16} />
           Back to Podcasts
         </Link>
         <div className="text-center py-12">
-          <div className="text-destructive mb-4">Episode not found</div>
-          <p className="text-sm text-muted-foreground">
+          <div className="text-lg font-semibold text-destructive mb-4">
+            Episode not found
+          </div>
+          <p className="text-base text-muted-foreground">
             The episode you're looking for doesn't exist or has been removed.
           </p>
         </div>
@@ -155,9 +158,9 @@ export default function EpisodeDetailPage(props: {
             ? `/podcast/${episodeData.podcast.id}`
             : "/podcasts"
         }
-        className="inline-flex items-center gap-2 text-sm text-muted-foreground mb-6 hover:text-foreground"
+        className="inline-flex items-center gap-2 text-base text-muted-foreground mb-6 hover:text-foreground"
       >
-        <ArrowLeft className="h-4 w-4" />
+        <HugeiconsIcon icon={ArrowLeft01Icon} size={16} />
         Back to {episodeData?.podcast?.title || "Podcasts"}
       </Link>
 
@@ -181,7 +184,11 @@ export default function EpisodeDetailPage(props: {
                 className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity duration-200 hover:opacity-100"
               >
                 <div className="rounded-full bg-background p-3 shadow-lg">
-                  <Play className="h-6 w-6 text-black fill-current" />
+                  <HugeiconsIcon
+                    icon={PlayCircleIcon}
+                    size={24}
+                    color="currentColor"
+                  />
                 </div>
               </a>
             )}
@@ -191,7 +198,7 @@ export default function EpisodeDetailPage(props: {
         <div className="flex-1 space-y-4">
           <div className="space-y-2">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <h1 className="text-xl font-semibold leading-tight">
+              <h1 className="text-2xl font-semibold leading-tight">
                 {episodeData?.title}
               </h1>
               {statusLabel && (
@@ -207,7 +214,7 @@ export default function EpisodeDetailPage(props: {
             <dl className="flex flex-wrap gap-4 text-sm text-muted-foreground">
               {episodeData?.publishedAt && (
                 <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4" />
+                  <HugeiconsIcon icon={Calendar03Icon} size={16} />
                   <dt className="sr-only">Published</dt>
                   <dd>
                     {new Date(episodeData.publishedAt).toLocaleDateString(
@@ -223,7 +230,7 @@ export default function EpisodeDetailPage(props: {
               )}
               {episodeData?.durationSec && (
                 <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4" />
+                  <HugeiconsIcon icon={Clock01Icon} size={16} />
                   <dt className="sr-only">Duration</dt>
                   <dd>{Math.floor(episodeData.durationSec / 60)} min</dd>
                 </div>
@@ -244,7 +251,7 @@ export default function EpisodeDetailPage(props: {
                         fetchTranscript(episodeData.transcriptUrl as string)
                       }
                     >
-                      <FileText className="h-4 w-4 mr-2" />
+                      <HugeiconsIcon icon={File01Icon} size={16} />
                       View Transcript
                     </Button>
                   </DialogTrigger>
@@ -275,7 +282,7 @@ export default function EpisodeDetailPage(props: {
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    <Download className="h-4 w-4 mr-2" />
+                    <HugeiconsIcon icon={Download01Icon} size={16} />
                     Download
                   </a>
                 </Button>
@@ -287,9 +294,13 @@ export default function EpisodeDetailPage(props: {
               size="sm"
             >
               {isProcessing ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <HugeiconsIcon
+                  icon={Loading03Icon}
+                  size={16}
+                  className="animate-spin"
+                />
               ) : (
-                <Sparkles className="mr-2 h-4 w-4" />
+                <HugeiconsIcon icon={SparklesIcon} size={16} />
               )}
               {processButtonLabel}
             </Button>
@@ -303,9 +314,13 @@ export default function EpisodeDetailPage(props: {
                 size="sm"
               >
                 {isRegenerating ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <HugeiconsIcon
+                    icon={Loading03Icon}
+                    size={16}
+                    className="animate-spin"
+                  />
                 ) : (
-                  <Sparkles className="mr-2 h-4 w-4" />
+                  <HugeiconsIcon icon={SparklesIcon} size={16} />
                 )}
                 Regenerate Signals
               </Button>
@@ -317,7 +332,7 @@ export default function EpisodeDetailPage(props: {
       {/* Related Signals */}
       <section className="mt-12 space-y-5">
         <div className="space-y-1">
-          <h2 className="text-xl font-semibold font-serif">Related Signals</h2>
+          <h2 className="text-lg font-semibold font-serif">Related Signals</h2>
         </div>
 
         {signals.isLoading ? (
@@ -334,11 +349,11 @@ export default function EpisodeDetailPage(props: {
             ))}
           </div>
         ) : signals.error ? (
-          <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+          <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-base text-destructive">
             Unable to load related signals.
           </div>
         ) : relatedSignals.length === 0 ? (
-          <div className="rounded-xl border border-border/50 bg-muted/30 p-6 text-sm text-muted-foreground">
+          <div className="rounded-xl border border-border/50 bg-muted/30 p-6 text-base text-muted-foreground">
             No signals yet. Start processing above and check back after the
             pipeline finishes.
           </div>

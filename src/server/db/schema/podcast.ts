@@ -88,7 +88,11 @@ export const episode = pgTable(
       .$onUpdate(() => new Date())
       .notNull(),
   },
-  (table) => [index().on(table.userId), index().on(table.status)],
+  (table) => [
+    index().on(table.userId),
+    index().on(table.status),
+    index().on(table.podcastId),
+  ],
 );
 
 export const transcriptChunk = pgTable(
@@ -140,6 +144,7 @@ export const dailySignal = pgTable(
     index().on(table.userId, table.signalDate),
     index().on(table.userAction),
     index().on(table.relevanceScore),
+    index().on(table.chunkId),
     unique().on(table.chunkId, table.userId),
   ],
 );

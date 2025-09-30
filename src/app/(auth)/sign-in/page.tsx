@@ -1,9 +1,9 @@
 "use client";
-import { IconBrandGoogle } from "@tabler/icons-react";
 import Link from "next/link";
 import { useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Google } from "@/components/ui/svgs/google";
 import { authClient, signIn } from "@/lib/auth-client";
 
 export default function SignInPage() {
@@ -31,7 +31,7 @@ export default function SignInPage() {
             disabled={isPending}
             className="justify-start relative"
           >
-            <IconBrandGoogle className="size-4" />
+            <Google className="size-4" />
             Continue with Google
             {lastMethod === "google" && (
               <Badge className="absolute -top-2 -right-2">Last used</Badge>

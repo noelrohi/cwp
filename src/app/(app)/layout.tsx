@@ -14,7 +14,7 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
         } as React.CSSProperties
       }
     >
-      <AppSidebar collapsible="icon" />
+      <AppSidebar collapsible="offcanvas" />
       <AudioPlayerProvider>
         <div className="flex min-h-screen flex-1 flex-col">
           <SidebarInset className="flex-1 pb-28 md:peer-data-[variant=inset]:mb-0 md:peer-data-[variant=inset]:rounded-b-none">

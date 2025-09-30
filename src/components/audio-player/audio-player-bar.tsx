@@ -1,13 +1,13 @@
 "use client";
 
 import {
-  Loader2,
+  ArrowReloadHorizontalIcon,
+  Backward01Icon,
+  Forward01Icon,
   PauseIcon,
-  PlayIcon,
-  RotateCcwIcon,
-  SkipBackIcon,
-  SkipForwardIcon,
-} from "lucide-react";
+  PlayCircleIcon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { memo, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -101,7 +101,11 @@ const AudioPlayerBar = memo(function AudioPlayerBar({
               onClick={handleSkipBack}
               aria-label="Go back 10 seconds"
             >
-              <SkipBackIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              <HugeiconsIcon
+                icon={Backward01Icon}
+                size={16}
+                className="h-3.5 w-3.5 sm:h-4 sm:w-4"
+              />
             </Button>
             <Button
               size="icon"
@@ -112,13 +116,29 @@ const AudioPlayerBar = memo(function AudioPlayerBar({
               }
             >
               {isLoading ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin sm:h-4 sm:w-4" />
+                <HugeiconsIcon
+                  icon={ArrowReloadHorizontalIcon}
+                  size={16}
+                  className="h-3.5 w-3.5 animate-spin sm:h-4 sm:w-4"
+                />
               ) : hasReachedEnd ? (
-                <RotateCcwIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                <HugeiconsIcon
+                  icon={ArrowReloadHorizontalIcon}
+                  size={16}
+                  className="h-3.5 w-3.5 sm:h-4 sm:w-4"
+                />
               ) : isPlaying ? (
-                <PauseIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                <HugeiconsIcon
+                  icon={PauseIcon}
+                  size={16}
+                  className="h-3.5 w-3.5 sm:h-4 sm:w-4"
+                />
               ) : (
-                <PlayIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                <HugeiconsIcon
+                  icon={PlayCircleIcon}
+                  size={16}
+                  className="h-3.5 w-3.5 sm:h-4 sm:w-4"
+                />
               )}
             </Button>
             <Button
@@ -128,7 +148,11 @@ const AudioPlayerBar = memo(function AudioPlayerBar({
               onClick={handleSkipForward}
               aria-label="Skip ahead 10 seconds"
             >
-              <SkipForwardIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              <HugeiconsIcon
+                icon={Forward01Icon}
+                size={16}
+                className="h-3.5 w-3.5 sm:h-4 sm:w-4"
+              />
             </Button>
             <Button
               variant="secondary"

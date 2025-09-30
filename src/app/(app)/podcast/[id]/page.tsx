@@ -1,7 +1,14 @@
 "use client";
 
+import {
+  ArrowLeft01Icon,
+  Calendar03Icon,
+  Clock01Icon,
+  Link01Icon,
+  RssIcon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Calendar, Clock, ExternalLink, Rss } from "lucide-react";
 import Link from "next/link";
 import { use } from "react";
 import { toast } from "sonner";
@@ -57,7 +64,7 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
           href="/podcasts"
           className="inline-flex items-center gap-2 text-sm text-muted-foreground mb-6 hover:text-foreground"
         >
-          <ArrowLeft className="h-4 w-4" />
+          <HugeiconsIcon icon={ArrowLeft01Icon} size={16} />
           Back to Podcasts
         </Link>
         <div className="text-center py-12">
@@ -79,7 +86,7 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
         href="/podcasts"
         className="inline-flex items-center gap-2 text-sm text-muted-foreground mb-6 hover:text-foreground"
       >
-        <ArrowLeft className="h-4 w-4" />
+        <HugeiconsIcon icon={ArrowLeft01Icon} size={16} />
         Back to Podcasts
       </Link>
 
@@ -101,13 +108,13 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
         <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-bold mb-2">{podcastData?.title}</h1>
           {podcastData?.description && (
-            <p className="text-muted-foreground mb-4 line-clamp-3">
+            <p className="text-base text-muted-foreground mb-4 line-clamp-3">
               {podcastData.description}
             </p>
           )}
           <div className="flex items-center gap-4 text-sm text-muted-foreground">
             <div className="flex items-center gap-1">
-              <Calendar className="h-4 w-4" />
+              <HugeiconsIcon icon={Calendar03Icon} size={16} />
               Added{" "}
               {new Date(podcastData?.createdAt || "").toLocaleDateString(
                 "en-US",
@@ -119,7 +126,7 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
               )}
             </div>
             <div className="flex items-center gap-1">
-              <Clock className="h-4 w-4" />
+              <HugeiconsIcon icon={Clock01Icon} size={16} />
               {podcastData?.episodes?.length || 0} episodes
             </div>
           </div>
@@ -133,7 +140,7 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                <ExternalLink className="h-4 w-4 mr-2" />
+                <HugeiconsIcon icon={Link01Icon} size={16} />
                 RSS Feed
               </a>
             </Button>
@@ -149,7 +156,7 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
               }
               disabled={parseFeedMutation.isPending}
             >
-              <Rss className="h-4 w-4 mr-2" />
+              <HugeiconsIcon icon={RssIcon} size={16} />
               {parseFeedMutation.isPending ? "Parsing..." : "Parse Feed"}
             </Button>
           )}
@@ -184,11 +191,11 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
                 className="flex items-start gap-4 rounded-lg border bg-background p-4 hover:bg-muted/50 transition-colors"
               >
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-medium text-sm mb-1 hover:text-primary">
+                  <h3 className="font-medium text-base mb-1 hover:text-primary">
                     {episode.title}
                   </h3>
 
-                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
                     <span>
                       {episode.publishedAt
                         ? new Date(episode.publishedAt).toLocaleDateString(
@@ -218,8 +225,10 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
           </div>
         ) : (
           <div className="text-center py-8">
-            <div className="text-muted-foreground mb-2">No episodes found</div>
-            <p className="text-sm text-muted-foreground">
+            <div className="text-base text-muted-foreground mb-2">
+              No episodes found
+            </div>
+            <p className="text-base text-muted-foreground">
               Episodes will appear here once they're ingested.
             </p>
           </div>

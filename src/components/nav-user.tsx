@@ -1,10 +1,11 @@
 "use client";
 import {
-  IconDotsVertical,
-  IconLogout,
-  IconSettings,
-  IconUserCircle,
-} from "@tabler/icons-react";
+  Logout01Icon,
+  MoreHorizontalCircle01Icon,
+  Settings01Icon,
+  UserCircleIcon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { useRouter } from "next/navigation";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -41,7 +42,7 @@ export function NavUser() {
               router.push("/sign-in");
             }}
           >
-            <IconUserCircle />
+            <HugeiconsIcon icon={UserCircleIcon} size={16} />
             <span>Sign in</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
@@ -73,7 +74,11 @@ export function NavUser() {
                   {user.email}
                 </span>
               </div>
-              <IconDotsVertical className="ml-auto size-4" />
+              <HugeiconsIcon
+                icon={MoreHorizontalCircle01Icon}
+                size={16}
+                className="ml-auto"
+              />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent
@@ -101,11 +106,11 @@ export function NavUser() {
               <DropdownMenuItem
                 onClick={() => router.push("/settings/profile")}
               >
-                <IconUserCircle />
+                <HugeiconsIcon icon={UserCircleIcon} size={20} />
                 Account
               </DropdownMenuItem>
               <DropdownMenuItem disabled>
-                <IconSettings />
+                <HugeiconsIcon icon={Settings01Icon} size={16} />
                 Settings
               </DropdownMenuItem>
             </DropdownMenuGroup>
@@ -121,7 +126,7 @@ export function NavUser() {
                 });
               }}
             >
-              <IconLogout />
+              <HugeiconsIcon icon={Logout01Icon} size={16} />
               Log out
             </DropdownMenuItem>
           </DropdownMenuContent>

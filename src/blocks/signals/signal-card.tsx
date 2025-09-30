@@ -1,11 +1,12 @@
 "use client";
 
 import {
-  ChevronDownIcon,
+  ArrowDown01Icon,
+  ArrowReloadHorizontalIcon,
   PauseIcon,
-  PlayIcon,
-  RotateCcwIcon,
-} from "lucide-react";
+  PlayCircleIcon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { useAudioPlayer } from "@/components/audio-player/audio-player-provider";
@@ -104,7 +105,7 @@ export function SignalCard(props: SignalCardProps) {
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         {metadata.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-1.5 text-xs font-medium text-muted-foreground sm:gap-2">
+          <div className="flex flex-wrap items-center gap-1.5 text-sm font-medium text-muted-foreground sm:gap-2">
             {metadata.map((item, index) => (
               <span
                 key={`${item.label}-${index}`}
@@ -130,11 +131,11 @@ export function SignalCard(props: SignalCardProps) {
               onClick={() => void handlePlayClick()}
             >
               {isCurrentTrackEnded ? (
-                <RotateCcwIcon className="mr-2 h-4 w-4" />
+                <HugeiconsIcon icon={ArrowReloadHorizontalIcon} size={16} />
               ) : isCurrentTrack ? (
-                <PauseIcon className="mr-2 h-4 w-4" />
+                <HugeiconsIcon icon={PauseIcon} size={16} />
               ) : (
-                <PlayIcon className="mr-2 h-4 w-4" />
+                <HugeiconsIcon icon={PlayCircleIcon} size={16} />
               )}
               {isCurrentTrackEnded
                 ? "Replay"
@@ -148,7 +149,7 @@ export function SignalCard(props: SignalCardProps) {
       </div>
       <div className="mt-3 rounded-lg bg-muted/50 p-3 sm:mt-4 sm:p-4">
         <div className="space-y-2">
-          <div className="flex flex-col gap-1 text-xs text-muted-foreground sm:flex-row sm:items-center sm:gap-2">
+          <div className="flex flex-col gap-1 text-sm text-muted-foreground sm:flex-row sm:items-center sm:gap-2">
             <span className="font-mono">{timestampLabel ?? "--:--"}</span>
             {resolvedSpeaker && (
               <>
@@ -159,7 +160,7 @@ export function SignalCard(props: SignalCardProps) {
           </div>
           {hasHighlight ? (
             <div className="space-y-2">
-              <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-line">
+              <p className="text-base leading-relaxed text-foreground/90 whitespace-pre-line">
                 {highlightContent?.trim()}
               </p>
               <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
@@ -169,7 +170,8 @@ export function SignalCard(props: SignalCardProps) {
                     size="sm"
                     className="h-7 text-xs text-muted-foreground hover:text-foreground"
                   >
-                    <ChevronDownIcon
+                    <HugeiconsIcon
+                      icon={ArrowDown01Icon}
                       className={cn(
                         "mr-1 h-3 w-3 transition-transform",
                         isExpanded && "rotate-180",
@@ -179,14 +181,14 @@ export function SignalCard(props: SignalCardProps) {
                   </Button>
                 </CollapsibleTrigger>
                 <CollapsibleContent className="mt-2 pt-2 border-t border-muted">
-                  <p className="text-sm leading-relaxed text-muted-foreground whitespace-pre-line">
+                  <p className="leading-relaxed text-muted-foreground whitespace-pre-line">
                     {chunkContent.trim()}
                   </p>
                 </CollapsibleContent>
               </Collapsible>
             </div>
           ) : (
-            <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-line">
+            <p className="text-base leading-relaxed text-foreground/90 whitespace-pre-line">
               {chunkContent.trim()}
             </p>
           )}

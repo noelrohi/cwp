@@ -1,11 +1,12 @@
 "use client";
 
 import {
-  LayoutDashboardIcon,
-  LightbulbIcon,
-  MicIcon,
-  ShieldIcon,
-} from "lucide-react";
+  AiMicIcon,
+  AiSecurity01Icon,
+  DashboardBrowsingIcon,
+  Idea01Icon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +21,7 @@ import { useSession } from "@/lib/auth-client";
 
 type NavItem = {
   title: string;
-  icon: typeof LayoutDashboardIcon;
+  icon: typeof DashboardBrowsingIcon;
   url: string;
   badge?: string;
 };
@@ -28,17 +29,17 @@ type NavItem = {
 const items: NavItem[] = [
   {
     title: "Dashboard",
-    icon: LayoutDashboardIcon,
+    icon: DashboardBrowsingIcon,
     url: "/dashboard",
   },
   {
     title: "Signals",
-    icon: LightbulbIcon,
+    icon: Idea01Icon,
     url: "/signals",
   },
   {
     title: "Podcasts",
-    icon: MicIcon,
+    icon: AiMicIcon,
     url: "/podcasts",
   },
   // {
@@ -66,7 +67,7 @@ export function NavMain() {
       ? [
           {
             title: "Admin",
-            icon: ShieldIcon,
+            icon: AiSecurity01Icon,
             url: "/admin",
           },
         ]
@@ -87,8 +88,8 @@ export function NavMain() {
                   isActive={isActive}
                 >
                   <Link href={item.url}>
-                    {item.icon && <item.icon />}
-                    <span>{item.title}</span>
+                    {item.icon && <HugeiconsIcon icon={item.icon} size={20} />}
+                    <span className="text-base">{item.title}</span>
                     {item.badge && (
                       <Badge variant="secondary" className="ml-auto text-xs">
                         {item.badge}

@@ -1,14 +1,15 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  BookmarkCheckIcon,
-  BookmarkXIcon,
-  CalendarDaysIcon,
-  Loader2,
-  PodcastIcon,
-  Trash2Icon,
-} from "lucide-react";
+  AiMicIcon,
+  ArrowReloadHorizontalIcon,
+  BookmarkCheck01Icon,
+  BookmarkRemove01Icon,
+  Calendar03Icon,
+  Delete01Icon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -25,10 +26,10 @@ type SignalAction = "saved" | "skipped";
 
 export default function SignalsPage() {
   return (
-    <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+    <main className="mx-auto w-full container space-y-6 px-4 py-6 sm:px-6 sm:py-8">
       <header className="space-y-2">
-        <h1 className="text-lg font-semibold font-serif sm:text-xl">Signals</h1>
-        <p className="text-sm text-muted-foreground">
+        <h1 className="text-2xl font-semibold font-serif">Signals</h1>
+        <p className="text-muted-foreground">
           Review AI-generated intelligence from your podcasts. Save or skip to
           tune future rankings.
         </p>
@@ -146,9 +147,13 @@ function PendingSignalsTab() {
             disabled={isSkippingAll}
           >
             {isSkippingAll ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <HugeiconsIcon
+                icon={ArrowReloadHorizontalIcon}
+                size={16}
+                className="animate-spin"
+              />
             ) : (
-              <BookmarkXIcon className="mr-2 h-4 w-4" />
+              <HugeiconsIcon icon={BookmarkRemove01Icon} size={16} />
             )}
             Skip All
           </Button>
@@ -169,12 +174,12 @@ function PendingSignalsTab() {
             if (signal.episode) {
               if (signal.episode.podcast?.title) {
                 metadata.push({
-                  icon: <PodcastIcon className="h-3 w-3" />,
+                  icon: <HugeiconsIcon icon={AiMicIcon} size={12} />,
                   label: signal.episode.podcast.title,
                 });
               }
               metadata.push({
-                icon: <CalendarDaysIcon className="h-3 w-3" />,
+                icon: <HugeiconsIcon icon={Calendar03Icon} size={12} />,
                 label: formatDate(signal.episode.publishedAt),
               });
             }
@@ -212,9 +217,13 @@ function PendingSignalsTab() {
                   disabled={isPending}
                 >
                   {isPending && pendingAction === "skipped" ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <HugeiconsIcon
+                      icon={ArrowReloadHorizontalIcon}
+                      size={16}
+                      className="animate-spin"
+                    />
                   ) : (
-                    <BookmarkXIcon className="mr-2 h-4 w-4" />
+                    <HugeiconsIcon icon={BookmarkRemove01Icon} size={16} />
                   )}
                   Skip
                 </Button>
@@ -225,9 +234,13 @@ function PendingSignalsTab() {
                   disabled={isPending}
                 >
                   {isPending && pendingAction === "saved" ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <HugeiconsIcon
+                      icon={ArrowReloadHorizontalIcon}
+                      size={16}
+                      className="animate-spin"
+                    />
                   ) : (
-                    <BookmarkCheckIcon className="mr-2 h-4 w-4" />
+                    <HugeiconsIcon icon={BookmarkCheck01Icon} size={16} />
                   )}
                   Save
                 </Button>
@@ -294,7 +307,7 @@ function SavedSignalsTab() {
       ) : fetchError ? (
         <ErrorState message={fetchErrorMessage} />
       ) : savedSignals.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-muted/70 bg-muted/20 p-8 text-center text-sm text-muted-foreground sm:p-10">
+        <div className="rounded-xl border border-dashed border-muted/70 bg-muted/20 p-8 text-center text-muted-foreground sm:p-10">
           No saved signals yet. Save signals from the Pending tab to see them
           here.
         </div>
@@ -307,12 +320,12 @@ function SavedSignalsTab() {
 
             if (signal.episode.podcast?.title) {
               metadata.push({
-                icon: <PodcastIcon className="h-3 w-3" />,
+                icon: <HugeiconsIcon icon={AiMicIcon} size={12} />,
                 label: signal.episode.podcast.title,
               });
             }
             metadata.push({
-              icon: <CalendarDaysIcon className="h-3 w-3" />,
+              icon: <HugeiconsIcon icon={Calendar03Icon} size={12} />,
               label: formatDate(signal.episode.publishedAt),
             });
 
@@ -347,9 +360,13 @@ function SavedSignalsTab() {
                   disabled={isDeleting}
                 >
                   {isDeleting ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <HugeiconsIcon
+                      icon={ArrowReloadHorizontalIcon}
+                      size={16}
+                      className="animate-spin"
+                    />
                   ) : (
-                    <Trash2Icon className="mr-2 h-4 w-4" />
+                    <HugeiconsIcon icon={Delete01Icon} size={16} />
                   )}
                   Remove
                 </Button>
@@ -401,7 +418,7 @@ function SignalSkeletonList() {
 
 function ErrorState({ message }: { message?: string }) {
   return (
-    <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm sm:p-6">
+    <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 sm:p-6">
       <h2 className="mb-2 font-medium text-destructive">
         Unable to load signals
       </h2>
@@ -414,7 +431,7 @@ function ErrorState({ message }: { message?: string }) {
 
 function EmptyState() {
   return (
-    <div className="rounded-xl border border-dashed border-muted/70 bg-muted/20 p-8 text-center text-sm text-muted-foreground sm:p-10">
+    <div className="rounded-xl border border-dashed border-muted/70 bg-muted/20 p-8 text-center text-muted-foreground sm:p-10">
       No pending signals right now. Check back after the next daily run.
     </div>
   );

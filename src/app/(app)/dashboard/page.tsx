@@ -1,7 +1,8 @@
 "use client";
 
+import { Add01Icon, AiMicIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
-import { Plus, Podcast } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useMemo } from "react";
@@ -159,7 +160,11 @@ export default function Dashboard() {
       ) : (
         <Card className="w-full">
           <CardContent className="flex flex-col items-center justify-center py-16">
-            <Podcast className="h-16 w-16 text-muted-foreground mb-6" />
+            <HugeiconsIcon
+              icon={AiMicIcon}
+              size={64}
+              className="text-muted-foreground mb-6"
+            />
             <CardTitle className="mb-2">No Episodes Yet</CardTitle>
             <CardDescription className="text-center mb-6 max-w-md">
               Get started by adding your first podcast. We'll automatically
@@ -167,7 +172,7 @@ export default function Dashboard() {
             </CardDescription>
             <AddPodcastDialog>
               <Button size="lg" className="gap-2">
-                <Plus className="h-4 w-4" />
+                <HugeiconsIcon icon={Add01Icon} size={16} />
                 Add Your First Podcast
               </Button>
             </AddPodcastDialog>

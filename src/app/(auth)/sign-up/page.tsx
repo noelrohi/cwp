@@ -1,7 +1,7 @@
 "use client";
-import { IconBrandGoogle } from "@tabler/icons-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { Google } from "@/components/ui/svgs/google";
 import { signIn } from "@/lib/auth-client";
 
 export default function SignUpPage() {
@@ -23,7 +23,7 @@ export default function SignUpPage() {
             onClick={() => signIn.social({ provider: "google" })}
             className="justify-start"
           >
-            <IconBrandGoogle className="size-4" />
+            <Google className="size-4" />
             Continue with Google
           </Button>
         </div>
