@@ -125,4 +125,43 @@ export const episodesRouter = createTRPCRouter({
         pipelineRunId,
       } as const;
     }),
+
+  regenerateSignals: protectedProcedure
+    .input(
+      z.object({
+        episodeId: z.string(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const episodeRecord = await ctx.db.query.episode.findFirst({
+        where: and(
+          eq(episode.id, input.episodeId),
+          eq(episode.userId, ctx.user.id),
+        ),
+        columns: {
+          id: true,
+          status: true,
+        },
+      });
+
+      if (!episodeRecord) {
+        throw new Error("Episode not found");
+      }
+
+      const pipelineRunId = randomUUID();
+
+      await inngest.send({
+        name: "app/daily-intelligence.user.generate-signals",
+        data: {
+          pipelineRunId,
+          userId: ctx.user.id,
+          episodeId: input.episodeId,
+        },
+      });
+
+      return {
+        status: "dispatched" as const,
+        pipelineRunId,
+      };
+    }),
 });

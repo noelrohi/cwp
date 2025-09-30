@@ -411,6 +411,62 @@ export const signalsRouter = createTRPCRouter({
       };
     });
   }),
+
+  unsave: protectedProcedure
+    .input(
+      z.object({
+        savedChunkId: z.string().min(1),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const savedChunkRecord = await ctx.db.query.savedChunk.findFirst({
+        where: and(
+          eq(savedChunk.id, input.savedChunkId),
+          eq(savedChunk.userId, ctx.user.id),
+        ),
+      });
+
+      if (!savedChunkRecord) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Saved chunk not found",
+        });
+      }
+
+      await ctx.db
+        .delete(savedChunk)
+        .where(eq(savedChunk.id, input.savedChunkId));
+
+      return { success: true };
+    }),
+
+  skipAll: protectedProcedure.mutation(async ({ ctx }) => {
+    const pendingSignals = await ctx.db
+      .select({ id: dailySignal.id })
+      .from(dailySignal)
+      .where(
+        and(
+          eq(dailySignal.userId, ctx.user.id),
+          isNull(dailySignal.userAction),
+        ),
+      );
+
+    if (pendingSignals.length === 0) {
+      return { success: true, skippedCount: 0 };
+    }
+
+    await ctx.db
+      .update(dailySignal)
+      .set({ userAction: "skipped", actionedAt: new Date() })
+      .where(
+        and(
+          eq(dailySignal.userId, ctx.user.id),
+          isNull(dailySignal.userAction),
+        ),
+      );
+
+    return { success: true, skippedCount: pendingSignals.length };
+  }),
 });
 
 function buildFallbackTitle(content: string): string {

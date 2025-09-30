@@ -69,6 +69,18 @@ export default function EpisodeDetailPage(props: {
     }),
   );
 
+  const regenerateSignals = useMutation(
+    trpc.episodes.regenerateSignals.mutationOptions({
+      onSuccess: () => {
+        toast.success("Signal regeneration started");
+        signals.refetch();
+      },
+      onError: (error) => {
+        toast.error(`Failed to regenerate signals: ${error.message}`);
+      },
+    }),
+  );
+
   const fetchTranscript = async (url: string) => {
     try {
       const response = await fetch(url);
@@ -121,9 +133,11 @@ export default function EpisodeDetailPage(props: {
   const relatedSignals = signals.data ?? [];
   const isProcessing =
     episodeData?.status === "processing" || processEpisode.isPending;
+  const isRegenerating = regenerateSignals.isPending;
+  const isProcessed = episodeData?.status === "processed";
   const processButtonLabel = (() => {
     if (isProcessing) return "Processing...";
-    if (episodeData?.status === "processed") return "Re-run Processing";
+    if (isProcessed) return "Re-run Processing";
     return "Process Episode";
   })();
   const statusLabel = episodeData?.status
@@ -272,6 +286,23 @@ export default function EpisodeDetailPage(props: {
               )}
               {processButtonLabel}
             </Button>
+            {isProcessed && (
+              <Button
+                onClick={() =>
+                  regenerateSignals.mutate({ episodeId: params.id })
+                }
+                disabled={isRegenerating}
+                variant="outline"
+                size="sm"
+              >
+                {isRegenerating ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="mr-2 h-4 w-4" />
+                )}
+                Regenerate Signals
+              </Button>
+            )}
           </div>
         </div>
       </div>

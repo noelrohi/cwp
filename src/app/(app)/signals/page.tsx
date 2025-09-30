@@ -7,6 +7,7 @@ import {
   CalendarDaysIcon,
   Loader2,
   PodcastIcon,
+  Trash2Icon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -57,10 +58,12 @@ function PendingSignalsTab() {
   const audioPlayer = useAudioPlayer();
   const [pendingSignalId, setPendingSignalId] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<SignalAction | null>(null);
+  const [isSkippingAll, setIsSkippingAll] = useState(false);
 
   const signalsQuery = useQuery(trpc.signals.list.queryOptions({ limit: 30 }));
 
   const actionMutation = useMutation(trpc.signals.action.mutationOptions());
+  const skipAllMutation = useMutation(trpc.signals.skipAll.mutationOptions());
 
   const handleAction = async (signalId: string, action: SignalAction) => {
     setPendingSignalId(signalId);
@@ -76,6 +79,21 @@ function PendingSignalsTab() {
     } finally {
       setPendingSignalId(null);
       setPendingAction(null);
+    }
+  };
+
+  const handleSkipAll = async () => {
+    setIsSkippingAll(true);
+    try {
+      const result = await skipAllMutation.mutateAsync();
+      queryClient.invalidateQueries({ queryKey: trpc.signals.list.queryKey() });
+      toast.success(`Skipped ${result.skippedCount} signals`);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to skip signals.";
+      toast.error(message);
+    } finally {
+      setIsSkippingAll(false);
     }
   };
 
@@ -119,6 +137,23 @@ function PendingSignalsTab() {
 
   return (
     <>
+      {!isLoading && !fetchError && signals.length > 0 && (
+        <div className="mb-4 flex justify-end">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSkipAll}
+            disabled={isSkippingAll}
+          >
+            {isSkippingAll ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <BookmarkXIcon className="mr-2 h-4 w-4" />
+            )}
+            Skip All
+          </Button>
+        </div>
+      )}
       {isLoading ? (
         <SignalSkeletonList />
       ) : fetchError ? (
@@ -235,15 +270,35 @@ function PendingSignalsTab() {
 
 function SavedSignalsTab() {
   const trpc = useTRPC();
+  const queryClient = useQueryClient();
   const audioPlayer = useAudioPlayer();
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const savedQuery = useQuery(trpc.signals.saved.queryOptions());
+  const unsaveMutation = useMutation(trpc.signals.unsave.mutationOptions());
 
   const isLoading = savedQuery.isLoading;
   const fetchError = savedQuery.error;
   const fetchErrorMessage =
     fetchError && fetchError instanceof Error ? fetchError.message : undefined;
   const savedSignals = savedQuery.data ?? [];
+
+  const handleUnsave = async (savedChunkId: string) => {
+    setDeletingId(savedChunkId);
+    try {
+      await unsaveMutation.mutateAsync({ savedChunkId });
+      queryClient.invalidateQueries({
+        queryKey: trpc.signals.saved.queryKey(),
+      });
+      toast.success("Signal removed");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to remove signal.";
+      toast.error(message);
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   useEffect(() => {
     if (savedSignals.length > 0) {
@@ -276,6 +331,8 @@ function SavedSignalsTab() {
           {savedSignals.map((signal) => {
             const speakerDisplay = signal.speaker ?? "Unknown speaker";
             const metadata: SignalCardMetadataItem[] = [];
+            const isDeleting = deletingId === signal.id;
+
             if (signal.episode.podcast?.title) {
               metadata.push({
                 icon: <PodcastIcon className="h-3 w-3" />,
@@ -309,7 +366,22 @@ function SavedSignalsTab() {
                 endTimeSec={signal.endTimeSec}
                 metadata={metadata}
                 audio={audioSource}
-              />
+              >
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 sm:flex-none"
+                  onClick={() => handleUnsave(signal.id)}
+                  disabled={isDeleting}
+                >
+                  {isDeleting ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2Icon className="mr-2 h-4 w-4" />
+                  )}
+                  Remove
+                </Button>
+              </SignalCard>
             );
           })}
         </section>
