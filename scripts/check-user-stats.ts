@@ -2,7 +2,7 @@
 
 import { and, count, eq } from "drizzle-orm";
 import { db } from "@/server/db";
-import { dailySignal } from "@/server/db/schema/podcast";
+import { dailySignal, savedChunk } from "@/server/db/schema/podcast";
 
 const userId = process.argv[2];
 
@@ -21,10 +21,8 @@ async function checkUserStats() {
 
   const saved = await db
     .select({ count: count() })
-    .from(dailySignal)
-    .where(
-      and(eq(dailySignal.userId, userId), eq(dailySignal.userAction, "saved")),
-    );
+    .from(savedChunk)
+    .where(eq(savedChunk.userId, userId));
 
   const skipped = await db
     .select({ count: count() })

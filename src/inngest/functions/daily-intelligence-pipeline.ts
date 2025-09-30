@@ -7,6 +7,7 @@ import {
   episode,
   episodeSpeakerMapping,
   podcast,
+  savedChunk,
   transcriptChunk,
   userPreferences,
 } from "@/server/db/schema";
@@ -538,12 +539,11 @@ async function scoreChunksForRelevance(
     .select({
       embedding: transcriptChunk.embedding,
     })
-    .from(transcriptChunk)
-    .innerJoin(dailySignal, eq(dailySignal.chunkId, transcriptChunk.id))
+    .from(savedChunk)
+    .innerJoin(transcriptChunk, eq(savedChunk.chunkId, transcriptChunk.id))
     .where(
       and(
-        eq(dailySignal.userId, userId),
-        eq(dailySignal.userAction, "saved"),
+        eq(savedChunk.userId, userId),
         sql`${transcriptChunk.embedding} IS NOT NULL`,
       ),
     );

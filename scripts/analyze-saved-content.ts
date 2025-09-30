@@ -1,9 +1,10 @@
 #!/usr/bin/env tsx
 
-import { and, eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "@/server/db";
 import {
   dailySignal,
+  savedChunk,
   transcriptChunk,
 } from "@/server/db/schema/podcast";
 
@@ -23,14 +24,10 @@ async function analyzeSavedContent() {
       content: transcriptChunk.content,
       relevanceScore: dailySignal.relevanceScore,
     })
-    .from(transcriptChunk)
-    .innerJoin(dailySignal, eq(transcriptChunk.id, dailySignal.chunkId))
-    .where(
-      and(
-        eq(dailySignal.userId, userId),
-        eq(dailySignal.userAction, "saved"),
-      ),
-    );
+    .from(savedChunk)
+    .innerJoin(transcriptChunk, eq(savedChunk.chunkId, transcriptChunk.id))
+    .leftJoin(dailySignal, eq(transcriptChunk.id, dailySignal.chunkId))
+    .where(eq(savedChunk.userId, userId));
 
   console.log(`✓ Found ${savedChunks.length} saved chunks\n`);
 

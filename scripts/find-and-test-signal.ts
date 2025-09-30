@@ -5,6 +5,7 @@ import { and, eq, isNull, like, sql } from "drizzle-orm";
 import { db } from "@/server/db";
 import {
   dailySignal,
+  savedChunk,
   transcriptChunk,
 } from "@/server/db/schema/podcast";
 
@@ -59,12 +60,11 @@ async function findAndTest() {
       content: transcriptChunk.content,
       embedding: transcriptChunk.embedding,
     })
-    .from(transcriptChunk)
-    .innerJoin(dailySignal, eq(transcriptChunk.id, dailySignal.chunkId))
+    .from(savedChunk)
+    .innerJoin(transcriptChunk, eq(savedChunk.chunkId, transcriptChunk.id))
     .where(
       and(
-        eq(dailySignal.userId, userId),
-        eq(dailySignal.userAction, "saved"),
+        eq(savedChunk.userId, userId),
         sql`${transcriptChunk.embedding} IS NOT NULL`,
       ),
     );
