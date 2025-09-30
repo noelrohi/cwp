@@ -20,6 +20,7 @@ export const episodesRouter = createTRPCRouter({
         with: {
           podcast: true,
           transcriptChunks: true,
+          speakerMapping: true,
         },
       });
 

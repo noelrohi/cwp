@@ -257,6 +257,13 @@ export default function EpisodeDetailPage(props: {
                         <TranscriptDisplay
                           transcript={transcript}
                           onClose={() => {}}
+                          speakerMappings={
+                            episodeData?.speakerMapping?.speakerMappings
+                              ? JSON.parse(
+                                  episodeData.speakerMapping.speakerMappings,
+                                )
+                              : null
+                          }
                         />
                       )}
                     </div>

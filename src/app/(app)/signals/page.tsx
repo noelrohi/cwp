@@ -164,35 +164,7 @@ function PendingSignalsTab() {
         <section className="space-y-4">
           {signals.map((signal) => {
             const isPending = pendingSignalId === signal.id;
-            const inferredSpeakerName = signal.speakerName?.trim();
-            const speakerLabel = signal.chunk.speaker?.trim();
-
-            const getSpeakerDisplay = () => {
-              if (
-                inferredSpeakerName &&
-                inferredSpeakerName.length > 0 &&
-                !inferredSpeakerName.startsWith("Speaker ")
-              ) {
-                return inferredSpeakerName;
-              }
-
-              if (speakerLabel && /^\d+$/.test(speakerLabel)) {
-                const speakerNum = Number.parseInt(speakerLabel, 10);
-                if (speakerNum === 0) {
-                  return "Host";
-                } else {
-                  return `Guest ${speakerNum}`;
-                }
-              }
-
-              if (speakerLabel) {
-                return `Speaker ${speakerLabel}`;
-              }
-
-              return "Unknown speaker";
-            };
-
-            const speakerDisplay = getSpeakerDisplay();
+            const speakerDisplay = signal.speakerName || "Unknown speaker";
             const metadata: SignalCardMetadataItem[] = [];
             if (signal.episode) {
               if (signal.episode.podcast?.title) {

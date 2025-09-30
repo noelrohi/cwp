@@ -10,6 +10,7 @@ import type { TranscriptData } from "@/types/transcript";
 interface TranscriptDisplayProps {
   transcript: TranscriptData;
   onClose: () => void;
+  speakerMappings?: Record<string, string> | null;
 }
 
 interface HighlightedTextProps {
@@ -138,6 +139,7 @@ function groupSegmentsIntoParagraphs(
 export function TranscriptDisplay({
   transcript,
   onClose,
+  speakerMappings,
 }: TranscriptDisplayProps) {
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -165,6 +167,15 @@ export function TranscriptDisplay({
   const segments = getSegments();
   const paragraphs =
     segments.length > 0 ? groupSegmentsIntoParagraphs(segments) : [];
+
+  const getSpeakerName = (speakerIndex: number | undefined): string => {
+    if (speakerIndex === undefined) return "";
+    const speakerKey = speakerIndex.toString();
+    if (speakerMappings && speakerMappings[speakerKey]) {
+      return speakerMappings[speakerKey];
+    }
+    return `Speaker ${speakerIndex}`;
+  };
 
   return (
     <div>
@@ -212,7 +223,7 @@ export function TranscriptDisplay({
                   <div className="flex-1">
                     {paragraph.speaker !== undefined && (
                       <div className="text-xs font-medium text-muted-foreground mb-1">
-                        Speaker {paragraph.speaker}:
+                        {getSpeakerName(paragraph.speaker)}:
                       </div>
                     )}
                     <span className="text-sm leading-relaxed">
@@ -234,7 +245,7 @@ export function TranscriptDisplay({
                     <div className="flex-1">
                       {segment.speaker !== undefined && (
                         <div className="text-xs font-medium text-muted-foreground mb-1">
-                          Speaker {segment.speaker}:
+                          {getSpeakerName(segment.speaker)}:
                         </div>
                       )}
                       <span className="text-sm leading-relaxed">

@@ -9,6 +9,7 @@ import {
   transcriptChunk,
   userPreferences,
 } from "@/server/db/schema";
+import { identifyEpisodeSpeakers } from "@/server/lib/speaker-identification";
 import {
   chunkEpisodeTranscript,
   ensureEpisodeTranscript,
@@ -193,23 +194,24 @@ export const dailyIntelligenceProcessEpisode = inngest.createFunction(
       `Pipeline run ${pipelineRunId}: processing episode ${episodeId} for user ${userId}`,
     );
 
-    const episodeRecord = await step.run("load-episode", async () => {
-      const [row] = await db
-        .select()
-        .from(episode)
-        .where(eq(episode.id, episodeId))
-        .limit(1);
-      return row ?? null;
+    const episodeData = await step.run("load-episode", async () => {
+      const result = await db.query.episode.findFirst({
+        where: eq(episode.id, episodeId),
+        with: {
+          podcast: true,
+        },
+      });
+      return result ?? null;
     });
 
-    if (!episodeRecord) {
+    if (!episodeData) {
       logger.error(
         `Pipeline run ${pipelineRunId}: episode ${episodeId} not found`,
       );
       return { status: "missing" } as const;
     }
 
-    if (episodeRecord.status === "processed") {
+    if (episodeData.status === "processed") {
       logger.info(
         `Pipeline run ${pipelineRunId}: episode ${episodeId} already processed`,
       );
@@ -227,17 +229,17 @@ export const dailyIntelligenceProcessEpisode = inngest.createFunction(
 
     try {
       const normalisedEpisode = {
-        ...episodeRecord,
-        createdAt: new Date(episodeRecord.createdAt),
-        updatedAt: new Date(episodeRecord.updatedAt),
-        publishedAt: episodeRecord.publishedAt
-          ? new Date(episodeRecord.publishedAt)
+        ...episodeData,
+        createdAt: new Date(episodeData.createdAt),
+        updatedAt: new Date(episodeData.updatedAt),
+        publishedAt: episodeData.publishedAt
+          ? new Date(episodeData.publishedAt)
           : null,
-        lastProcessedAt: episodeRecord.lastProcessedAt
-          ? new Date(episodeRecord.lastProcessedAt)
+        lastProcessedAt: episodeData.lastProcessedAt
+          ? new Date(episodeData.lastProcessedAt)
           : null,
-        processingStartedAt: episodeRecord.processingStartedAt
-          ? new Date(episodeRecord.processingStartedAt)
+        processingStartedAt: episodeData.processingStartedAt
+          ? new Date(episodeData.processingStartedAt)
           : null,
       };
 
@@ -260,6 +262,33 @@ export const dailyIntelligenceProcessEpisode = inngest.createFunction(
           skipEmbeddings: true, // Skip embeddings for speed
         });
         return { chunkCount };
+      });
+
+      // Identify speakers using AI
+      await step.run("identify-speakers", async () => {
+        if (!episodeData.podcast) {
+          logger.warn(
+            `Episode ${episodeId} has no podcast info, skipping speaker identification`,
+          );
+          return { identified: false };
+        }
+
+        const speakerResult = await identifyEpisodeSpeakers({
+          db,
+          episodeId: episodeData.id,
+          episodeTitle: episodeData.title,
+          episodeDescription: episodeData.description,
+          itunesSummary: episodeData.itunesSummary,
+          contentEncoded: episodeData.contentEncoded,
+          creator: episodeData.creator,
+          podcastTitle: episodeData.podcast.title,
+          podcastDescription: episodeData.podcast.description,
+        });
+
+        return {
+          identified: speakerResult !== null,
+          confidence: speakerResult?.confidence,
+        };
       });
 
       // Generate embeddings separately for better performance
