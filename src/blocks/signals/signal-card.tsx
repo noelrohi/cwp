@@ -105,21 +105,39 @@ export function SignalCard(props: SignalCardProps) {
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         {metadata.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-1.5 text-sm font-medium text-muted-foreground sm:gap-2">
-            {metadata.map((item, index) => (
+          <div className="grid grid-cols-[1fr,auto] gap-x-3 gap-y-1.5 items-start text-sm font-medium text-muted-foreground sm:flex sm:flex-wrap sm:items-center sm:gap-2">
+            {/* Mobile: Two-column layout with podcast name full width */}
+            {/* Desktop: Horizontal flex layout */}
+            {metadata[0] && (
               <span
-                key={`${item.label}-${index}`}
                 className={cn(
                   "inline-flex items-center gap-1 rounded-full bg-muted/60 px-2.5 py-1 sm:px-3",
-                  item.icon ? "pl-2" : "",
+                  metadata[0].icon ? "pl-2" : "",
                 )}
               >
-                {item.icon}
+                {metadata[0].icon}
                 <span className="truncate max-w-32 sm:max-w-none">
-                  {item.label}
+                  {metadata[0].label}
                 </span>
               </span>
-            ))}
+            )}
+            {/* Date and confidence badges - stacked on mobile, inline on desktop */}
+            {metadata.length > 1 && (
+              <div className="flex flex-col gap-1.5 sm:contents">
+                {metadata.slice(1).map((item, index) => (
+                  <span
+                    key={`${item.label}-${index + 1}`}
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-full bg-muted/60 px-2.5 py-1 sm:px-3 whitespace-nowrap",
+                      item.icon ? "pl-2" : "",
+                    )}
+                  >
+                    {item.icon}
+                    <span className="truncate">{item.label}</span>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         ) : null}
         {audio ? (
