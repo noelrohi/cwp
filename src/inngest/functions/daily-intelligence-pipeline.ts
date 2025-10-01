@@ -560,12 +560,14 @@ export const dailyIntelligenceGenerateSignals = inngest.createFunction(
 
 /**
  * Generate signals for a user using simplified algorithm per Karpathy's advice:
- * - Phase 1: Pure random until user has 10 saves
- * - Phase 2: Simple cosine similarity against user centroid
- * - No negative feedback, no complex blending, no confidence thresholds
- * - Let user actions be the filter, not algorithmic assumptions
+ * - Phase 1: Pure random until user has 10 saves (cold start exploration)
+ * - Phase 2a: Positive-only similarity (< 5 skips)
+ * - Phase 2b: Contrastive learning (≥ 5 skips) - NEW!
+ *   - Score = similarity(saved_centroid) - similarity(skipped_centroid)
+ *   - User skipping low scores reinforces "system got it right"
+ *   - Spreads distribution across full 0-100% range
  *
- * Store top 30 results for daily review
+ * Store top 30 results for daily review via stratified sampling
  *
  * @param userId - User to generate signals for
  * @param episodeId - Optional episode ID to limit signal generation to specific episode
@@ -733,8 +735,9 @@ async function scoreChunksForRelevance(
     }));
   }
 
-  // PHASE 2: Embedding-based similarity against saved chunks
-  // Get embeddings of all saved chunks to calculate centroid
+  // PHASE 2: Embedding-based similarity - NOW WITH CONTRASTIVE LEARNING
+
+  // Get embeddings of all saved chunks (positive examples)
   const savedChunks = await db
     .select({
       embedding: transcriptChunk.embedding,
@@ -744,6 +747,21 @@ async function scoreChunksForRelevance(
     .where(
       and(
         eq(savedChunk.userId, userId),
+        sql`${transcriptChunk.embedding} IS NOT NULL`,
+      ),
+    );
+
+  // Get embeddings of all skipped chunks (negative examples)
+  const skippedChunks = await db
+    .select({
+      embedding: transcriptChunk.embedding,
+    })
+    .from(dailySignal)
+    .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
+    .where(
+      and(
+        eq(dailySignal.userId, userId),
+        eq(dailySignal.userAction, "skipped"),
         sql`${transcriptChunk.embedding} IS NOT NULL`,
       ),
     );
@@ -758,30 +776,148 @@ async function scoreChunksForRelevance(
     }));
   }
 
-  console.log(
-    `User ${userId}: Computing similarity against ${savedChunks.length} saved chunk embeddings`,
-  );
-
-  // Calculate centroid (average embedding vector)
-  const centroid = calculateCentroid(
+  // Calculate saved centroid (what user likes)
+  const savedCentroid = calculateCentroid(
     savedChunks.map((c) => c.embedding as number[]),
   );
 
-  // Score each chunk by cosine similarity to centroid
-  // Use manual calculation since we already have chunks in memory
+  // CONTRASTIVE LEARNING: Use skipped chunks if we have enough
+  const useContrastiveScoring = skippedChunks.length >= 5;
+
+  if (useContrastiveScoring) {
+    // Calculate skipped centroid (what user dislikes)
+    const skippedCentroid = calculateCentroid(
+      skippedChunks.map((c) => c.embedding as number[]),
+    );
+
+    // DIAGNOSTIC: Check if centroids are too similar
+    const centroidSimilarity = cosineSimilarity(savedCentroid, skippedCentroid);
+
+    console.log(
+      `User ${userId}: Using CONTRASTIVE scoring with ${savedChunks.length} saved + ${skippedChunks.length} skipped chunks`,
+    );
+    console.log(
+      `User ${userId}: Centroid similarity: ${centroidSimilarity.toFixed(3)} ` +
+        `(${centroidSimilarity > 0.9 ? "⚠️ TOO SIMILAR - centroids nearly identical!" : centroidSimilarity > 0.7 ? "⚠️ High similarity - limited discrimination" : "✅ Good separation"})`,
+    );
+
+    // FALLBACK: If centroids are too similar (> 0.85), contrastive scoring won't help
+    // Fall back to positive-only scoring
+    if (centroidSimilarity > 0.85) {
+      console.log(
+        `User ${userId}: ⚠️ Centroids too similar (${centroidSimilarity.toFixed(3)} > 0.85), ` +
+          `falling back to POSITIVE-ONLY scoring to avoid clustering at 0.5`,
+      );
+
+      return chunks.map((chunk) => {
+        if (!chunk.embedding) {
+          return {
+            ...chunk,
+            relevanceScore: 0.3,
+          };
+        }
+
+        const similarity = cosineSimilarity(chunk.embedding, savedCentroid);
+        const relevanceScore = Math.max(0, similarity);
+
+        return {
+          ...chunk,
+          relevanceScore,
+        };
+      });
+    }
+
+    // Contrastive scoring: positive similarity MINUS negative similarity
+    const scoredChunks = chunks.map((chunk) => {
+      if (!chunk.embedding) {
+        return {
+          ...chunk,
+          relevanceScore: 0.3,
+        };
+      }
+
+      const savedSimilarity = cosineSimilarity(chunk.embedding, savedCentroid);
+      const skippedSimilarity = cosineSimilarity(
+        chunk.embedding,
+        skippedCentroid,
+      );
+
+      // Contrastive score: how similar to saved MINUS how similar to skipped
+      // Cosine similarity ranges from -1 to 1, so difference ranges from -2 to 2
+      const contrastiveScore = savedSimilarity - skippedSimilarity;
+
+      // Normalize to 0-1 range: map [-2, 2] to [0, 1]
+      const normalizedScore = (contrastiveScore + 2) / 4;
+
+      // Clamp to ensure we stay in [0, 1]
+      const relevanceScore = Math.max(0, Math.min(1, normalizedScore));
+
+      return {
+        ...chunk,
+        relevanceScore,
+      };
+    });
+
+    // Log distribution for validation
+    const distribution = {
+      veryLow: scoredChunks.filter((c) => c.relevanceScore < 0.2).length,
+      low: scoredChunks.filter(
+        (c) => c.relevanceScore >= 0.2 && c.relevanceScore < 0.4,
+      ).length,
+      mid: scoredChunks.filter(
+        (c) => c.relevanceScore >= 0.4 && c.relevanceScore < 0.6,
+      ).length,
+      high: scoredChunks.filter(
+        (c) => c.relevanceScore >= 0.6 && c.relevanceScore < 0.8,
+      ).length,
+      veryHigh: scoredChunks.filter((c) => c.relevanceScore >= 0.8).length,
+    };
+
+    const minScore = Math.min(...scoredChunks.map((c) => c.relevanceScore));
+    const maxScore = Math.max(...scoredChunks.map((c) => c.relevanceScore));
+    const avgScore =
+      scoredChunks.reduce((sum, c) => sum + c.relevanceScore, 0) /
+      scoredChunks.length;
+
+    console.log(
+      `User ${userId}: Contrastive score distribution: ` +
+        `0-20%: ${distribution.veryLow}, ` +
+        `20-40%: ${distribution.low}, ` +
+        `40-60%: ${distribution.mid}, ` +
+        `60-80%: ${distribution.high}, ` +
+        `80-100%: ${distribution.veryHigh}`,
+    );
+    console.log(
+      `User ${userId}: Score stats: min=${minScore.toFixed(3)}, max=${maxScore.toFixed(3)}, avg=${avgScore.toFixed(3)}, range=${(maxScore - minScore).toFixed(3)}`,
+    );
+
+    // WARNING: If all scores are clustered around 0.5, contrastive isn't helping
+    if (maxScore - minScore < 0.1) {
+      console.warn(
+        `User ${userId}: ⚠️ WARNING - Contrastive scores too clustered (range < 0.1). ` +
+          `Saved/skipped centroids may be too similar. Consider using positive-only scoring.`,
+      );
+    }
+
+    return scoredChunks;
+  }
+
+  // Fallback: Positive-only scoring (original behavior)
+  console.log(
+    `User ${userId}: Using POSITIVE-ONLY scoring against ${savedChunks.length} saved chunks ` +
+      `(need ${5 - skippedChunks.length} more skips for contrastive learning)`,
+  );
+
   return chunks.map((chunk) => {
     if (!chunk.embedding) {
       return {
         ...chunk,
-        relevanceScore: 0.3, // Default low score for missing embeddings
+        relevanceScore: 0.3,
       };
     }
 
-    const similarity = cosineSimilarity(chunk.embedding, centroid);
-
-    // Text embeddings are already normalized to [0, 1] range
-    // No need to normalize - use raw similarity as score
-    const relevanceScore = Math.max(0, similarity); // Clamp to ensure non-negative
+    const similarity = cosineSimilarity(chunk.embedding, savedCentroid);
+    const relevanceScore = Math.max(0, similarity);
 
     return {
       ...chunk,

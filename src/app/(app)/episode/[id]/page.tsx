@@ -3,6 +3,7 @@
 import {
   AlertCircleIcon,
   ArrowLeft01Icon,
+  BodyPartMuscleIcon,
   BookmarkCheck01Icon,
   BookmarkRemove01Icon,
   Calendar03Icon,
@@ -784,6 +785,15 @@ Content: ${content}
               const metadata: SignalCardMetadataItem[] = [];
               if (publishedLabel) {
                 metadata.push({ label: publishedLabel });
+              }
+              if (
+                signal.relevanceScore !== null &&
+                signal.relevanceScore !== undefined
+              ) {
+                metadata.push({
+                  icon: <HugeiconsIcon icon={BodyPartMuscleIcon} size={12} />,
+                  label: `${Math.round(signal.relevanceScore * 100)}%`,
+                });
               }
               const audioSource = signal.episode?.audioUrl
                 ? {

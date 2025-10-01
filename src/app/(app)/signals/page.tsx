@@ -7,7 +7,6 @@ import {
   BookmarkRemove01Icon,
   Calendar03Icon,
   Copy01Icon,
-  Delete01Icon,
   FilterIcon,
   Loading03Icon,
 } from "@hugeicons/core-free-icons";
@@ -668,9 +667,9 @@ function SavedSignalsTab() {
                       className="animate-spin"
                     />
                   ) : (
-                    <HugeiconsIcon icon={Delete01Icon} size={16} />
+                    <HugeiconsIcon icon={BookmarkRemove01Icon} size={16} />
                   )}
-                  Remove
+                  Unsave
                 </Button>
               </SignalCard>
             );

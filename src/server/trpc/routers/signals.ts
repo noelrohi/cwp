@@ -31,13 +31,26 @@ export const signalsRouter = createTRPCRouter({
         .object({
           limit: z.number().int().min(1).max(200).optional(),
           episodeId: z.string().optional(),
+          filter: z.enum(["all", "pending", "processed"]).optional(),
         })
         .optional(),
     )
     .query(async ({ ctx, input }) => {
       const limit = input?.limit ?? DEFAULT_SIGNAL_LIMIT;
+      const filter = input?.filter ?? "pending";
 
       if (input?.episodeId) {
+        const whereConditions = [
+          eq(dailySignal.userId, ctx.user.id),
+          eq(transcriptChunk.episodeId, input.episodeId),
+        ];
+
+        if (filter === "pending") {
+          whereConditions.push(isNull(dailySignal.userAction));
+        } else if (filter === "processed") {
+          whereConditions.push(isNotNull(dailySignal.userAction));
+        }
+
         const rows = await ctx.db
           .select({
             id: dailySignal.id,
@@ -47,6 +60,7 @@ export const signalsRouter = createTRPCRouter({
             summary: dailySignal.summary,
             excerpt: dailySignal.excerpt,
             speakerName: dailySignal.speakerName,
+            userAction: dailySignal.userAction,
             chunkId: dailySignal.chunkId,
             presentedAt: dailySignal.presentedAt,
           })
@@ -55,13 +69,7 @@ export const signalsRouter = createTRPCRouter({
             transcriptChunk,
             eq(dailySignal.chunkId, transcriptChunk.id),
           )
-          .where(
-            and(
-              eq(dailySignal.userId, ctx.user.id),
-              isNull(dailySignal.userAction),
-              eq(transcriptChunk.episodeId, input.episodeId),
-            ),
-          )
+          .where(and(...whereConditions))
           .orderBy(
             desc(dailySignal.signalDate),
             desc(dailySignal.relevanceScore),
@@ -116,6 +124,7 @@ export const signalsRouter = createTRPCRouter({
               excerpt:
                 row.excerpt ?? buildFallbackExcerpt(chunk?.content ?? ""),
               speakerName: row.speakerName,
+              userAction: row.userAction,
               chunk: {
                 id: chunk?.id ?? row.chunkId,
                 content: chunk?.content ?? "",
@@ -146,11 +155,16 @@ export const signalsRouter = createTRPCRouter({
         return enrichedRows;
       }
 
+      const whereConditions = [eq(dailySignal.userId, ctx.user.id)];
+
+      if (filter === "pending") {
+        whereConditions.push(isNull(dailySignal.userAction));
+      } else if (filter === "processed") {
+        whereConditions.push(isNotNull(dailySignal.userAction));
+      }
+
       const rows = await ctx.db.query.dailySignal.findMany({
-        where: and(
-          eq(dailySignal.userId, ctx.user.id),
-          isNull(dailySignal.userAction),
-        ),
+        where: and(...whereConditions),
         orderBy: [
           desc(dailySignal.signalDate),
           desc(dailySignal.relevanceScore),
@@ -210,6 +224,7 @@ export const signalsRouter = createTRPCRouter({
         summary: row.summary ?? buildFallbackSummary(row.chunk.content),
         excerpt: row.excerpt ?? buildFallbackExcerpt(row.chunk.content),
         speakerName: row.speakerName,
+        userAction: row.userAction,
         chunk: {
           id: row.chunk.id,
           content: row.chunk.content,
