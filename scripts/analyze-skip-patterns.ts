@@ -39,7 +39,11 @@ async function analyzeSkips() {
   }
 
   // Calculate centroid
-  const dimensions = savedChunks[0].embedding!.length;
+  const dimensions = savedChunks[0].embedding?.length;
+  if (!dimensions) {
+    console.log("Error: No embedding dimensions found");
+    return;
+  }
   const centroid = new Array(dimensions).fill(0);
   for (const chunk of savedChunks) {
     for (let i = 0; i < dimensions; i++) {

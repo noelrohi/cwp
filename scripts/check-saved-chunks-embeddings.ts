@@ -1,64 +1,34 @@
-import { eq, sql } from "drizzle-orm";
-import { db } from "@/server/db";
-import { savedChunk, transcriptChunk } from "@/server/db/schema/podcast";
+import { eq } from "drizzle-orm";
+import { db } from "../src/server/db";
+import { savedChunk, transcriptChunk } from "../src/server/db/schema";
 
 async function main() {
-  const userId = process.argv[2];
+  const userId = "J2tMunffPYoZWSzGXbjwihHDoU6Ol5Gc";
 
-  if (!userId) {
-    console.error(
-      "Usage: tsx scripts/check-saved-chunks-embeddings.ts <userId>",
-    );
-    process.exit(1);
-  }
-
-  const savedChunks = await db
+  const saved = await db
     .select({
-      savedId: savedChunk.id,
-      chunkId: savedChunk.chunkId,
-      savedAt: savedChunk.savedAt,
-      episodeId: transcriptChunk.episodeId,
-      hasEmbedding: sql<boolean>`${transcriptChunk.embedding} IS NOT NULL`,
+      content: transcriptChunk.content,
+      createdAt: savedChunk.savedAt,
     })
     .from(savedChunk)
-    .leftJoin(transcriptChunk, eq(savedChunk.chunkId, transcriptChunk.id))
-    .where(eq(savedChunk.userId, userId));
+    .innerJoin(transcriptChunk, eq(savedChunk.chunkId, transcriptChunk.id))
+    .where(eq(savedChunk.userId, userId))
+    .orderBy(savedChunk.savedAt)
+    .limit(20);
 
-  console.log(`\n📊 Saved chunks for user: ${userId}\n`);
-  console.log(`Total saved: ${savedChunks.length}\n`);
+  console.log(`\n📚 ${saved.length} saved chunks for analysis:\n`);
 
-  let withEmbedding = 0;
-  let withoutEmbedding = 0;
-  const episodesNeedingRegeneration = new Set<string>();
-
-  for (const chunk of savedChunks) {
-    const hasEmbed = chunk.hasEmbedding;
-    if (hasEmbed) {
-      withEmbedding++;
-    } else {
-      withoutEmbedding++;
-      if (chunk.episodeId) {
-        episodesNeedingRegeneration.add(chunk.episodeId);
-      }
-    }
-
-    console.log(`${hasEmbed ? "✅" : "❌"} Chunk ${chunk.chunkId}`);
-    console.log(`   Saved: ${chunk.savedAt?.toISOString()}`);
-    console.log(`   Episode: ${chunk.episodeId || "N/A"}`);
-    console.log(`   Has embedding: ${hasEmbed}`);
-    console.log();
+  for (const chunk of saved) {
+    const preview = `${chunk.content.substring(0, 70)}...`;
+    console.log(`${preview}`);
   }
 
-  console.log(`\n📈 Summary:`);
-  console.log(`   With embeddings: ${withEmbedding}`);
-  console.log(`   Without embeddings: ${withoutEmbedding}`);
-
-  if (episodesNeedingRegeneration.size > 0) {
-    console.log(`\n🔄 Episodes that need embedding regeneration:`);
-    for (const episodeId of episodesNeedingRegeneration) {
-      console.log(`   - ${episodeId}`);
-    }
-  }
+  console.log("\n💡 Based on these saves, high scores (70%+) should be about:");
+  console.log("   - Cursor, Claude, AI coding tools");
+  console.log("   - Automation, workflows");
+  console.log("   - Building products/SaaS\n");
 }
 
-main();
+main()
+  .catch(console.error)
+  .finally(() => process.exit(0));

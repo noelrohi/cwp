@@ -41,7 +41,7 @@ async function analyzeSavedContent() {
     console.log(`\n${i + 1}. Score when saved: ${score}`);
     console.log(`   ${chunk.content.substring(0, 200).replace(/\n/g, " ")}...`);
   }
-  console.log("\n" + "=".repeat(80));
+  console.log(`\n${"=".repeat(80)}`);
 
   // Extract keywords
   const allText = savedChunks.map((c) => c.content).join(" ");

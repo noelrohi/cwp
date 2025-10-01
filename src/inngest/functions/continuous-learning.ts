@@ -281,7 +281,7 @@ If the chunk contains no quotable insight, respond with "NO_QUOTE".
 Return ONLY the extracted quote, nothing else.`;
 
   const result = await generateText({
-    model: openrouter("anthropic/claude-3.5-sonnet"),
+    model: openrouter("x-ai/grok-4-fast:free"),
     prompt,
   });
 

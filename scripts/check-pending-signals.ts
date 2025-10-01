@@ -22,9 +22,7 @@ async function checkPendingSignals() {
     })
     .from(dailySignal)
     .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
-    .where(
-      and(eq(dailySignal.userId, userId), isNull(dailySignal.userAction)),
-    )
+    .where(and(eq(dailySignal.userId, userId), isNull(dailySignal.userAction)))
     .orderBy(dailySignal.relevanceScore)
     .limit(50);
 
@@ -60,7 +58,9 @@ async function checkPendingSignals() {
   for (let i = 0; i < 10; i++) {
     const pct = ((buckets[i] / pendingSignals.length) * 100).toFixed(1);
     const bar = "█".repeat(Math.floor(buckets[i] / 2));
-    console.log(`   ${labels[i]}: ${buckets[i].toString().padStart(3)} (${pct.padStart(5)}%) ${bar}`);
+    console.log(
+      `   ${labels[i]}: ${buckets[i].toString().padStart(3)} (${pct.padStart(5)}%) ${bar}`,
+    );
   }
 
   console.log(`\n🎯 Top 5 Highest Scoring Signals:\n`);

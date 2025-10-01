@@ -602,9 +602,96 @@ function filterRankedChunks(
 
   console.log(`Filtering chunks. User has ${preferences.totalSaved} saves`);
 
-  // Simple approach: always return top 30 regardless of confidence
-  // Let the user's save/skip actions be the filter, not algorithmic thresholds
-  return sorted.slice(0, PIPELINE_SETTINGS.maxDailySignals);
+  const targetCount = PIPELINE_SETTINGS.maxDailySignals;
+
+  if (sorted.length <= targetCount) {
+    return sorted;
+  }
+
+  // STRATIFIED SAMPLING: Ensure distribution across confidence ranges
+  // This allows user to train on both good (high score) and bad (low score) examples
+  // Per Karpathy/Usman: "When I see a 23% confidence chunk and click skip,
+  // that's reinforcing data that the system got the bad chunk right"
+
+  // Define buckets for stratified sampling
+  const buckets = {
+    veryLow: sorted.filter((c) => c.relevanceScore < 0.3), // 0-30%
+    low: sorted.filter(
+      (c) => c.relevanceScore >= 0.3 && c.relevanceScore < 0.5,
+    ), // 30-50%
+    mid: sorted.filter(
+      (c) => c.relevanceScore >= 0.5 && c.relevanceScore < 0.65,
+    ), // 50-65%
+    high: sorted.filter(
+      (c) => c.relevanceScore >= 0.65 && c.relevanceScore < 0.8,
+    ), // 65-80%
+    veryHigh: sorted.filter((c) => c.relevanceScore >= 0.8), // 80-100%
+  };
+
+  // Target distribution (these percentages should sum to 100)
+  // Weighted toward high confidence but including low for training
+  const distribution = {
+    veryLow: 0.1, // 10% - Show some clearly bad examples
+    low: 0.15, // 15% - Show low confidence examples
+    mid: 0.25, // 25% - System is unsure
+    high: 0.35, // 35% - Likely good matches
+    veryHigh: 0.15, // 15% - Very confident matches
+  };
+
+  const selected: ScoredChunk[] = [];
+
+  // Sample from each bucket according to distribution
+  for (const [bucket, weight] of Object.entries(distribution)) {
+    const bucketChunks = buckets[bucket as keyof typeof buckets];
+    const targetFromBucket = Math.floor(targetCount * weight);
+
+    if (bucketChunks.length === 0) continue;
+
+    // Take top N from this bucket (still ranked within bucket)
+    const fromBucket = bucketChunks.slice(
+      0,
+      Math.min(targetFromBucket, bucketChunks.length),
+    );
+    selected.push(...fromBucket);
+  }
+
+  // If we haven't filled targetCount due to empty buckets, fill with highest remaining
+  if (selected.length < targetCount) {
+    const selectedIds = new Set(selected.map((c) => c.id));
+    const remaining = sorted.filter((c) => !selectedIds.has(c.id));
+    const needed = targetCount - selected.length;
+    selected.push(...remaining.slice(0, needed));
+  }
+
+  // Sort final selection by score descending for presentation
+  const final = selected.sort((a, b) => b.relevanceScore - a.relevanceScore);
+
+  // Log distribution for debugging
+  const finalBuckets = {
+    veryLow: final.filter((c) => c.relevanceScore < 0.3).length,
+    low: final.filter((c) => c.relevanceScore >= 0.3 && c.relevanceScore < 0.5)
+      .length,
+    mid: final.filter((c) => c.relevanceScore >= 0.5 && c.relevanceScore < 0.65)
+      .length,
+    high: final.filter(
+      (c) => c.relevanceScore >= 0.65 && c.relevanceScore < 0.8,
+    ).length,
+    veryHigh: final.filter((c) => c.relevanceScore >= 0.8).length,
+  };
+
+  console.log(
+    `Selected ${final.length} signals via stratified sampling:`,
+    `0-30%: ${finalBuckets.veryLow},`,
+    `30-50%: ${finalBuckets.low},`,
+    `50-65%: ${finalBuckets.mid},`,
+    `65-80%: ${finalBuckets.high},`,
+    `80-100%: ${finalBuckets.veryHigh}`,
+  );
+  console.log(
+    `Score range: ${final[final.length - 1]?.relevanceScore.toFixed(2)} - ${final[0]?.relevanceScore.toFixed(2)}`,
+  );
+
+  return final;
 }
 
 async function storeDailySignals(

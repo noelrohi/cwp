@@ -29,11 +29,121 @@ export const signalsRouter = createTRPCRouter({
       z
         .object({
           limit: z.number().int().min(1).max(200).optional(),
+          episodeId: z.string().optional(),
         })
         .optional(),
     )
     .query(async ({ ctx, input }) => {
       const limit = input?.limit ?? DEFAULT_SIGNAL_LIMIT;
+
+      if (input?.episodeId) {
+        const rows = await ctx.db
+          .select({
+            id: dailySignal.id,
+            relevanceScore: dailySignal.relevanceScore,
+            signalDate: dailySignal.signalDate,
+            title: dailySignal.title,
+            summary: dailySignal.summary,
+            excerpt: dailySignal.excerpt,
+            speakerName: dailySignal.speakerName,
+            chunkId: dailySignal.chunkId,
+            presentedAt: dailySignal.presentedAt,
+          })
+          .from(dailySignal)
+          .innerJoin(
+            transcriptChunk,
+            eq(dailySignal.chunkId, transcriptChunk.id),
+          )
+          .where(
+            and(
+              eq(dailySignal.userId, ctx.user.id),
+              isNull(dailySignal.userAction),
+              eq(transcriptChunk.episodeId, input.episodeId),
+            ),
+          )
+          .orderBy(
+            desc(dailySignal.signalDate),
+            desc(dailySignal.relevanceScore),
+          )
+          .limit(limit);
+
+        const unpresentedIds = rows
+          .filter((row) => row.presentedAt === null)
+          .map((row) => row.id);
+
+        if (unpresentedIds.length > 0) {
+          await ctx.db
+            .update(dailySignal)
+            .set({ presentedAt: new Date() })
+            .where(inArray(dailySignal.id, unpresentedIds));
+        }
+
+        const enrichedRows = await Promise.all(
+          rows.map(async (row) => {
+            const chunk = await ctx.db.query.transcriptChunk.findFirst({
+              where: eq(transcriptChunk.id, row.chunkId),
+              with: {
+                episode: {
+                  columns: {
+                    id: true,
+                    title: true,
+                    publishedAt: true,
+                    audioUrl: true,
+                    durationSec: true,
+                    podcastId: true,
+                  },
+                  with: {
+                    podcast: {
+                      columns: {
+                        id: true,
+                        title: true,
+                        imageUrl: true,
+                      },
+                    },
+                  },
+                },
+              },
+            });
+
+            return {
+              id: row.id,
+              relevanceScore: row.relevanceScore,
+              signalDate: row.signalDate,
+              title: row.title ?? buildFallbackTitle(chunk?.content ?? ""),
+              summary:
+                row.summary ?? buildFallbackSummary(chunk?.content ?? ""),
+              excerpt:
+                row.excerpt ?? buildFallbackExcerpt(chunk?.content ?? ""),
+              speakerName: row.speakerName,
+              chunk: {
+                id: chunk?.id ?? row.chunkId,
+                content: chunk?.content ?? "",
+                speaker: chunk?.speaker ?? null,
+                startTimeSec: chunk?.startTimeSec ?? null,
+                endTimeSec: chunk?.endTimeSec ?? null,
+              },
+              episode: chunk?.episode
+                ? {
+                    id: chunk.episode.id,
+                    title: chunk.episode.title,
+                    publishedAt: chunk.episode.publishedAt,
+                    audioUrl: chunk.episode.audioUrl,
+                    durationSec: chunk.episode.durationSec,
+                    podcast: chunk.episode.podcast
+                      ? {
+                          id: chunk.episode.podcast.id,
+                          title: chunk.episode.podcast.title,
+                          imageUrl: chunk.episode.podcast.imageUrl,
+                        }
+                      : null,
+                  }
+                : null,
+            };
+          }),
+        );
+
+        return enrichedRows;
+      }
 
       const rows = await ctx.db.query.dailySignal.findMany({
         where: and(
@@ -124,6 +234,47 @@ export const signalsRouter = createTRPCRouter({
           : null,
       }));
     }),
+
+  episodesWithSignals: protectedProcedure.query(async ({ ctx }) => {
+    const rows = await ctx.db
+      .select({
+        episodeId: episode.id,
+        episodeTitle: episode.title,
+        episodePublishedAt: episode.publishedAt,
+        podcastId: podcast.id,
+        podcastTitle: podcast.title,
+        signalCount: count(dailySignal.id),
+      })
+      .from(dailySignal)
+      .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
+      .innerJoin(episode, eq(transcriptChunk.episodeId, episode.id))
+      .innerJoin(podcast, eq(episode.podcastId, podcast.id))
+      .where(
+        and(
+          eq(dailySignal.userId, ctx.user.id),
+          isNull(dailySignal.userAction),
+        ),
+      )
+      .groupBy(
+        episode.id,
+        episode.title,
+        episode.publishedAt,
+        podcast.id,
+        podcast.title,
+      )
+      .orderBy(desc(sql`count(${dailySignal.id})`));
+
+    return rows.map((row) => ({
+      id: row.episodeId,
+      title: row.episodeTitle || "Untitled Episode",
+      publishedAt: row.episodePublishedAt,
+      podcast: {
+        id: row.podcastId,
+        title: row.podcastTitle || "Unknown Podcast",
+      },
+      signalCount: row.signalCount,
+    }));
+  }),
 
   byEpisode: protectedProcedure
     .input(
@@ -470,7 +621,10 @@ export const signalsRouter = createTRPCRouter({
         pendingSignalsQuery = ctx.db
           .select({ id: dailySignal.id })
           .from(dailySignal)
-          .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
+          .innerJoin(
+            transcriptChunk,
+            eq(dailySignal.chunkId, transcriptChunk.id),
+          )
           .where(
             and(
               eq(dailySignal.userId, ctx.user.id),
@@ -490,7 +644,12 @@ export const signalsRouter = createTRPCRouter({
       await ctx.db
         .update(dailySignal)
         .set({ userAction: "skipped", actionedAt: new Date() })
-        .where(inArray(dailySignal.id, pendingSignals.map((s) => s.id)));
+        .where(
+          inArray(
+            dailySignal.id,
+            pendingSignals.map((s) => s.id),
+          ),
+        );
 
       return { success: true, skippedCount: pendingSignals.length };
     }),

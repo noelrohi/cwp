@@ -103,7 +103,9 @@ async function findAndTest() {
 
   console.log(`\n📊 Statistics:`);
   console.log(`   Average similarity: ${(avgSim * 100).toFixed(1)}%`);
-  console.log(`   Model's score: ${(targetSignal.relevanceScore * 100).toFixed(1)}%`);
+  console.log(
+    `   Model's score: ${(targetSignal.relevanceScore * 100).toFixed(1)}%`,
+  );
   console.log(
     `   Difference: ${((targetSignal.relevanceScore - avgSim) * 100).toFixed(1)}%`,
   );

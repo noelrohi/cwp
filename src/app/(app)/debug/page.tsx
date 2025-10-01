@@ -1,16 +1,8 @@
 "use client";
 
-import {
-  Activity01Icon,
-  ArrowReloadHorizontalIcon,
-  ChartHistogramIcon,
-  SparklesIcon,
-  UserMultiple02Icon,
-} from "@hugeicons/core-free-icons";
+import { ArrowReloadHorizontalIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { useQuery } from "@tanstack/react-query";
 import {
   Card,
   CardContent,
@@ -75,7 +67,7 @@ export default function DebugPage() {
         </TabsList>
 
         <TabsContent value="overview" className="mt-6">
-          <OverviewTab />
+          <PreviewTab />
         </TabsContent>
 
         <TabsContent value="distribution" className="mt-6">
@@ -93,6 +85,305 @@ export default function DebugPage() {
 
       <EmbeddingDiagnostics />
     </main>
+  );
+}
+
+function PreviewTab() {
+  const trpc = useTRPC();
+  const metricsQuery = useQuery(trpc.signals.metrics.queryOptions());
+  const debugQuery = useQuery(trpc.signals.debug.queryOptions());
+  const validationQuery = useQuery(
+    trpc.signals.validationMetrics.queryOptions(),
+  );
+  const distributionQuery = useQuery(
+    trpc.signals.scoreDistribution.queryOptions(),
+  );
+
+  if (
+    metricsQuery.isLoading ||
+    debugQuery.isLoading ||
+    validationQuery.isLoading ||
+    distributionQuery.isLoading
+  ) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <HugeiconsIcon
+          icon={ArrowReloadHorizontalIcon}
+          size={32}
+          className="animate-spin text-muted-foreground"
+        />
+      </div>
+    );
+  }
+
+  const metrics = metricsQuery.data;
+  const debug = debugQuery.data;
+  const validation = validationQuery.data;
+  const distribution = distributionQuery.data;
+
+  if (!metrics || !debug) {
+    return (
+      <div className="text-center p-8 text-muted-foreground">
+        No data available
+      </div>
+    );
+  }
+
+  const phase =
+    debug.totalSaved < 10 ? "Random Exploration" : "Embedding Learning";
+  const hasValidation =
+    validation?.hasSavedChunks &&
+    validation?.pairwiseSimilarity &&
+    validation?.savedToCentroid &&
+    validation?.randomChunksSimilarity &&
+    validation?.centroidNorm;
+
+  const formatSim = (val: number) => `${(val * 100).toFixed(1)}%`;
+
+  // Get top 3 score buckets for quick view
+  const topBuckets = distribution
+    ? [...distribution].sort((a, b) => b.count - a.count).slice(0, 3)
+    : [];
+
+  return (
+    <div className="space-y-6">
+      {/* User Status */}
+      <Card>
+        <CardHeader>
+          <CardTitle>User Status</CardTitle>
+          <CardDescription>Quick overview of learning progress</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-4">
+            <div className="p-4 rounded-lg border border-border bg-muted/20">
+              <div className="text-sm text-muted-foreground mb-1">
+                Learning Phase
+              </div>
+              <div className="text-2xl font-bold">{phase}</div>
+              <div className="text-xs text-muted-foreground">
+                {debug.totalSaved}/10 saves
+              </div>
+            </div>
+
+            <div className="p-4 rounded-lg border border-border bg-muted/20">
+              <div className="text-sm text-muted-foreground mb-1">
+                Save Rate
+              </div>
+              <div className="text-2xl font-bold">
+                {Math.round(metrics.saveRate * 100)}%
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {metrics.totalSaved} saved / {metrics.totalSkipped} skipped
+              </div>
+            </div>
+
+            <div className="p-4 rounded-lg border border-border bg-muted/20">
+              <div className="text-sm text-muted-foreground mb-1">
+                Training Data
+              </div>
+              <div className="text-2xl font-bold">
+                {debug.savedChunksWithEmbeddings}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                chunks with embeddings
+              </div>
+            </div>
+
+            <div className="p-4 rounded-lg border border-border bg-muted/20">
+              <div className="text-sm text-muted-foreground mb-1">
+                Pending Signals
+              </div>
+              <div className="text-2xl font-bold">
+                {metrics.totalSignals - metrics.totalPresented}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                ready to review
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Score Distribution Preview */}
+      {topBuckets.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Score Distribution</CardTitle>
+            <CardDescription>
+              Top 3 score ranges in pending signals
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {topBuckets.map((bucket) => {
+                const total =
+                  distribution?.reduce((sum, b) => sum + b.count, 0) ?? 1;
+                const percentage = (bucket.count / total) * 100;
+                return (
+                  <div key={bucket.bucket} className="space-y-1">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-medium">{bucket.bucket}</span>
+                      <span className="text-muted-foreground">
+                        {bucket.count} signals ({percentage.toFixed(0)}%)
+                      </span>
+                    </div>
+                    <Progress value={percentage} className="h-2" />
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Validation Summary */}
+      {hasValidation && validation ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Model Performance</CardTitle>
+            <CardDescription>
+              Can the system distinguish your preferences?
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-2 mb-4">
+              <div className="p-4 rounded-lg border-2 border-green-500/20 bg-green-500/5">
+                <div className="text-sm font-medium mb-2 text-green-700 dark:text-green-400">
+                  Saved Chunks → Centroid
+                </div>
+                <div className="text-3xl font-bold">
+                  {formatSim(validation.savedToCentroid!.avg)}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  What you like
+                </div>
+              </div>
+
+              <div className="p-4 rounded-lg border-2 border-orange-500/20 bg-orange-500/5">
+                <div className="text-sm font-medium mb-2 text-orange-700 dark:text-orange-400">
+                  Random Chunks → Centroid
+                </div>
+                <div className="text-3xl font-bold">
+                  {formatSim(validation.randomChunksSimilarity!.avg)}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  Baseline
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-lg border border-border bg-muted/20">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-medium mb-1">
+                    Separation Score
+                  </div>
+                  <div className="text-2xl font-bold">
+                    {(
+                      ((validation.savedToCentroid!.avg -
+                        validation.randomChunksSimilarity!.avg) /
+                        validation.randomChunksSimilarity!.avg) *
+                      100
+                    ).toFixed(1)}
+                    % higher
+                  </div>
+                </div>
+                <div className="text-right">
+                  {validation.savedToCentroid!.avg >
+                  validation.randomChunksSimilarity!.avg * 1.2 ? (
+                    <span className="text-green-600 dark:text-green-400 text-sm font-medium">
+                      ✓ Working well
+                    </span>
+                  ) : validation.savedToCentroid!.avg >
+                    validation.randomChunksSimilarity!.avg * 1.05 ? (
+                    <span className="text-yellow-600 dark:text-yellow-400 text-sm font-medium">
+                      ⚠ Needs more data
+                    </span>
+                  ) : (
+                    <span className="text-red-600 dark:text-red-400 text-sm font-medium">
+                      ✗ Not working
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>Model Performance</CardTitle>
+            <CardDescription>
+              Save at least 10 signals to see validation metrics
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="p-4 rounded-lg border border-dashed border-muted-foreground/30 bg-muted/10 text-center">
+              <p className="text-muted-foreground">
+                Keep saving signals to build your preference profile
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Key Insights */}
+      <Card>
+        <CardHeader>
+          <CardTitle>What's Happening</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          {debug.totalSaved < 10 ? (
+            <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
+              <strong className="text-blue-700 dark:text-blue-400">
+                Random Phase:
+              </strong>{" "}
+              <span className="text-muted-foreground">
+                Showing random signals to learn your preferences. Save{" "}
+                {10 - debug.totalSaved} more to enable smart ranking.
+              </span>
+            </div>
+          ) : hasValidation ? (
+            <>
+              {validation.savedToCentroid!.avg >
+              validation.randomChunksSimilarity!.avg * 1.2 ? (
+                <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/20">
+                  <strong className="text-green-700 dark:text-green-400">
+                    System Working:
+                  </strong>{" "}
+                  <span className="text-muted-foreground">
+                    The model can distinguish your preferences from random
+                    content. High-scoring signals are genuinely relevant to you.
+                  </span>
+                </div>
+              ) : (
+                <div className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+                  <strong className="text-yellow-700 dark:text-yellow-400">
+                    Building Profile:
+                  </strong>{" "}
+                  <span className="text-muted-foreground">
+                    Your preferences are still being learned. Save more focused
+                    content to improve accuracy.
+                  </span>
+                </div>
+              )}
+              {validation.pairwiseSimilarity!.avg < 0.4 && (
+                <div className="p-3 rounded-lg bg-orange-500/10 border border-orange-500/20">
+                  <strong className="text-orange-700 dark:text-orange-400">
+                    Diverse Interests:
+                  </strong>{" "}
+                  <span className="text-muted-foreground">
+                    Your saved content covers diverse topics (
+                    {formatSim(validation.pairwiseSimilarity!.avg)} similarity).
+                    The model is learning your broad interests.
+                  </span>
+                </div>
+              )}
+            </>
+          ) : null}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
@@ -188,169 +479,6 @@ function EmbeddingDiagnostics() {
         </div>
       </CardContent>
     </Card>
-  );
-}
-
-function OverviewTab() {
-  const trpc = useTRPC();
-  const queryClient = useQueryClient();
-  const metricsQuery = useQuery(trpc.signals.metrics.queryOptions());
-  const debugQuery = useQuery(trpc.signals.debug.queryOptions());
-
-  const regenerateMutation = useMutation(
-    trpc.signals.regenerateForUser.mutationOptions(),
-  );
-
-  const handleRegenerate = async () => {
-    try {
-      await regenerateMutation.mutateAsync();
-      queryClient.invalidateQueries({ queryKey: trpc.signals.list.queryKey() });
-      queryClient.invalidateQueries({
-        queryKey: trpc.signals.debug.queryKey(),
-      });
-      toast.success("Signal regeneration triggered");
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to regenerate signals";
-      toast.error(message);
-    }
-  };
-
-  if (metricsQuery.isLoading || debugQuery.isLoading) {
-    return <OverviewSkeleton />;
-  }
-
-  const metrics = metricsQuery.data;
-  const debug = debugQuery.data;
-
-  if (!metrics || !debug) {
-    return (
-      <div className="text-center p-8 text-muted-foreground">
-        No data available
-      </div>
-    );
-  }
-
-  const phase =
-    debug.totalSaved < 10 ? "Random Exploration" : "Embedding Learning";
-  const phaseDescription =
-    debug.totalSaved < 10
-      ? `${10 - debug.totalSaved} more saves needed to enable embedding-based learning`
-      : `Using ${debug.savedChunksWithEmbeddings} saved chunk embeddings for similarity scoring`;
-
-  return (
-    <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Signals</CardTitle>
-            <HugeiconsIcon
-              icon={SparklesIcon}
-              size={16}
-              className="text-muted-foreground"
-            />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{metrics.totalSignals}</div>
-            <p className="text-xs text-muted-foreground">
-              {metrics.totalPresented} presented
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Save Rate</CardTitle>
-            <HugeiconsIcon
-              icon={Activity01Icon}
-              size={16}
-              className="text-muted-foreground"
-            />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {Math.round(metrics.saveRate * 100)}%
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {metrics.totalSaved} saved / {metrics.totalSkipped} skipped
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Learning Phase
-            </CardTitle>
-            <HugeiconsIcon
-              icon={ChartHistogramIcon}
-              size={16}
-              className="text-muted-foreground"
-            />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{debug.totalSaved}/10</div>
-            <p className="text-xs text-muted-foreground">{phase}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Training Data</CardTitle>
-            <HugeiconsIcon
-              icon={UserMultiple02Icon}
-              size={16}
-              className="text-muted-foreground"
-            />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {debug.savedChunksWithEmbeddings}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              chunks with embeddings
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Model Status</CardTitle>
-          <CardDescription>{phaseDescription}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span>Training Progress</span>
-              <span className="text-muted-foreground">
-                {Math.min(100, (debug.totalSaved / 10) * 100).toFixed(0)}%
-              </span>
-            </div>
-            <Progress value={Math.min(100, (debug.totalSaved / 10) * 100)} />
-          </div>
-
-          <div className="pt-4">
-            <Button
-              onClick={handleRegenerate}
-              disabled={regenerateMutation.isPending}
-              className="w-full sm:w-auto"
-            >
-              {regenerateMutation.isPending ? (
-                <HugeiconsIcon
-                  icon={ArrowReloadHorizontalIcon}
-                  size={16}
-                  className="animate-spin"
-                />
-              ) : (
-                <HugeiconsIcon icon={ArrowReloadHorizontalIcon} size={16} />
-              )}
-              Regenerate Signals
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
   );
 }
 
@@ -814,35 +942,6 @@ function ValidationSkeleton() {
         <Skeleton className="h-32 w-full" />
       </CardContent>
     </Card>
-  );
-}
-
-function OverviewSkeleton() {
-  return (
-    <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Card key={i}>
-            <CardHeader className="space-y-0 pb-2">
-              <Skeleton className="h-4 w-24" />
-            </CardHeader>
-            <CardContent>
-              <Skeleton className="h-8 w-16 mb-2" />
-              <Skeleton className="h-3 w-32" />
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-      <Card>
-        <CardHeader>
-          <Skeleton className="h-6 w-32 mb-2" />
-          <Skeleton className="h-4 w-64" />
-        </CardHeader>
-        <CardContent>
-          <Skeleton className="h-24 w-full" />
-        </CardContent>
-      </Card>
-    </div>
   );
 }
 

@@ -86,19 +86,21 @@ export const episodesRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const rateLimitResult = await checkRateLimit(
-        `episode-process:${ctx.user.id}`,
-        RATE_LIMITS.EPISODE_PROCESSING,
-      );
-
-      if (!rateLimitResult.success) {
-        const resetIn = Math.ceil(
-          (rateLimitResult.resetAt - Date.now()) / 1000 / 60,
+      if (process.env.NODE_ENV === "production") {
+        const rateLimitResult = await checkRateLimit(
+          `episode-process:${ctx.user.id}`,
+          RATE_LIMITS.EPISODE_PROCESSING,
         );
-        throw new TRPCError({
-          code: "TOO_MANY_REQUESTS",
-          message: `Rate limit exceeded. Try again in ${resetIn} minutes.`,
-        });
+
+        if (!rateLimitResult.success) {
+          const resetIn = Math.ceil(
+            (rateLimitResult.resetAt - Date.now()) / 1000 / 60,
+          );
+          throw new TRPCError({
+            code: "TOO_MANY_REQUESTS",
+            message: `Rate limit exceeded. Try again in ${resetIn} minutes.`,
+          });
+        }
       }
 
       const episodeRecord = await ctx.db.query.episode.findFirst({

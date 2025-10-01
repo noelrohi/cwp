@@ -7,10 +7,7 @@
 import { cosineSimilarity } from "ai";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/server/db";
-import {
-  savedChunk,
-  transcriptChunk,
-} from "@/server/db/schema/podcast";
+import { savedChunk, transcriptChunk } from "@/server/db/schema/podcast";
 
 function calculateCentroid(embeddings: number[][]): number[] {
   if (embeddings.length === 0) {
@@ -90,8 +87,12 @@ async function validateUserEmbeddings(userId: string) {
       : 0;
 
   console.log(`   Average: ${(avgPairwiseSim * 100).toFixed(1)}%`);
-  console.log(`   Min: ${(Math.min(...pairwiseSimilarities) * 100).toFixed(1)}%`);
-  console.log(`   Max: ${(Math.max(...pairwiseSimilarities) * 100).toFixed(1)}%`);
+  console.log(
+    `   Min: ${(Math.min(...pairwiseSimilarities) * 100).toFixed(1)}%`,
+  );
+  console.log(
+    `   Max: ${(Math.max(...pairwiseSimilarities) * 100).toFixed(1)}%`,
+  );
 
   if (avgPairwiseSim > 0.5) {
     console.log(`   ✓ Saved chunks cluster together`);
@@ -176,17 +177,11 @@ async function validateUserEmbeddings(userId: string) {
     console.log(`   ✓ System is working correctly`);
     console.log(`   ✓ Centroid represents user preferences`);
     console.log(`   ✓ Can distinguish saved from random content`);
-  } else if (
-    avgSavedToCentroid > 0.7 &&
-    avgRandomToCentroid > 0.7
-  ) {
+  } else if (avgSavedToCentroid > 0.7 && avgRandomToCentroid > 0.7) {
     console.log(`   ✗ Centroid update logic may be broken`);
     console.log(`   ✗ All content looks the same to the model`);
     console.log(`   → Check continuous-learning.ts centroid updates`);
-  } else if (
-    avgSavedToCentroid < 0.6 &&
-    avgRandomToCentroid < 0.6
-  ) {
+  } else if (avgSavedToCentroid < 0.6 && avgRandomToCentroid < 0.6) {
     console.log(`   ⚠ Embedding space geometry is uniform`);
     console.log(`   → User may have diverse interests`);
     console.log(`   → Or needs more training data (save more signals)`);

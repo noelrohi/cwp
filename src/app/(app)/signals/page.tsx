@@ -6,6 +6,7 @@ import {
   BookmarkCheck01Icon,
   BookmarkRemove01Icon,
   Calendar03Icon,
+  Copy01Icon,
   Delete01Icon,
   FilterIcon,
   SparklesIcon,
@@ -91,11 +92,19 @@ function PendingSignalsTab() {
   const [pendingAction, setPendingAction] = useState<SignalAction | null>(null);
   const [isSkippingAll, setIsSkippingAll] = useState(false);
   const [selectedEpisodeId, setSelectedEpisodeId] = useState<string>("all");
+  const [selectedConfidence, setSelectedConfidence] = useState<string>("all");
 
-  const signalsQuery = useQuery(trpc.signals.list.queryOptions({ limit: 100 }));
+  const episodesQuery = useQuery(
+    trpc.signals.episodesWithSignals.queryOptions(),
+  );
+  const signalsQuery = useQuery(
+    trpc.signals.list.queryOptions({
+      limit: 100,
+      episodeId: selectedEpisodeId !== "all" ? selectedEpisodeId : undefined,
+    }),
+  );
 
   const actionMutation = useMutation(trpc.signals.action.mutationOptions());
-  const skipAllMutation = useMutation(trpc.signals.skipAll.mutationOptions());
 
   const handleAction = async (signalId: string, action: SignalAction) => {
     setPendingSignalId(signalId);
@@ -117,15 +126,16 @@ function PendingSignalsTab() {
   const handleSkipAll = async () => {
     setIsSkippingAll(true);
     try {
-      const result = await skipAllMutation.mutateAsync({
-        episodeId: selectedEpisodeId === "all" ? undefined : selectedEpisodeId,
-      });
+      const signalIds = signals.map((s) => s.id);
+
+      await Promise.all(
+        signalIds.map((signalId) =>
+          actionMutation.mutateAsync({ signalId, action: "skipped" }),
+        ),
+      );
+
       queryClient.invalidateQueries({ queryKey: trpc.signals.list.queryKey() });
-      const message =
-        selectedEpisodeId === "all"
-          ? `Skipped ${result.skippedCount} signals`
-          : `Skipped ${result.skippedCount} signals from this episode`;
-      toast.success(message);
+      toast.success(`Skipped ${signalIds.length} signals`);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unable to skip signals.";
@@ -133,6 +143,46 @@ function PendingSignalsTab() {
     } finally {
       setIsSkippingAll(false);
     }
+  };
+
+  const handleCopySignals = () => {
+    const signalsText = signals
+      .map((signal, idx) => {
+        const score = signal.relevanceScore
+          ? `${Math.round(signal.relevanceScore * 100)}%`
+          : "N/A";
+        const episode = signal.episode?.title || "Unknown Episode";
+        const podcast = signal.episode?.podcast?.title || "Unknown Podcast";
+        const speaker = signal.speakerName || "Unknown speaker";
+        const content = signal.chunk.content.trim();
+        const startTime = signal.chunk.startTimeSec
+          ? formatTimestamp(signal.chunk.startTimeSec)
+          : null;
+        const endTime = signal.chunk.endTimeSec
+          ? formatTimestamp(signal.chunk.endTimeSec)
+          : null;
+        const timestamp =
+          startTime && endTime
+            ? `${startTime} - ${endTime}`
+            : startTime
+              ? startTime
+              : "N/A";
+
+        return `Signal ${idx + 1}:
+Score: ${score}
+Episode: ${episode}
+Podcast: ${podcast}
+Speaker: ${speaker}
+Timestamp: ${timestamp}
+Content: ${content}
+---`;
+      })
+      .join("\n\n");
+
+    navigator.clipboard.writeText(signalsText);
+    toast.success(
+      `Copied ${signals.length} signal${signals.length !== 1 ? "s" : ""} to clipboard`,
+    );
   };
 
   const isLoading = signalsQuery.isLoading;
@@ -160,42 +210,41 @@ function PendingSignalsTab() {
     });
   }, [signalsQuery.data]);
 
-  // Extract unique episodes for filter
   const episodeOptions = useMemo(() => {
-    const episodeMap = new Map<
-      string,
-      { id: string; title: string; podcastTitle: string; count: number }
-    >();
+    return (episodesQuery.data ?? []).map((episode) => ({
+      id: episode.id,
+      title: episode.title,
+      podcastTitle: episode.podcast.title,
+      count: episode.signalCount,
+    }));
+  }, [episodesQuery.data]);
 
-    allSignals.forEach((signal) => {
-      if (signal.episode) {
-        const episodeId = signal.episode.id;
-        const existing = episodeMap.get(episodeId);
-        if (existing) {
-          existing.count++;
-        } else {
-          episodeMap.set(episodeId, {
-            id: episodeId,
-            title: signal.episode.title || "Untitled Episode",
-            podcastTitle: signal.episode.podcast?.title || "Unknown Podcast",
-            count: 1,
-          });
-        }
-      }
-    });
+  const totalSignalsCount = useMemo(() => {
+    return episodeOptions.reduce((sum, ep) => sum + ep.count, 0);
+  }, [episodeOptions]);
 
-    return Array.from(episodeMap.values()).sort((a, b) => b.count - a.count);
-  }, [allSignals]);
-
-  // Filter signals by selected episode
+  // Filter signals by confidence only (episode filtering is server-side)
   const signals = useMemo(() => {
-    if (selectedEpisodeId === "all") {
-      return allSignals;
+    let filtered = allSignals;
+
+    if (selectedConfidence !== "all") {
+      filtered = filtered.filter((signal) => {
+        const score = signal.relevanceScore ?? 0;
+        switch (selectedConfidence) {
+          case "high":
+            return score >= 0.65;
+          case "medium":
+            return score >= 0.5 && score < 0.65;
+          case "low":
+            return score < 0.5;
+          default:
+            return true;
+        }
+      });
     }
-    return allSignals.filter(
-      (signal) => signal.episode?.id === selectedEpisodeId,
-    );
-  }, [allSignals, selectedEpisodeId]);
+
+    return filtered;
+  }, [allSignals, selectedConfidence]);
 
   // Preload audio for unique episodes when signals are loaded
   useEffect(() => {
@@ -215,24 +264,38 @@ function PendingSignalsTab() {
 
   return (
     <>
-      {!isLoading && !fetchError && allSignals.length > 0 && (
-        <div className="mb-4 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2">
-            <HugeiconsIcon
-              icon={FilterIcon}
-              size={16}
-              className="text-muted-foreground"
-            />
+      {!isLoading && !fetchError && episodeOptions.length > 0 && (
+        <div className="mb-4 space-y-3">
+          <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
             <Select
               value={selectedEpisodeId}
               onValueChange={setSelectedEpisodeId}
             >
-              <SelectTrigger className="w-full sm:w-[400px]">
-                <SelectValue placeholder="Filter by episode" />
+              <SelectTrigger className="w-full sm:w-[300px]">
+                <SelectValue placeholder="Filter by episode">
+                  {selectedEpisodeId === "all" ? (
+                    `All Episodes (${totalSignalsCount} signals)`
+                  ) : (
+                    <div className="flex flex-col items-start overflow-hidden text-left">
+                      <span className="font-medium truncate w-full">
+                        {
+                          episodeOptions.find((e) => e.id === selectedEpisodeId)
+                            ?.title
+                        }
+                      </span>
+                      <span className="text-xs text-muted-foreground truncate w-full">
+                        {
+                          episodeOptions.find((e) => e.id === selectedEpisodeId)
+                            ?.podcastTitle
+                        }
+                      </span>
+                    </div>
+                  )}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">
-                  All Episodes ({allSignals.length} signals)
+                  All Episodes ({totalSignalsCount} signals)
                 </SelectItem>
                 {episodeOptions.map((episode) => (
                   <SelectItem key={episode.id} value={episode.id}>
@@ -246,26 +309,51 @@ function PendingSignalsTab() {
                 ))}
               </SelectContent>
             </Select>
+            <Select
+              value={selectedConfidence}
+              onValueChange={setSelectedConfidence}
+            >
+              <SelectTrigger className="w-full sm:w-[180px]">
+                <SelectValue placeholder="Confidence" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Confidence</SelectItem>
+                <SelectItem value="high">High (≥65%)</SelectItem>
+                <SelectItem value="medium">Medium (50-65%)</SelectItem>
+                <SelectItem value="low">Low (&lt;50%)</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleSkipAll}
-            disabled={isSkippingAll || signals.length === 0}
-          >
-            {isSkippingAll ? (
-              <HugeiconsIcon
-                icon={ArrowReloadHorizontalIcon}
-                size={16}
-                className="animate-spin"
-              />
-            ) : (
-              <HugeiconsIcon icon={BookmarkRemove01Icon} size={16} />
-            )}
-            {selectedEpisodeId === "all"
-              ? "Skip All"
-              : `Skip All (${signals.length})`}
-          </Button>
+          {signals.length > 0 && (
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-muted-foreground">
+                Showing {signals.length} signal{signals.length !== 1 ? "s" : ""}
+              </span>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={handleCopySignals}>
+                  <HugeiconsIcon icon={Copy01Icon} size={16} />
+                  Copy Signals
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSkipAll}
+                  disabled={isSkippingAll || signals.length === 0}
+                >
+                  {isSkippingAll ? (
+                    <HugeiconsIcon
+                      icon={ArrowReloadHorizontalIcon}
+                      size={16}
+                      className="animate-spin"
+                    />
+                  ) : (
+                    <HugeiconsIcon icon={BookmarkRemove01Icon} size={16} />
+                  )}
+                  Skip All ({signals.length})
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
       {isLoading ? (
@@ -298,7 +386,7 @@ function PendingSignalsTab() {
             ) {
               metadata.push({
                 icon: <HugeiconsIcon icon={SparklesIcon} size={12} />,
-                label: `${Math.round(signal.relevanceScore * 100)}%`,
+                label: `c${Math.round(signal.relevanceScore * 100)}%`,
               });
             }
             const audioSource = signal.episode?.audioUrl
@@ -387,7 +475,6 @@ function SavedSignalsTab() {
     fetchError && fetchError instanceof Error ? fetchError.message : undefined;
   const allSavedSignals = savedQuery.data ?? [];
 
-  // Extract unique episodes for filter
   const episodeOptions = useMemo(() => {
     const episodeMap = new Map<
       string,
@@ -636,4 +723,15 @@ function formatDate(value: Date | string | null): string {
     day: "numeric",
     year: "numeric",
   });
+}
+
+function formatTimestamp(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  }
+  return `${minutes}:${secs.toString().padStart(2, "0")}`;
 }

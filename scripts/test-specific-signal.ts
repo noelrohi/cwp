@@ -38,7 +38,9 @@ async function testSignal() {
   const targetSignal = signal[0];
 
   console.log(`\n📊 Analyzing Signal: ${signalId}\n`);
-  console.log(`Current Score: ${(targetSignal.relevanceScore * 100).toFixed(1)}%\n`);
+  console.log(
+    `Current Score: ${(targetSignal.relevanceScore * 100).toFixed(1)}%\n`,
+  );
   console.log(`Content:\n${targetSignal.content}\n`);
   console.log("=".repeat(80));
 
@@ -95,14 +97,21 @@ async function testSignal() {
   }
 
   console.log("\n\nBottom 5 Least Similar Saved Chunks:\n");
-  for (let i = Math.max(0, similarities.length - 5); i < similarities.length; i++) {
+  for (
+    let i = Math.max(0, similarities.length - 5);
+    i < similarities.length;
+    i++
+  ) {
     const sim = similarities[i];
     console.log(`${(sim.similarity * 100).toFixed(1)}% - ${sim.content}...`);
   }
 
   const avgSim =
-    similarities.reduce((sum, s) => sum + s.similarity, 0) / similarities.length;
-  console.log(`\n📊 Average similarity to saved content: ${(avgSim * 100).toFixed(1)}%`);
+    similarities.reduce((sum, s) => sum + s.similarity, 0) /
+    similarities.length;
+  console.log(
+    `\n📊 Average similarity to saved content: ${(avgSim * 100).toFixed(1)}%`,
+  );
   console.log(
     `📊 Model's predicted score: ${(targetSignal.relevanceScore * 100).toFixed(1)}%`,
   );
