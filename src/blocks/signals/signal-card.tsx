@@ -122,8 +122,8 @@ export function SignalCard(props: SignalCardProps) {
             ))}
           </div>
         ) : null}
-        <div className="flex gap-2 sm:flex-wrap">
-          {audio ? (
+        {audio ? (
+          <div className="flex gap-2">
             <Button
               size="sm"
               variant="secondary"
@@ -143,9 +143,8 @@ export function SignalCard(props: SignalCardProps) {
                   ? "Pause"
                   : "Play"}
             </Button>
-          ) : null}
-          {children}
-        </div>
+          </div>
+        ) : null}
       </div>
       <div className="mt-3 rounded-lg bg-muted/50 p-3 sm:mt-4 sm:p-4">
         <div className="space-y-2">
@@ -194,6 +193,9 @@ export function SignalCard(props: SignalCardProps) {
           )}
         </div>
       </div>
+      {children ? (
+        <div className="mt-3 flex gap-2 sm:mt-4">{children}</div>
+      ) : null}
     </article>
   );
 }
