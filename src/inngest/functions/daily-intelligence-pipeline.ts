@@ -23,6 +23,8 @@ const DAILY_INTELLIGENCE_USER_EVENT =
   "app/daily-intelligence.user.process" as const;
 const DAILY_INTELLIGENCE_EPISODE_EVENT =
   "app/daily-intelligence.episode.process" as const;
+const DAILY_INTELLIGENCE_EPISODE_REPROCESS_EVENT =
+  "app/daily-intelligence.episode.reprocess" as const;
 const DAILY_INTELLIGENCE_GENERATE_SIGNALS_EVENT =
   "app/daily-intelligence.user.generate-signals" as const;
 
@@ -343,6 +345,185 @@ export const dailyIntelligenceProcessEpisode = inngest.createFunction(
   },
 );
 
+export const dailyIntelligenceReprocessEpisode = inngest.createFunction(
+  { id: "daily-intelligence-reprocess-episode" },
+  { event: DAILY_INTELLIGENCE_EPISODE_REPROCESS_EVENT },
+  async ({ event, step, logger }) => {
+    const { pipelineRunId, userId, episodeId } =
+      event.data as DailyIntelligenceEpisodeEvent;
+
+    logger.info(
+      `Pipeline run ${pipelineRunId}: FULL REPROCESS of episode ${episodeId} for user ${userId}`,
+    );
+
+    const episodeData = await step.run("load-episode", async () => {
+      const result = await db.query.episode.findFirst({
+        where: eq(episode.id, episodeId),
+        with: {
+          podcast: true,
+        },
+      });
+      return result ?? null;
+    });
+
+    if (!episodeData) {
+      logger.error(
+        `Pipeline run ${pipelineRunId}: episode ${episodeId} not found`,
+      );
+      return { status: "missing" } as const;
+    }
+
+    try {
+      // DESTRUCTIVE: Delete all chunks and signals for this episode
+      // Cascade deletes will handle:
+      // - transcript_chunk -> daily_signal (cascade)
+      // - transcript_chunk -> saved_chunk (cascade)
+      // - episode_speaker_mapping (cascade)
+      await step.run("delete-existing-data", async () => {
+        // Delete chunks (signals and saved_chunks will cascade)
+        await db
+          .delete(transcriptChunk)
+          .where(eq(transcriptChunk.episodeId, episodeId));
+
+        // Delete speaker mapping
+        await db
+          .delete(episodeSpeakerMapping)
+          .where(eq(episodeSpeakerMapping.episodeId, episodeId));
+
+        logger.info(
+          `Deleted all chunks, signals, and speaker mappings for episode ${episodeId}`,
+        );
+      });
+
+      // Reset episode to pending state
+      await step.run("reset-episode-status", async () => {
+        await db
+          .update(episode)
+          .set({
+            status: "pending",
+            transcriptUrl: null,
+            lastProcessedAt: null,
+          })
+          .where(eq(episode.id, episodeId));
+      });
+
+      const normalisedEpisode = {
+        ...episodeData,
+        createdAt: new Date(episodeData.createdAt),
+        updatedAt: new Date(episodeData.updatedAt),
+        publishedAt: episodeData.publishedAt
+          ? new Date(episodeData.publishedAt)
+          : null,
+        lastProcessedAt: null,
+        processingStartedAt: episodeData.processingStartedAt
+          ? new Date(episodeData.processingStartedAt)
+          : null,
+      };
+
+      // Re-fetch transcript with force=true
+      const transcriptResult = await step.run(
+        "force-refetch-transcript",
+        async () => {
+          return await ensureEpisodeTranscript({
+            db,
+            episode: normalisedEpisode,
+            force: true, // FORCE REFETCH
+          });
+        },
+      );
+
+      normalisedEpisode.transcriptUrl = transcriptResult.transcriptUrl;
+
+      // Re-chunk transcript
+      await step.run("rechunk-transcript", async () => {
+        const { chunkCount } = await chunkEpisodeTranscript({
+          db,
+          episode: normalisedEpisode,
+          minTokens: CHUNK_SETTINGS.minWords,
+          maxTokens: CHUNK_SETTINGS.maxWords,
+          skipEmbeddings: true,
+        });
+        return { chunkCount };
+      });
+
+      // Re-identify speakers
+      await step.run("reidentify-speakers", async () => {
+        if (!episodeData.podcast) {
+          logger.warn(
+            `Episode ${episodeId} has no podcast info, skipping speaker identification`,
+          );
+          return { identified: false };
+        }
+
+        const speakerResult = await identifyEpisodeSpeakers({
+          db,
+          episodeId: episodeData.id,
+          episodeTitle: episodeData.title,
+          episodeDescription: episodeData.description,
+          itunesSummary: episodeData.itunesSummary,
+          contentEncoded: episodeData.contentEncoded,
+          creator: episodeData.creator,
+          podcastTitle: episodeData.podcast.title,
+          podcastDescription: episodeData.podcast.description,
+        });
+
+        return {
+          identified: speakerResult !== null,
+          confidence: speakerResult?.confidence,
+        };
+      });
+
+      // Generate embeddings
+      await step.run("regenerate-embeddings", async () => {
+        const { embeddingsGenerated } = await generateMissingEmbeddings({
+          db,
+          episode: normalisedEpisode,
+        });
+        return { embeddingsGenerated };
+      });
+    } catch (error) {
+      const err =
+        error instanceof Error
+          ? error
+          : new Error(
+              typeof error === "string" ? error : JSON.stringify(error),
+            );
+      logger.error(
+        `Pipeline run ${pipelineRunId}: failed to reprocess episode ${episodeId}`,
+        {
+          error: err.message,
+          stack: err.stack,
+        },
+      );
+      await step.run("mark-failed", async () => {
+        await db
+          .update(episode)
+          .set({ status: "failed" })
+          .where(eq(episode.id, episodeId));
+      });
+      throw err;
+    }
+
+    // Generate new signals
+    await step.sendEvent("signal-generation", [
+      {
+        name: DAILY_INTELLIGENCE_GENERATE_SIGNALS_EVENT,
+        data: {
+          pipelineRunId,
+          userId,
+          episodeId,
+        } satisfies DailyIntelligenceGenerateSignalsEvent,
+      },
+    ]);
+
+    logger.info(
+      `Pipeline run ${pipelineRunId}: episode ${episodeId} FULLY REPROCESSED, signal generation dispatched`,
+    );
+
+    return { status: "reprocessed" } as const;
+  },
+);
+
 export const dailyIntelligenceGenerateSignals = inngest.createFunction(
   { id: "daily-intelligence-generate-signals" },
   { event: DAILY_INTELLIGENCE_GENERATE_SIGNALS_EVENT },
@@ -352,7 +533,7 @@ export const dailyIntelligenceGenerateSignals = inngest.createFunction(
 
     const signalsGenerated = await step.run(
       "generate-user-signals",
-      async () => await generateUserSignals(userId),
+      async () => await generateUserSignals(userId, episodeId, true),
     );
 
     // Mark episode as processed only after successful signal generation
@@ -370,7 +551,7 @@ export const dailyIntelligenceGenerateSignals = inngest.createFunction(
     }
 
     logger.info(
-      `Pipeline run ${pipelineRunId}: generated ${signalsGenerated} signals for user ${userId}`,
+      `Pipeline run ${pipelineRunId}: generated ${signalsGenerated} signals for user ${userId}${episodeId ? ` (episode: ${episodeId})` : ""}`,
     );
 
     return { signalsGenerated };
@@ -385,13 +566,25 @@ export const dailyIntelligenceGenerateSignals = inngest.createFunction(
  * - Let user actions be the filter, not algorithmic assumptions
  *
  * Store top 30 results for daily review
+ *
+ * @param userId - User to generate signals for
+ * @param episodeId - Optional episode ID to limit signal generation to specific episode
+ * @param forceRegenerate - If true, includes chunks that already have signals (for regeneration)
  */
-async function generateUserSignals(userId: string): Promise<number> {
+async function generateUserSignals(
+  userId: string,
+  episodeId?: string,
+  forceRegenerate = false,
+): Promise<number> {
   const preferences = await getOrCreateUserPreferences(userId);
-  const candidateChunks = await getNewChunksForUser(userId);
+  const candidateChunks = await getNewChunksForUser(
+    userId,
+    episodeId,
+    forceRegenerate,
+  );
 
   console.log(
-    `User ${userId}: Found ${candidateChunks.length} candidate chunks`,
+    `User ${userId}: Found ${candidateChunks.length} candidate chunks${episodeId ? ` (episode: ${episodeId})` : ""}${forceRegenerate ? " [FORCE REGENERATE]" : ""}`,
   );
 
   if (candidateChunks.length === 0) return 0;
@@ -464,7 +657,11 @@ async function getOrCreateUserPreferences(
   return created;
 }
 
-async function getNewChunksForUser(userId: string): Promise<ChunkRecord[]> {
+async function getNewChunksForUser(
+  userId: string,
+  episodeId?: string,
+  forceRegenerate = false,
+): Promise<ChunkRecord[]> {
   const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
 
   const chunks = await db
@@ -498,7 +695,10 @@ async function getNewChunksForUser(userId: string): Promise<ChunkRecord[]> {
       and(
         eq(podcast.userId, userId),
         sql`${transcriptChunk.embedding} IS NOT NULL`,
-        sql`${dailySignal.id} IS NULL`,
+        // Only exclude existing signals if NOT force regenerating
+        forceRegenerate ? undefined : sql`${dailySignal.id} IS NULL`,
+        // Filter by specific episode if provided
+        episodeId ? eq(episode.id, episodeId) : undefined,
         gte(transcriptChunk.createdAt, twoDaysAgo),
         // CRITICAL: Filter by word count to match chunking settings
         sql`${transcriptChunk.wordCount} >= ${CHUNK_SETTINGS.minWords}`,
@@ -507,7 +707,7 @@ async function getNewChunksForUser(userId: string): Promise<ChunkRecord[]> {
     );
 
   console.log(
-    `User ${userId}: getNewChunksForUser returned ${chunks.length} chunks`,
+    `User ${userId}: getNewChunksForUser returned ${chunks.length} chunks${episodeId ? ` (episode: ${episodeId})` : ""}${forceRegenerate ? " [including existing signals]" : ""}`,
   );
   return chunks;
 }
@@ -763,9 +963,23 @@ async function storeDailySignals(
     .onConflictDoUpdate({
       target: [dailySignal.chunkId, dailySignal.userId],
       set: {
-        relevanceScore: sql`excluded.relevance_score`,
-        excerpt: sql`excluded.excerpt`,
-        speakerName: sql`excluded.speaker_name`,
+        // Only update scores for signals user hasn't acted on
+        // Preserves historical context for training data
+        relevanceScore: sql`CASE 
+          WHEN ${dailySignal.userAction} IS NULL 
+          THEN excluded.relevance_score 
+          ELSE ${dailySignal.relevanceScore} 
+        END`,
+        excerpt: sql`CASE 
+          WHEN ${dailySignal.userAction} IS NULL 
+          THEN excluded.excerpt 
+          ELSE ${dailySignal.excerpt} 
+        END`,
+        speakerName: sql`CASE 
+          WHEN ${dailySignal.userAction} IS NULL 
+          THEN excluded.speaker_name 
+          ELSE ${dailySignal.speakerName} 
+        END`,
         signalDate: sql`excluded.signal_date`,
       },
     });

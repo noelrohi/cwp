@@ -14,6 +14,7 @@ export {
   dailyIntelligencePipeline,
   dailyIntelligenceProcessEpisode,
   dailyIntelligenceProcessUser,
+  dailyIntelligenceReprocessEpisode,
 } from "./daily-intelligence-pipeline";
 export { feedParserPipeline } from "./feed-parser";
 export { healthCheck } from "./health-monitoring";

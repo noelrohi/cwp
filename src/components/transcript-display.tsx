@@ -181,9 +181,6 @@ export function TranscriptDisplay({
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <div>
-          <h2 className="text-xl font-semibold">Transcript</h2>
-        </div>
         <div className="flex items-center gap-2">
           {/* Search */}
           <div className="relative">

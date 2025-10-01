@@ -111,6 +111,7 @@ function PendingSignalsTab() {
   );
 
   const actionMutation = useMutation(trpc.signals.action.mutationOptions());
+  const undoMutation = useMutation(trpc.signals.undo.mutationOptions());
 
   const handleAction = async (signalId: string, action: SignalAction) => {
     setPendingSignalId(signalId);
@@ -118,7 +119,32 @@ function PendingSignalsTab() {
     try {
       await actionMutation.mutateAsync({ signalId, action });
       queryClient.invalidateQueries({ queryKey: trpc.signals.list.queryKey() });
-      toast.success(action === "saved" ? "Signal saved" : "Signal skipped");
+      queryClient.invalidateQueries({
+        queryKey: trpc.signals.metrics.queryKey(),
+      });
+      toast.success(action === "saved" ? "Signal saved" : "Signal skipped", {
+        action: {
+          label: "Undo",
+          onClick: async () => {
+            try {
+              await undoMutation.mutateAsync({ signalId });
+              queryClient.invalidateQueries({
+                queryKey: trpc.signals.list.queryKey(),
+              });
+              queryClient.invalidateQueries({
+                queryKey: trpc.signals.metrics.queryKey(),
+              });
+              toast.success("Action undone");
+            } catch (error) {
+              const message =
+                error instanceof Error
+                  ? error.message
+                  : "Unable to undo action.";
+              toast.error(message);
+            }
+          },
+        },
+      });
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unable to update signal.";

@@ -223,4 +223,70 @@ export const episodesRouter = createTRPCRouter({
         pipelineRunId,
       };
     }),
+
+  reprocessEpisode: protectedProcedure
+    .input(
+      z.object({
+        episodeId: z.string(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (process.env.NODE_ENV === "production") {
+        const rateLimitResult = await checkRateLimit(
+          `episode-reprocess:${ctx.user.id}`,
+          RATE_LIMITS.EPISODE_PROCESSING,
+        );
+
+        if (!rateLimitResult.success) {
+          const resetIn = Math.ceil(
+            (rateLimitResult.resetAt - Date.now()) / 1000 / 60,
+          );
+          throw new TRPCError({
+            code: "TOO_MANY_REQUESTS",
+            message: `Rate limit exceeded. Try again in ${resetIn} minutes.`,
+          });
+        }
+      }
+
+      const episodeRecord = await ctx.db.query.episode.findFirst({
+        where: and(
+          eq(episode.id, input.episodeId),
+          eq(episode.userId, ctx.user.id),
+        ),
+        columns: {
+          id: true,
+          status: true,
+        },
+      });
+
+      if (!episodeRecord) {
+        throw new Error("Episode not found");
+      }
+
+      const now = new Date();
+      await ctx.db
+        .update(episode)
+        .set({
+          status: "processing" as const,
+          processingStartedAt: now,
+          errorMessage: null,
+        })
+        .where(eq(episode.id, input.episodeId));
+
+      const pipelineRunId = randomUUID();
+
+      await inngest.send({
+        name: "app/daily-intelligence.episode.reprocess",
+        data: {
+          pipelineRunId,
+          userId: ctx.user.id,
+          episodeId: input.episodeId,
+        },
+      });
+
+      return {
+        status: "dispatched" as const,
+        pipelineRunId,
+      };
+    }),
 });

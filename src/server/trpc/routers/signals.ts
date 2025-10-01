@@ -10,6 +10,7 @@ import {
   isNull,
   sql,
 } from "drizzle-orm";
+import { nanoid } from "nanoid";
 import { z } from "zod";
 import { inngest } from "@/inngest/client";
 import {
@@ -235,6 +236,37 @@ export const signalsRouter = createTRPCRouter({
       }));
     }),
 
+  episodeStats: protectedProcedure
+    .input(
+      z.object({
+        episodeId: z.string().min(1),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const stats = await ctx.db
+        .select({
+          total: count(),
+          pending: sql<number>`SUM(CASE WHEN ${dailySignal.userAction} IS NULL THEN 1 ELSE 0 END)`,
+          saved: sql<number>`SUM(CASE WHEN ${dailySignal.userAction} = 'saved' THEN 1 ELSE 0 END)`,
+          skipped: sql<number>`SUM(CASE WHEN ${dailySignal.userAction} = 'skipped' THEN 1 ELSE 0 END)`,
+        })
+        .from(dailySignal)
+        .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
+        .where(
+          and(
+            eq(dailySignal.userId, ctx.user.id),
+            eq(transcriptChunk.episodeId, input.episodeId),
+          ),
+        );
+
+      return {
+        total: Number(stats[0]?.total) || 0,
+        pending: Number(stats[0]?.pending) || 0,
+        saved: Number(stats[0]?.saved) || 0,
+        skipped: Number(stats[0]?.skipped) || 0,
+      };
+    }),
+
   episodesWithSignals: protectedProcedure.query(async ({ ctx }) => {
     const rows = await ctx.db
       .select({
@@ -280,9 +312,25 @@ export const signalsRouter = createTRPCRouter({
     .input(
       z.object({
         episodeId: z.string().min(1),
+        filter: z.enum(["all", "pending", "actioned"]).optional(),
       }),
     )
     .query(async ({ ctx, input }) => {
+      const filter = input.filter ?? "pending";
+
+      // Build where clause based on filter
+      const whereConditions = [
+        eq(dailySignal.userId, ctx.user.id),
+        eq(transcriptChunk.episodeId, input.episodeId),
+      ];
+
+      if (filter === "pending") {
+        whereConditions.push(isNull(dailySignal.userAction));
+      } else if (filter === "actioned") {
+        whereConditions.push(isNotNull(dailySignal.userAction));
+      }
+      // "all" doesn't add any action filter
+
       const rows = await ctx.db
         .select({
           id: dailySignal.id,
@@ -292,6 +340,8 @@ export const signalsRouter = createTRPCRouter({
           summary: dailySignal.summary,
           excerpt: dailySignal.excerpt,
           speakerName: dailySignal.speakerName,
+          userAction: dailySignal.userAction,
+          actionedAt: dailySignal.actionedAt,
           chunkId: dailySignal.chunkId,
           chunkContent: transcriptChunk.content,
           chunkSpeaker: transcriptChunk.speaker,
@@ -310,12 +360,7 @@ export const signalsRouter = createTRPCRouter({
         .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
         .innerJoin(episode, eq(transcriptChunk.episodeId, episode.id))
         .leftJoin(podcast, eq(episode.podcastId, podcast.id))
-        .where(
-          and(
-            eq(dailySignal.userId, ctx.user.id),
-            eq(transcriptChunk.episodeId, input.episodeId),
-          ),
-        )
+        .where(and(...whereConditions))
         .orderBy(
           desc(dailySignal.signalDate),
           desc(dailySignal.relevanceScore),
@@ -329,6 +374,8 @@ export const signalsRouter = createTRPCRouter({
         summary: row.summary ?? buildFallbackSummary(row.chunkContent),
         excerpt: row.excerpt ?? buildFallbackExcerpt(row.chunkContent),
         speakerName: row.speakerName,
+        userAction: row.userAction,
+        actionedAt: row.actionedAt,
         chunk: {
           id: row.chunkId,
           content: row.chunkContent,
@@ -369,6 +416,7 @@ export const signalsRouter = createTRPCRouter({
         columns: {
           id: true,
           userAction: true,
+          chunkId: true,
         },
       });
 
@@ -388,6 +436,16 @@ export const signalsRouter = createTRPCRouter({
         .set({ userAction: input.action, actionedAt: new Date() })
         .where(eq(dailySignal.id, input.signalId));
 
+      // If saving, also add to savedChunk table
+      if (input.action === "saved") {
+        await ctx.db.insert(savedChunk).values({
+          id: nanoid(),
+          userId: ctx.user.id,
+          chunkId: signal.chunkId,
+          savedAt: new Date(),
+        });
+      }
+
       await inngest.send({
         name: "signal/actioned",
         data: {
@@ -396,7 +454,60 @@ export const signalsRouter = createTRPCRouter({
         },
       });
 
-      return { success: true };
+      return { success: true, chunkId: signal.chunkId };
+    }),
+
+  undo: protectedProcedure
+    .input(
+      z.object({
+        signalId: z.string().min(1),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const signal = await ctx.db.query.dailySignal.findFirst({
+        where: and(
+          eq(dailySignal.id, input.signalId),
+          eq(dailySignal.userId, ctx.user.id),
+        ),
+        columns: {
+          id: true,
+          userAction: true,
+          chunkId: true,
+        },
+      });
+
+      if (!signal) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Signal not found" });
+      }
+
+      if (!signal.userAction) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Signal has no action to undo",
+        });
+      }
+
+      const previousAction = signal.userAction;
+
+      // If undoing a save, remove from savedChunk table
+      if (previousAction === "saved") {
+        await ctx.db
+          .delete(savedChunk)
+          .where(
+            and(
+              eq(savedChunk.userId, ctx.user.id),
+              eq(savedChunk.chunkId, signal.chunkId),
+            ),
+          );
+      }
+
+      // Clear the action on the signal
+      await ctx.db
+        .update(dailySignal)
+        .set({ userAction: null, actionedAt: null })
+        .where(eq(dailySignal.id, input.signalId));
+
+      return { success: true, previousAction };
     }),
 
   metrics: protectedProcedure.query(async ({ ctx }) => {
@@ -475,14 +586,19 @@ export const signalsRouter = createTRPCRouter({
         : 0;
 
     return {
-      totalSignals: totalSignals[0]?.count || 0,
-      totalPresented: totalPresented[0]?.count || 0,
-      totalPending: totalPending[0]?.count || 0,
-      totalSaved: totalSaved[0]?.count || 0,
-      totalSkipped: totalSkipped[0]?.count || 0,
+      totalSignals: Number(totalSignals[0]?.count) || 0,
+      totalPresented: Number(totalPresented[0]?.count) || 0,
+      totalPending: Number(totalPending[0]?.count) || 0,
+      totalSaved: Number(totalSaved[0]?.count) || 0,
+      totalSkipped: Number(totalSkipped[0]?.count) || 0,
       saveRate: Math.round(saveRate * 100) / 100,
       actionRate: Math.round(actionRate * 100) / 100,
-      dailyEngagement,
+      dailyEngagement: dailyEngagement.map((row) => ({
+        date: row.date,
+        presented: Number(row.presented),
+        saved: Number(row.saved),
+        skipped: Number(row.skipped),
+      })),
     };
   }),
 

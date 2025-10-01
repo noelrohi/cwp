@@ -2,24 +2,32 @@
 
 import {
   ArrowLeft01Icon,
+  BookmarkCheck01Icon,
+  BookmarkRemove01Icon,
   Calendar03Icon,
   Clock01Icon,
+  Copy01Icon,
   Download01Icon,
   File01Icon,
   Loading03Icon,
   SparklesIcon,
+  Undo02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
 import { use, useState } from "react";
 import { toast } from "sonner";
+
+type SignalAction = "saved" | "skipped";
+
 import {
   SignalCard,
   type SignalCardMetadataItem,
 } from "@/blocks/signals/signal-card";
 import { TranscriptDisplay } from "@/components/transcript-display";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -28,6 +36,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useTRPC } from "@/server/trpc/client";
 import type { TranscriptData } from "@/types/transcript";
 
@@ -35,8 +50,17 @@ export default function EpisodeDetailPage(props: {
   params: Promise<{ id: string }>;
 }) {
   const trpc = useTRPC();
+  const queryClient = useQueryClient();
   const params = use(props.params);
   const [transcript, setTranscript] = useState<TranscriptData | null>(null);
+  const [signalFilter, setSignalFilter] = useState<
+    "all" | "pending" | "actioned"
+  >("pending");
+  const [showProcessDialog, setShowProcessDialog] = useState(false);
+  const [showReprocessDialog, setShowReprocessDialog] = useState(false);
+  const [showRegenerateDialog, setShowRegenerateDialog] = useState(false);
+  const [pendingSignalId, setPendingSignalId] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<SignalAction | null>(null);
 
   const episode = useQuery(
     trpc.episodes.get.queryOptions({
@@ -47,23 +71,46 @@ export default function EpisodeDetailPage(props: {
   const signals = useQuery(
     trpc.signals.byEpisode.queryOptions({
       episodeId: params.id,
+      filter: signalFilter,
+    }),
+  );
+
+  const episodeStats = useQuery(
+    trpc.signals.episodeStats.queryOptions({
+      episodeId: params.id,
     }),
   );
 
   const processEpisode = useMutation(
     trpc.episodes.processEpisode.mutationOptions({
-      onSuccess: (result) => {
-        const isReprocess = result.status === "dispatched";
-        toast.success(
-          isReprocess
-            ? "Episode processing re-run dispatched"
-            : "Episode processing started",
-        );
+      onSuccess: () => {
+        toast.success("Episode processing started");
         episode.refetch();
         signals.refetch();
+        episodeStats.refetch();
+        setShowProcessDialog(false);
       },
       onError: (error) => {
         toast.error(`Failed to process episode: ${error.message}`);
+        setShowProcessDialog(false);
+      },
+    }),
+  );
+
+  const reprocessEpisode = useMutation(
+    trpc.episodes.reprocessEpisode.mutationOptions({
+      onSuccess: () => {
+        toast.success(
+          "Episode reprocessing started - all existing data will be replaced",
+        );
+        episode.refetch();
+        signals.refetch();
+        episodeStats.refetch();
+        setShowReprocessDialog(false);
+      },
+      onError: (error) => {
+        toast.error(`Failed to reprocess episode: ${error.message}`);
+        setShowReprocessDialog(false);
       },
     }),
   );
@@ -73,12 +120,82 @@ export default function EpisodeDetailPage(props: {
       onSuccess: () => {
         toast.success("Signal regeneration started");
         signals.refetch();
+        episodeStats.refetch();
+        setShowRegenerateDialog(false);
       },
       onError: (error) => {
         toast.error(`Failed to regenerate signals: ${error.message}`);
+        setShowRegenerateDialog(false);
       },
     }),
   );
+
+  const actionMutation = useMutation(trpc.signals.action.mutationOptions());
+  const undoMutation = useMutation(trpc.signals.undo.mutationOptions());
+
+  const handleAction = async (signalId: string, action: SignalAction) => {
+    setPendingSignalId(signalId);
+    setPendingAction(action);
+    try {
+      await actionMutation.mutateAsync({ signalId, action });
+      queryClient.invalidateQueries({
+        queryKey: trpc.signals.byEpisode.queryKey(),
+      });
+      queryClient.invalidateQueries({
+        queryKey: trpc.signals.episodeStats.queryKey(),
+      });
+      toast.success(action === "saved" ? "Signal saved" : "Signal skipped", {
+        action: {
+          label: "Undo",
+          onClick: async () => {
+            try {
+              await undoMutation.mutateAsync({ signalId });
+              queryClient.invalidateQueries({
+                queryKey: trpc.signals.byEpisode.queryKey(),
+              });
+              queryClient.invalidateQueries({
+                queryKey: trpc.signals.episodeStats.queryKey(),
+              });
+              toast.success("Action undone");
+            } catch (error) {
+              const message =
+                error instanceof Error
+                  ? error.message
+                  : "Unable to undo action.";
+              toast.error(message);
+            }
+          },
+        },
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to update signal.";
+      toast.error(message);
+    } finally {
+      setPendingSignalId(null);
+      setPendingAction(null);
+    }
+  };
+
+  const handleUndo = async (signalId: string) => {
+    setPendingSignalId(signalId);
+    try {
+      await undoMutation.mutateAsync({ signalId });
+      queryClient.invalidateQueries({
+        queryKey: trpc.signals.byEpisode.queryKey(),
+      });
+      queryClient.invalidateQueries({
+        queryKey: trpc.signals.episodeStats.queryKey(),
+      });
+      toast.success("Action undone");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to undo action.";
+      toast.error(message);
+    } finally {
+      setPendingSignalId(null);
+    }
+  };
 
   const fetchTranscript = async (url: string) => {
     try {
@@ -91,6 +208,46 @@ export default function EpisodeDetailPage(props: {
     } catch (_error) {
       toast.error("Failed to load transcript");
     }
+  };
+
+  const handleCopySignals = () => {
+    const signalsText = relatedSignals
+      .map((signal, idx) => {
+        const score = signal.relevanceScore
+          ? `${Math.round(signal.relevanceScore * 100)}%`
+          : "N/A";
+        const episode = signal.episode?.title || "Unknown Episode";
+        const podcast = signal.episode?.podcast?.title || "Unknown Podcast";
+        const speaker = signal.speakerName || "Unknown speaker";
+        const content = signal.chunk.content.trim();
+        const startTime = signal.chunk.startTimeSec
+          ? formatTimestamp(signal.chunk.startTimeSec)
+          : null;
+        const endTime = signal.chunk.endTimeSec
+          ? formatTimestamp(signal.chunk.endTimeSec)
+          : null;
+        const timestamp =
+          startTime && endTime
+            ? `${startTime} - ${endTime}`
+            : startTime
+              ? startTime
+              : "N/A";
+
+        return `Signal ${idx + 1}:
+Score: ${score}
+Episode: ${episode}
+Podcast: ${podcast}
+Speaker: ${speaker}
+Timestamp: ${timestamp}
+Content: ${content}
+---`;
+      })
+      .join("\n\n");
+
+    navigator.clipboard.writeText(signalsText);
+    toast.success(
+      `Copied ${relatedSignals.length} signal${relatedSignals.length !== 1 ? "s" : ""} to clipboard`,
+    );
   };
 
   if (episode.isLoading) {
@@ -131,14 +288,19 @@ export default function EpisodeDetailPage(props: {
   }
 
   const episodeData = episode.data;
-  const relatedSignals = signals.data ?? [];
+  const relatedSignals = (signals.data ?? []).sort((a, b) => {
+    const timeA = a.chunk.startTimeSec ?? 0;
+    const timeB = b.chunk.startTimeSec ?? 0;
+    return timeA - timeB;
+  });
   const isProcessing =
-    episodeData?.status === "processing" || processEpisode.isPending;
+    episodeData?.status === "processing" ||
+    processEpisode.isPending ||
+    reprocessEpisode.isPending;
   const isRegenerating = regenerateSignals.isPending;
   const isProcessed = episodeData?.status === "processed";
   const processButtonLabel = (() => {
     if (isProcessing) return "Processing...";
-    if (isProcessed) return "Re-run Processing";
     return "Process Episode";
   })();
 
@@ -204,43 +366,260 @@ export default function EpisodeDetailPage(props: {
 
             {/* Action Buttons */}
             <div className="flex flex-wrap gap-2">
-              <Button
-                onClick={() => processEpisode.mutate({ episodeId: params.id })}
-                disabled={isProcessing}
-                size="sm"
-              >
-                {isProcessing ? (
-                  <HugeiconsIcon
-                    icon={Loading03Icon}
-                    size={16}
-                    className="animate-spin"
-                  />
-                ) : (
-                  <HugeiconsIcon icon={SparklesIcon} size={16} />
-                )}
-                {processButtonLabel}
-              </Button>
+              {!isProcessed && (
+                <Dialog
+                  open={showProcessDialog}
+                  onOpenChange={setShowProcessDialog}
+                >
+                  <DialogTrigger asChild>
+                    <Button disabled={isProcessing} size="sm">
+                      {isProcessing ? (
+                        <HugeiconsIcon
+                          icon={Loading03Icon}
+                          size={16}
+                          className="animate-spin"
+                        />
+                      ) : (
+                        <HugeiconsIcon icon={SparklesIcon} size={16} />
+                      )}
+                      {processButtonLabel}
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Process Episode</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div className="space-y-2 text-sm text-muted-foreground">
+                        <p className="font-medium text-foreground">
+                          This will process the episode and create signals:
+                        </p>
+                        <ul className="list-disc list-inside space-y-1 ml-2">
+                          <li>Fetch transcript from audio</li>
+                          <li>Split into semantic chunks (~100-800 words)</li>
+                          <li>Identify speakers using AI</li>
+                          <li>Generate embeddings and relevance scores</li>
+                          <li>Create up to 30 signals for review</li>
+                        </ul>
+                        <p className="mt-3">
+                          <strong>Duration:</strong> Usually 2-5 minutes
+                          depending on episode length
+                        </p>
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => setShowProcessDialog(false)}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          onClick={() =>
+                            processEpisode.mutate({ episodeId: params.id })
+                          }
+                          disabled={isProcessing}
+                        >
+                          {isProcessing ? "Processing..." : "Start Processing"}
+                        </Button>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              )}
 
               {isProcessed && (
-                <Button
-                  onClick={() =>
-                    regenerateSignals.mutate({ episodeId: params.id })
-                  }
-                  disabled={isRegenerating}
-                  variant="outline"
-                  size="sm"
-                >
-                  {isRegenerating ? (
-                    <HugeiconsIcon
-                      icon={Loading03Icon}
-                      size={16}
-                      className="animate-spin"
-                    />
-                  ) : (
-                    <HugeiconsIcon icon={SparklesIcon} size={16} />
-                  )}
-                  Regenerate Signals
-                </Button>
+                <>
+                  <Dialog
+                    open={showRegenerateDialog}
+                    onOpenChange={setShowRegenerateDialog}
+                  >
+                    <DialogTrigger asChild>
+                      <Button
+                        disabled={isRegenerating}
+                        variant="outline"
+                        size="sm"
+                      >
+                        {isRegenerating ? (
+                          <HugeiconsIcon
+                            icon={Loading03Icon}
+                            size={16}
+                            className="animate-spin"
+                          />
+                        ) : (
+                          <HugeiconsIcon icon={SparklesIcon} size={16} />
+                        )}
+                        Regenerate Signals
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Regenerate Signals</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4">
+                        <div className="space-y-2 text-sm text-muted-foreground">
+                          <p className="font-medium text-foreground">
+                            This will regenerate signals for this episode only:
+                          </p>
+                          <ul className="list-disc list-inside space-y-1 ml-2">
+                            <li>
+                              Re-score all chunks using your latest preferences
+                            </li>
+                            <li>Update relevance scores for pending signals</li>
+                            <li>Add new signals from any new chunks</li>
+                            <li>
+                              Apply current stratified sampling (0-100%
+                              distribution)
+                            </li>
+                          </ul>
+
+                          {episodeStats.data && (
+                            <div className="mt-3 p-3 bg-muted rounded-lg">
+                              <p className="font-medium text-foreground mb-1">
+                                Current episode signals:
+                              </p>
+                              <div className="flex gap-4 text-xs">
+                                <span>{episodeStats.data.total} total</span>
+                                {episodeStats.data.pending > 0 && (
+                                  <span className="text-amber-600 dark:text-amber-400">
+                                    {episodeStats.data.pending} pending
+                                  </span>
+                                )}
+                                {episodeStats.data.saved > 0 && (
+                                  <span className="text-green-600 dark:text-green-400">
+                                    {episodeStats.data.saved} saved
+                                  </span>
+                                )}
+                                {episodeStats.data.skipped > 0 && (
+                                  <span className="text-muted-foreground">
+                                    {episodeStats.data.skipped} skipped
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          <p className="mt-3 text-green-600 dark:text-green-400">
+                            <strong>Preserved:</strong> Your saves and skips
+                            won't be changed or deleted.
+                          </p>
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            onClick={() => setShowRegenerateDialog(false)}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            onClick={() =>
+                              regenerateSignals.mutate({ episodeId: params.id })
+                            }
+                            disabled={isRegenerating}
+                          >
+                            {isRegenerating
+                              ? "Regenerating..."
+                              : "Regenerate Signals"}
+                          </Button>
+                        </div>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+
+                  <Dialog
+                    open={showReprocessDialog}
+                    onOpenChange={setShowReprocessDialog}
+                  >
+                    <DialogTrigger asChild>
+                      <Button
+                        disabled={isProcessing}
+                        variant="destructive"
+                        size="sm"
+                      >
+                        {isProcessing ? (
+                          <HugeiconsIcon
+                            icon={Loading03Icon}
+                            size={16}
+                            className="animate-spin"
+                          />
+                        ) : (
+                          <HugeiconsIcon icon={SparklesIcon} size={16} />
+                        )}
+                        Reprocess Episode
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle className="text-destructive">
+                          ⚠️ Reprocess Episode from Scratch
+                        </DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4">
+                        <div className="space-y-2 text-sm text-muted-foreground">
+                          <p className="font-medium text-destructive">
+                            This will DELETE all existing data and reprocess
+                            from scratch:
+                          </p>
+                          <ul className="list-disc list-inside space-y-1 ml-2">
+                            <li>Delete all transcript chunks</li>
+                            <li>Delete all signals (saved and skipped)</li>
+                            <li>Delete speaker identification mappings</li>
+                            <li>Re-fetch transcript from audio</li>
+                            <li>Re-chunk with current settings</li>
+                            <li>Re-identify speakers using AI</li>
+                            <li>Generate new embeddings</li>
+                            <li>Create new signals</li>
+                          </ul>
+
+                          {episodeStats.data && episodeStats.data.saved > 0 && (
+                            <div className="mt-3 p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
+                              <p className="font-medium text-destructive mb-1">
+                                ⚠️ You will lose {episodeStats.data.saved} saved
+                                signal{episodeStats.data.saved !== 1 ? "s" : ""}{" "}
+                                from this episode
+                              </p>
+                              <p className="text-xs">
+                                (Saves from other episodes are not affected)
+                              </p>
+                            </div>
+                          )}
+
+                          <p className="mt-3 font-medium text-foreground">
+                            Use this when:
+                          </p>
+                          <ul className="list-disc list-inside space-y-1 ml-2">
+                            <li>Transcript had errors or quality issues</li>
+                            <li>Speaker identification failed</li>
+                            <li>Chunking logic has been updated</li>
+                          </ul>
+
+                          <p className="mt-3 text-muted-foreground">
+                            <strong>Duration:</strong> 3-7 minutes depending on
+                            episode length
+                          </p>
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            onClick={() => setShowReprocessDialog(false)}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            onClick={() =>
+                              reprocessEpisode.mutate({ episodeId: params.id })
+                            }
+                            disabled={isProcessing}
+                          >
+                            {isProcessing
+                              ? "Reprocessing..."
+                              : "Delete and Reprocess"}
+                          </Button>
+                        </div>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </>
               )}
 
               {episodeData?.transcriptUrl && (
@@ -279,16 +658,36 @@ export default function EpisodeDetailPage(props: {
                       </div>
                     </DialogContent>
                   </Dialog>
-                  <Button variant="outline" size="sm" asChild>
-                    <a
-                      href={episodeData.transcriptUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      <HugeiconsIcon icon={Download01Icon} size={16} />
-                      Download
-                    </a>
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm">
+                        <HugeiconsIcon icon={Download01Icon} size={16} />
+                        Download
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem asChild>
+                        <a
+                          href={episodeData.transcriptUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          Download Transcript
+                        </a>
+                      </DropdownMenuItem>
+                      {episodeData.audioUrl && (
+                        <DropdownMenuItem asChild>
+                          <a
+                            href={episodeData.audioUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            Download Audio
+                          </a>
+                        </DropdownMenuItem>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </>
               )}
             </div>
@@ -298,9 +697,45 @@ export default function EpisodeDetailPage(props: {
 
       {/* Related Signals */}
       <section className="space-y-3 sm:space-y-4">
-        <h2 className="text-base sm:text-lg font-semibold font-serif">
-          Related Signals
-        </h2>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <h2 className="text-base sm:text-lg font-semibold font-serif">
+            Related Signals
+          </h2>
+
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+            {relatedSignals.length > 0 && (
+              <Button variant="outline" size="sm" onClick={handleCopySignals}>
+                <HugeiconsIcon icon={Copy01Icon} size={16} />
+                Copy Signals
+              </Button>
+            )}
+            <Tabs
+              value={signalFilter}
+              onValueChange={(v) => setSignalFilter(v as typeof signalFilter)}
+            >
+              <TabsList>
+                <TabsTrigger value="pending">
+                  Pending
+                  {episodeStats.data?.pending ? (
+                    <Badge variant="secondary" className="ml-1.5">
+                      {episodeStats.data.pending}
+                    </Badge>
+                  ) : null}
+                </TabsTrigger>
+                <TabsTrigger value="actioned">
+                  Processed
+                  {episodeStats.data &&
+                  episodeStats.data.saved + episodeStats.data.skipped > 0 ? (
+                    <Badge variant="secondary" className="ml-1.5">
+                      {episodeStats.data.saved + episodeStats.data.skipped}
+                    </Badge>
+                  ) : null}
+                </TabsTrigger>
+                <TabsTrigger value="all">All</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+        </div>
 
         {signals.isLoading ? (
           <div className="grid gap-3 sm:grid-cols-2">
@@ -321,12 +756,19 @@ export default function EpisodeDetailPage(props: {
           </div>
         ) : relatedSignals.length === 0 ? (
           <div className="rounded-xl border border-border/50 bg-muted/30 p-6 text-base text-muted-foreground">
-            No signals yet. Start processing above and check back after the
-            pipeline finishes.
+            {signalFilter === "pending" && episodeStats.data?.total === 0
+              ? "No signals yet. Start processing above and check back after the pipeline finishes."
+              : signalFilter === "pending"
+                ? "No pending signals. All signals have been processed."
+                : signalFilter === "actioned"
+                  ? "No processed signals yet. Start reviewing signals to see them here."
+                  : "No signals found for this episode."}
           </div>
         ) : (
           <div className="space-y-4">
             {relatedSignals.map((signal) => {
+              const isPending = pendingSignalId === signal.id;
+              const isSignalPending = !signal.userAction;
               const speakerDisplay = signal.speakerName?.trim()
                 ? signal.speakerName
                 : signal.chunk.speaker?.trim()
@@ -358,7 +800,81 @@ export default function EpisodeDetailPage(props: {
                   endTimeSec={signal.chunk.endTimeSec ?? null}
                   metadata={metadata}
                   audio={audioSource}
-                />
+                >
+                  {isSignalPending ? (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 sm:flex-none"
+                        onClick={() => handleAction(signal.id, "skipped")}
+                        disabled={isPending}
+                      >
+                        {isPending && pendingAction === "skipped" ? (
+                          <HugeiconsIcon
+                            icon={Loading03Icon}
+                            size={16}
+                            className="animate-spin"
+                          />
+                        ) : (
+                          <HugeiconsIcon
+                            icon={BookmarkRemove01Icon}
+                            size={16}
+                          />
+                        )}
+                        Skip
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="flex-1 sm:flex-none"
+                        onClick={() => handleAction(signal.id, "saved")}
+                        disabled={isPending}
+                      >
+                        {isPending && pendingAction === "saved" ? (
+                          <HugeiconsIcon
+                            icon={Loading03Icon}
+                            size={16}
+                            className="animate-spin"
+                          />
+                        ) : (
+                          <HugeiconsIcon icon={BookmarkCheck01Icon} size={16} />
+                        )}
+                        Save
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Badge
+                        variant={
+                          signal.userAction === "saved"
+                            ? "default"
+                            : "secondary"
+                        }
+                        className="text-xs"
+                      >
+                        {signal.userAction === "saved" ? "Saved" : "Skipped"}
+                      </Badge>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 sm:flex-none"
+                        onClick={() => handleUndo(signal.id)}
+                        disabled={isPending}
+                      >
+                        {isPending ? (
+                          <HugeiconsIcon
+                            icon={Loading03Icon}
+                            size={16}
+                            className="animate-spin"
+                          />
+                        ) : (
+                          <HugeiconsIcon icon={Undo02Icon} size={16} />
+                        )}
+                        Undo
+                      </Button>
+                    </>
+                  )}
+                </SignalCard>
               );
             })}
           </div>
@@ -377,4 +893,15 @@ function formatDate(value: Date | string | null | undefined): string | null {
     day: "numeric",
     year: "numeric",
   });
+}
+
+function formatTimestamp(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  }
+  return `${minutes}:${secs.toString().padStart(2, "0")}`;
 }
