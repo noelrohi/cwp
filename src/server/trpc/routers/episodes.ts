@@ -19,8 +19,14 @@ export const episodesRouter = createTRPCRouter({
         where: and(eq(episode.id, input.episodeId)),
         with: {
           podcast: true,
-          transcriptChunks: true,
-          speakerMapping: true,
+          // Only load speakerMapping - transcriptChunks are not used on the episode page
+          // (transcript is fetched separately via transcriptUrl)
+          speakerMapping: {
+            columns: {
+              speakerMappings: true,
+              confidence: true,
+            },
+          },
         },
       });
 
