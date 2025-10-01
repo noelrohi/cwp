@@ -11,6 +11,7 @@ import {
   Copy01Icon,
   Download01Icon,
   File01Icon,
+  FingerPrintIcon,
   Loading03Icon,
   SparklesIcon,
   Undo02Icon,
@@ -45,6 +46,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useTRPC } from "@/server/trpc/client";
 import type { TranscriptData } from "@/types/transcript";
 
@@ -306,20 +312,45 @@ Content: ${content}
     return "Process Episode";
   })();
 
+  const handleCopyEpisodeId = () => {
+    navigator.clipboard.writeText(params.id);
+    toast.success("Episode ID copied to clipboard");
+  };
+
   return (
     <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
       {/* Back Navigation */}
-      <Link
-        href={
-          episodeData?.podcast
-            ? `/podcast/${episodeData.podcast.id}`
-            : "/podcasts"
-        }
-        className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <HugeiconsIcon icon={ArrowLeft01Icon} size={16} />
-        Back to {episodeData?.podcast?.title || "Podcasts"}
-      </Link>
+      <div className="flex items-center justify-between">
+        <Link
+          href={
+            episodeData?.podcast
+              ? `/podcast/${episodeData.podcast.id}`
+              : "/podcasts"
+          }
+          className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <HugeiconsIcon icon={ArrowLeft01Icon} size={16} />
+          Back to {episodeData?.podcast?.title || "Podcasts"}
+        </Link>
+
+        {process.env.NODE_ENV === "development" && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleCopyEpisodeId}
+                className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+              >
+                <HugeiconsIcon icon={FingerPrintIcon} size={12} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Copy Episode ID</p>
+            </TooltipContent>
+          </Tooltip>
+        )}
+      </div>
 
       {/* Episode Header */}
       <div className="space-y-4">
@@ -466,11 +497,12 @@ Content: ${content}
                             <li>
                               Re-score all chunks using your latest preferences
                             </li>
-                            <li>Update relevance scores for pending signals</li>
-                            <li>Add new signals from any new chunks</li>
                             <li>
-                              Apply current stratified sampling (0-100%
-                              distribution)
+                              Add new signals from previously unselected chunks
+                            </li>
+                            <li>
+                              Apply current stratified sampling (top 30 across
+                              0-100% distribution)
                             </li>
                           </ul>
 
@@ -500,10 +532,20 @@ Content: ${content}
                             </div>
                           )}
 
-                          <p className="mt-3 text-green-600 dark:text-green-400">
-                            <strong>Preserved:</strong> Your saves and skips
-                            won't be changed or deleted.
-                          </p>
+                          <div className="mt-3 space-y-2">
+                            <p className="text-green-600 dark:text-green-400">
+                              <strong>Preserved:</strong> Your saved and skipped
+                              signals won't be changed
+                            </p>
+                            <p className="text-amber-600 dark:text-amber-400">
+                              <strong>Updated:</strong> Pending signals will be
+                              re-scored with your latest preferences
+                            </p>
+                            <p className="text-blue-600 dark:text-blue-400">
+                              <strong>Added:</strong> New signals may be added
+                              from previously unselected chunks
+                            </p>
+                          </div>
                         </div>
                         <div className="flex justify-end gap-2">
                           <Button

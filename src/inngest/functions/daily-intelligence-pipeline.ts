@@ -1036,26 +1036,8 @@ async function storeDailySignals(
 ): Promise<void> {
   if (chunks.length === 0) return;
 
-  const existingSignals = await db
-    .select({ chunkId: dailySignal.chunkId })
-    .from(dailySignal)
-    .where(
-      and(
-        eq(dailySignal.userId, userId),
-        inArray(
-          dailySignal.chunkId,
-          chunks.map((chunk) => chunk.id),
-        ),
-      ),
-    );
-
-  const existingIds = new Set(existingSignals.map((signal) => signal.chunkId));
-  const newChunks = chunks.filter((chunk) => !existingIds.has(chunk.id));
-
-  if (newChunks.length === 0) return;
-
   // 🚀 BATCH SPEAKER LOOKUP - Single query instead of 200+
-  const episodeIds = [...new Set(newChunks.map((chunk) => chunk.episodeId))];
+  const episodeIds = [...new Set(chunks.map((chunk) => chunk.episodeId))];
 
   const speakerMappings = await db
     .select()
@@ -1071,7 +1053,8 @@ async function storeDailySignals(
   const signalDate = new Date();
 
   // Create signals with cached speaker names
-  const signals = newChunks.map((chunk) => {
+  // Include ALL chunks - UPSERT will handle existing vs new
+  const signals = chunks.map((chunk) => {
     const episodeSpeakers = speakerMap.get(chunk.episodeId);
     const speakerName =
       episodeSpeakers?.[chunk.speaker || "0"] ||

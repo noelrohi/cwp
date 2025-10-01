@@ -206,10 +206,6 @@ export function TranscriptDisplay({
               </Button>
             )}
           </div>
-          <Button variant="ghost" size="sm" onClick={onClose}>
-            <HugeiconsIcon icon={Cancel01Icon} size={16} />
-            Hide
-          </Button>
         </div>
       </div>
 
