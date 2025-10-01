@@ -670,15 +670,14 @@ export const signalsRouter = createTRPCRouter({
       totalSkipped: 0,
     };
 
-    // Count saved chunks with embeddings
+    // Count saved chunks with embeddings (from savedChunk table - source of truth)
     const savedWithEmbeddings = await ctx.db
       .select({ count: count() })
-      .from(dailySignal)
-      .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
+      .from(savedChunk)
+      .innerJoin(transcriptChunk, eq(savedChunk.chunkId, transcriptChunk.id))
       .where(
         and(
-          eq(dailySignal.userId, ctx.user.id),
-          eq(dailySignal.userAction, "saved"),
+          eq(savedChunk.userId, ctx.user.id),
           sql`${transcriptChunk.embedding} IS NOT NULL`,
         ),
       );
