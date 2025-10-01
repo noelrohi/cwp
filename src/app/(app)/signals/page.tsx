@@ -272,24 +272,24 @@ Content: ${content}
     <>
       {!isLoading && !fetchError && episodeOptions.length > 0 && (
         <div className="mb-4 space-y-3">
-          <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+          <div className="@container flex flex-col sm:flex-row gap-3 sm:items-center">
             <Select
               value={selectedEpisodeId}
               onValueChange={setSelectedEpisodeId}
             >
-              <SelectTrigger className="w-full sm:w-[300px]">
+              <SelectTrigger className="w-full @sm:w-[300px]">
                 <SelectValue placeholder="Filter by episode">
                   {selectedEpisodeId === "all" ? (
                     `All Episodes (${totalSignalsCount} signals)`
                   ) : (
-                    <div className="flex flex-col items-start overflow-hidden text-left">
-                      <span className="font-medium truncate w-full">
+                    <div className="flex flex-col items-start min-w-0 flex-1 text-left">
+                      <span className="font-medium truncate max-w-full">
                         {
                           episodeOptions.find((e) => e.id === selectedEpisodeId)
                             ?.title
                         }
                       </span>
-                      <span className="text-xs text-muted-foreground truncate w-full">
+                      <span className="text-xs text-muted-foreground truncate max-w-full">
                         {
                           episodeOptions.find((e) => e.id === selectedEpisodeId)
                             ?.podcastTitle
@@ -319,7 +319,7 @@ Content: ${content}
               value={selectedConfidence}
               onValueChange={setSelectedConfidence}
             >
-              <SelectTrigger className="w-full sm:w-[180px]">
+              <SelectTrigger className="w-full @sm:w-[180px]">
                 <SelectValue placeholder="Confidence" />
               </SelectTrigger>
               <SelectContent>
@@ -329,37 +329,30 @@ Content: ${content}
                 <SelectItem value="low">Low (&lt;50%)</SelectItem>
               </SelectContent>
             </Select>
-          </div>
-          {signals.length > 0 && (
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-muted-foreground">
-                Showing {signals.length} signal{signals.length !== 1 ? "s" : ""}
-              </span>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={handleCopySignals}>
-                  <HugeiconsIcon icon={Copy01Icon} size={16} />
-                  Copy Signals
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleSkipAll}
-                  disabled={isSkippingAll || signals.length === 0}
-                >
-                  {isSkippingAll ? (
-                    <HugeiconsIcon
-                      icon={Loading03Icon}
-                      size={16}
-                      className="animate-spin"
-                    />
-                  ) : (
-                    <HugeiconsIcon icon={BookmarkRemove01Icon} size={16} />
-                  )}
-                  Skip All ({signals.length})
-                </Button>
-              </div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={handleCopySignals}>
+                <HugeiconsIcon icon={Copy01Icon} size={16} />
+                Copy Signals
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSkipAll}
+                disabled={isSkippingAll || signals.length === 0}
+              >
+                {isSkippingAll ? (
+                  <HugeiconsIcon
+                    icon={Loading03Icon}
+                    size={16}
+                    className="animate-spin"
+                  />
+                ) : (
+                  <HugeiconsIcon icon={BookmarkRemove01Icon} size={16} />
+                )}
+                Skip All ({signals.length})
+              </Button>
             </div>
-          )}
+          </div>
         </div>
       )}
       {isLoading ? (
@@ -550,7 +543,7 @@ function SavedSignalsTab() {
   return (
     <>
       {!isLoading && !fetchError && allSavedSignals.length > 0 && (
-        <div className="mb-4 flex items-center gap-2">
+        <div className="@container mb-4 flex items-center gap-2">
           <HugeiconsIcon
             icon={FilterIcon}
             size={16}
@@ -560,7 +553,7 @@ function SavedSignalsTab() {
             value={selectedEpisodeId}
             onValueChange={setSelectedEpisodeId}
           >
-            <SelectTrigger className="w-full sm:w-[400px]">
+            <SelectTrigger className="w-full @sm:w-[400px]">
               <SelectValue placeholder="Filter by episode" />
             </SelectTrigger>
             <SelectContent>
