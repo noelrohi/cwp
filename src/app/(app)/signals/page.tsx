@@ -2,6 +2,7 @@
 
 import {
   AiMicIcon,
+  BodyPartMuscleIcon,
   BookmarkCheck01Icon,
   BookmarkRemove01Icon,
   Calendar03Icon,
@@ -9,7 +10,6 @@ import {
   Delete01Icon,
   FilterIcon,
   Loading03Icon,
-  SparklesIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -385,8 +385,8 @@ Content: ${content}
               signal.relevanceScore !== undefined
             ) {
               metadata.push({
-                icon: <HugeiconsIcon icon={SparklesIcon} size={12} />,
-                label: `c${Math.round(signal.relevanceScore * 100)}%`,
+                icon: <HugeiconsIcon icon={BodyPartMuscleIcon} size={12} />,
+                label: `${Math.round(signal.relevanceScore * 100)}%`,
               });
             }
             const audioSource = signal.episode?.audioUrl
