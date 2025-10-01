@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  AlertCircleIcon,
   ArrowLeft01Icon,
   BookmarkCheck01Icon,
   BookmarkRemove01Icon,
@@ -549,8 +550,9 @@ Content: ${content}
                     </DialogTrigger>
                     <DialogContent>
                       <DialogHeader>
-                        <DialogTitle className="text-destructive">
-                          ⚠️ Reprocess Episode from Scratch
+                        <DialogTitle className="text-destructive flex items-center gap-2">
+                          <HugeiconsIcon icon={AlertCircleIcon} size={20} />
+                          Reprocess Episode from Scratch
                         </DialogTitle>
                       </DialogHeader>
                       <div className="space-y-4">
@@ -572,8 +574,12 @@ Content: ${content}
 
                           {episodeStats.data && episodeStats.data.saved > 0 && (
                             <div className="mt-3 p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
-                              <p className="font-medium text-destructive mb-1">
-                                ⚠️ You will lose {episodeStats.data.saved} saved
+                              <p className="font-medium text-destructive mb-1 flex items-center gap-1.5">
+                                <HugeiconsIcon
+                                  icon={AlertCircleIcon}
+                                  size={16}
+                                />
+                                You will lose {episodeStats.data.saved} saved
                                 signal{episodeStats.data.saved !== 1 ? "s" : ""}{" "}
                                 from this episode
                               </p>
