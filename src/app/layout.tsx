@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { Geist_Mono, Rethink_Sans } from "next/font/google";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { TRPCProviders } from "@/components/providers/trpc-provider";
+import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
@@ -33,16 +34,23 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body
         className={`${sans.variable} ${geistMono.variable} ${serif.variable} font-sans antialiased`}
       >
-        <TRPCProviders>
-          {/* <AutumnProvider betterAuthUrl={process.env.NEXT_PUBLIC_APP_URL}> */}
-          <NuqsAdapter>{children}</NuqsAdapter>
-          {/* </AutumnProvider> */}
-          <Toaster richColors />
-        </TRPCProviders>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <TRPCProviders>
+            {/* <AutumnProvider betterAuthUrl={process.env.NEXT_PUBLIC_APP_URL}> */}
+            <NuqsAdapter>{children}</NuqsAdapter>
+            {/* </AutumnProvider> */}
+            <Toaster richColors />
+          </TRPCProviders>
+        </ThemeProvider>
         <Analytics />
       </body>
     </html>

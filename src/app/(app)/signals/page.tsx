@@ -44,24 +44,30 @@ export default function SignalsPage() {
 
   return (
     <main className="mx-auto w-full container space-y-6 px-4 py-6 sm:px-6 sm:py-8">
-      <header className="flex items-start justify-between gap-4">
-        <div className="space-y-2">
+      <header className="flex items-center justify-between gap-4">
+        <div className="space-y-1">
           <h1 className="text-2xl font-semibold font-serif">Signals</h1>
-          <p className="text-muted-foreground">
-            Review AI-generated intelligence from your podcasts. Save or skip to
-            tune future rankings.
+          <p className="hidden text-muted-foreground md:block">
+            Review signals from your podcasts. Save or skip to improve
+            recommendations.
           </p>
         </div>
-        <div className="flex gap-6">
-          <div className="flex flex-col items-end gap-1">
-            <div className="text-3xl font-bold font-serif">{savedCount}</div>
-            <div className="text-sm text-muted-foreground">Saved</div>
+        <div className="flex gap-3 text-sm md:gap-6">
+          <div className="flex flex-col items-end gap-0.5 md:gap-1">
+            <div className="font-bold font-serif text-base md:text-3xl">
+              {savedCount}
+            </div>
+            <div className="text-muted-foreground text-xs md:text-sm">
+              Saved
+            </div>
           </div>
-          <div className="flex flex-col items-end gap-1">
-            <div className="text-3xl font-bold font-serif text-muted-foreground/70">
+          <div className="flex flex-col items-end gap-0.5 md:gap-1">
+            <div className="font-bold font-serif text-base text-muted-foreground/70 md:text-3xl">
               {skippedCount}
             </div>
-            <div className="text-sm text-muted-foreground">Skipped</div>
+            <div className="text-muted-foreground text-xs md:text-sm">
+              Skipped
+            </div>
           </div>
         </div>
       </header>

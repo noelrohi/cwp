@@ -1,6 +1,7 @@
 "use client";
 
 import type * as React from "react";
+import { ModeToggle } from "@/components/mode-toggle";
 import { NavUser } from "@/components/nav-user";
 import {
   Sidebar,
@@ -23,12 +24,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   return (
     <>
-      {/* Floating trigger at top-left of the app */}
-      {(isMobile || !open) && (
+      {/* Floating trigger at top-left of the app - hidden on mobile */}
+      {!isMobile && !open && (
         <SidebarTrigger className="fixed top-4 left-4 z-50 rounded-full border border-border bg-background/80 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/70" />
       )}
 
-      <Sidebar collapsible="icon" {...props}>
+      <Sidebar collapsible="icon" {...props} className="max-md:hidden">
         <SidebarHeader>
           <div className="flex items-center gap-2 px-2">
             <SidebarTrigger className="-ml-1" />
@@ -44,6 +45,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
+            <ModeToggle />
           </div>
         </SidebarHeader>
         <SidebarContent>
