@@ -269,7 +269,7 @@ Transcript chunk:
 ${context.content}
 """
 
-Extract a 1-2 sentence quote that is:
+Extract a 1-3 sentence quote that is:
 - Highly impactful and memorable
 - Perfect for sharing in a newsletter or social media
 - Captures a key insight, surprising fact, or actionable advice
