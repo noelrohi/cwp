@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowReloadHorizontalIcon } from "@hugeicons/core-free-icons";
+import { Loading03Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -23,7 +23,7 @@ export default function DebugPage() {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <HugeiconsIcon
-          icon={ArrowReloadHorizontalIcon}
+          icon={Loading03Icon}
           size={32}
           className="animate-spin text-muted-foreground"
         />
@@ -88,7 +88,7 @@ function PreviewTab() {
     return (
       <div className="flex items-center justify-center p-8">
         <HugeiconsIcon
-          icon={ArrowReloadHorizontalIcon}
+          icon={Loading03Icon}
           size={32}
           className="animate-spin text-muted-foreground"
         />
@@ -173,9 +173,7 @@ function PreviewTab() {
               <div className="text-sm text-muted-foreground mb-1">
                 Pending Signals
               </div>
-              <div className="text-2xl font-bold">
-                {metrics.totalSignals - metrics.totalPresented}
-              </div>
+              <div className="text-2xl font-bold">{metrics.totalPending}</div>
               <div className="text-xs text-muted-foreground">
                 ready to review
               </div>

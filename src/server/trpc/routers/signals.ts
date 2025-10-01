@@ -416,16 +416,24 @@ export const signalsRouter = createTRPCRouter({
         ),
       );
 
-    const totalSaved = await ctx.db
+    // Count pending signals (no action taken yet)
+    const totalPending = await ctx.db
       .select({ count: count() })
       .from(dailySignal)
       .where(
         and(
           eq(dailySignal.userId, ctx.user.id),
-          eq(dailySignal.userAction, "saved"),
+          isNull(dailySignal.userAction),
         ),
       );
 
+    // Count from savedChunk table (source of truth for training)
+    const totalSaved = await ctx.db
+      .select({ count: count() })
+      .from(savedChunk)
+      .where(eq(savedChunk.userId, ctx.user.id));
+
+    // Count skipped from dailySignal (no separate skipped table)
     const totalSkipped = await ctx.db
       .select({ count: count() })
       .from(dailySignal)
@@ -455,20 +463,21 @@ export const signalsRouter = createTRPCRouter({
       .groupBy(sql`DATE(${dailySignal.signalDate})`)
       .orderBy(sql`DATE(${dailySignal.signalDate}) DESC`);
 
+    const totalActioned =
+      (totalSaved[0]?.count || 0) + (totalSkipped[0]?.count || 0);
+
     const saveRate =
-      totalPresented[0]?.count > 0
-        ? (totalSaved[0]?.count || 0) / totalPresented[0].count
-        : 0;
+      totalActioned > 0 ? (totalSaved[0]?.count || 0) / totalActioned : 0;
 
     const actionRate =
       totalPresented[0]?.count > 0
-        ? ((totalSaved[0]?.count || 0) + (totalSkipped[0]?.count || 0)) /
-          totalPresented[0].count
+        ? totalActioned / totalPresented[0].count
         : 0;
 
     return {
       totalSignals: totalSignals[0]?.count || 0,
       totalPresented: totalPresented[0]?.count || 0,
+      totalPending: totalPending[0]?.count || 0,
       totalSaved: totalSaved[0]?.count || 0,
       totalSkipped: totalSkipped[0]?.count || 0,
       saveRate: Math.round(saveRate * 100) / 100,
@@ -656,19 +665,22 @@ export const signalsRouter = createTRPCRouter({
 
   // Debug endpoints
   debug: protectedProcedure.query(async ({ ctx }) => {
-    const { userPreferences } = await import("@/server/db/schema/podcast");
+    // Count total saved chunks (source of truth)
+    const totalSavedResult = await ctx.db
+      .select({ count: count() })
+      .from(savedChunk)
+      .where(eq(savedChunk.userId, ctx.user.id));
 
-    // Get user preferences
-    const prefs = await ctx.db
-      .select()
-      .from(userPreferences)
-      .where(eq(userPreferences.userId, ctx.user.id))
-      .limit(1);
-
-    const userPref = prefs[0] || {
-      totalSaved: 0,
-      totalSkipped: 0,
-    };
+    // Count skipped from dailySignal
+    const totalSkippedResult = await ctx.db
+      .select({ count: count() })
+      .from(dailySignal)
+      .where(
+        and(
+          eq(dailySignal.userId, ctx.user.id),
+          eq(dailySignal.userAction, "skipped"),
+        ),
+      );
 
     // Count saved chunks with embeddings (from savedChunk table - source of truth)
     const savedWithEmbeddings = await ctx.db
@@ -683,8 +695,8 @@ export const signalsRouter = createTRPCRouter({
       );
 
     return {
-      totalSaved: userPref.totalSaved,
-      totalSkipped: userPref.totalSkipped,
+      totalSaved: totalSavedResult[0]?.count || 0,
+      totalSkipped: totalSkippedResult[0]?.count || 0,
       savedChunksWithEmbeddings: savedWithEmbeddings[0]?.count || 0,
     };
   }),

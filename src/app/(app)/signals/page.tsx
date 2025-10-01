@@ -2,13 +2,13 @@
 
 import {
   AiMicIcon,
-  ArrowReloadHorizontalIcon,
   BookmarkCheck01Icon,
   BookmarkRemove01Icon,
   Calendar03Icon,
   Copy01Icon,
   Delete01Icon,
   FilterIcon,
+  Loading03Icon,
   SparklesIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -342,7 +342,7 @@ Content: ${content}
                 >
                   {isSkippingAll ? (
                     <HugeiconsIcon
-                      icon={ArrowReloadHorizontalIcon}
+                      icon={Loading03Icon}
                       size={16}
                       className="animate-spin"
                     />
@@ -424,7 +424,7 @@ Content: ${content}
                 >
                   {isPending && pendingAction === "skipped" ? (
                     <HugeiconsIcon
-                      icon={ArrowReloadHorizontalIcon}
+                      icon={Loading03Icon}
                       size={16}
                       className="animate-spin"
                     />
@@ -441,7 +441,7 @@ Content: ${content}
                 >
                   {isPending && pendingAction === "saved" ? (
                     <HugeiconsIcon
-                      icon={ArrowReloadHorizontalIcon}
+                      icon={Loading03Icon}
                       size={16}
                       className="animate-spin"
                     />
@@ -638,7 +638,7 @@ function SavedSignalsTab() {
                 >
                   {isDeleting ? (
                     <HugeiconsIcon
-                      icon={ArrowReloadHorizontalIcon}
+                      icon={Loading03Icon}
                       size={16}
                       className="animate-spin"
                     />

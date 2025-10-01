@@ -3,8 +3,8 @@
 import {
   Add01Icon,
   Alert01Icon,
-  ArrowReloadHorizontalIcon,
   Delete01Icon,
+  Loading03Icon,
   MoreHorizontalCircle01Icon,
   Search01Icon,
 } from "@hugeicons/core-free-icons";
@@ -227,7 +227,7 @@ export default function Podcasts() {
                     <HugeiconsIcon icon={Delete01Icon} size={16} />
                     {removePodcast.isPending ? (
                       <HugeiconsIcon
-                        icon={ArrowReloadHorizontalIcon}
+                        icon={Loading03Icon}
                         size={16}
                         className="animate-spin"
                       />

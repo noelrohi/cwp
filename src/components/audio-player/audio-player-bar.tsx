@@ -4,6 +4,7 @@ import {
   ArrowReloadHorizontalIcon,
   Backward01Icon,
   Forward01Icon,
+  Loading03Icon,
   PauseIcon,
   PlayCircleIcon,
 } from "@hugeicons/core-free-icons";
@@ -117,7 +118,7 @@ const AudioPlayerBar = memo(function AudioPlayerBar({
             >
               {isLoading ? (
                 <HugeiconsIcon
-                  icon={ArrowReloadHorizontalIcon}
+                  icon={Loading03Icon}
                   size={16}
                   className="h-3.5 w-3.5 animate-spin sm:h-4 sm:w-4"
                 />
