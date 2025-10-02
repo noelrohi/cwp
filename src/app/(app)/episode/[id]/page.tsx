@@ -91,11 +91,15 @@ export default function EpisodeDetailPage(props: {
   const [pendingSignalId, setPendingSignalId] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<SignalAction | null>(null);
 
-  const episode = useQuery(
-    trpc.episodes.get.queryOptions({
+  const episode = useQuery({
+    ...trpc.episodes.get.queryOptions({
       episodeId: params.id,
     }),
-  );
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === "processing" ? 5000 : false;
+    },
+  });
 
   const signals = useQuery(
     trpc.signals.byEpisode.queryOptions({

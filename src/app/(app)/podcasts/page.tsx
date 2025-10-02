@@ -41,14 +41,17 @@ export default function Podcasts() {
     defaultValue: "",
   });
   const [sortBy, setSortBy] = useQueryState("sort", { defaultValue: "date" });
+  const [page, setPage] = useQueryState("page", {
+    defaultValue: 1,
+    parse: (value) => Number(value) || 1,
+  });
 
-  // Debounce search query to avoid too many API calls
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
-  // Get podcasts (saved or filtered by search query)
   const { data, isLoading, error } = useQuery(
     trpc.podcasts.list.queryOptions({
-      limit: 50,
+      page,
+      limit: 20,
       query: debouncedSearchQuery.trim() || undefined,
       sortBy: sortBy as "date" | "title",
     }),
@@ -188,7 +191,7 @@ export default function Podcasts() {
 
               {/* Podcast Info */}
               <div className="flex-1 min-w-0">
-                <h3 className="font-semibold text-base truncate">
+                <h3 className="font-semibold text-base line-clamp-2">
                   {podcast.title}
                 </h3>
                 <p className="text-sm text-muted-foreground">
@@ -263,19 +266,32 @@ export default function Podcasts() {
         </div>
       )}
 
-      {/* Pagination */}
       {data?.data && data.data.length > 0 && (
-        <div className="mt-8 flex items-center justify-center gap-4">
+        <div className="mt-8 flex items-center justify-between">
           <p className="text-base text-muted-foreground">
-            Showing 1 to {Math.min(5, data.data.length)} of {data.data.length}{" "}
-            results
+            Showing {(page - 1) * data.pagination.limit + 1} to{" "}
+            {(page - 1) * data.pagination.limit + data.data.length} of{" "}
+            {data.pagination.total} results
           </p>
-          <div className="flex gap-1">
-            <Button variant="default" size="sm" className="h-8 w-8 p-0">
-              1
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage(page - 1)}
+              disabled={page === 1}
+            >
+              Previous
             </Button>
-            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-              2
+            <span className="flex items-center px-3 text-sm">
+              Page {page} of {data.pagination.totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage(page + 1)}
+              disabled={!data.pagination.hasMore}
+            >
+              Next
             </Button>
           </div>
         </div>

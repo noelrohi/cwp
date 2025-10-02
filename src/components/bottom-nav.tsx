@@ -75,7 +75,6 @@ export function BottomNav() {
               }`}
             >
               <HugeiconsIcon icon={item.icon} size={20} />
-              <span className="text-xs">{item.title}</span>
             </Link>
           );
         })}
@@ -100,7 +99,6 @@ export function BottomNav() {
               }`}
             >
               <HugeiconsIcon icon={item.icon} size={20} />
-              <span className="text-xs">{item.title}</span>
             </Link>
           );
         })}
@@ -122,7 +120,6 @@ export function BottomNav() {
               ) : (
                 <HugeiconsIcon icon={Settings01Icon} size={20} />
               )}
-              <span className="text-xs">Menu</span>
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56 mb-2">

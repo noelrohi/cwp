@@ -89,28 +89,41 @@ export const podcastsRouter = createTRPCRouter({
       const orderBy =
         sortBy === "title" ? [asc(podcast.title)] : [desc(podcast.createdAt)];
 
-      const results = await ctx.db.query.podcast.findMany({
-        where: and(
-          eq(podcast.userId, ctx.user.id),
-          query ? ilike(podcast.title, `%${query}%`) : undefined,
-        ),
-        orderBy,
-        limit,
-        offset: (page - 1) * limit,
-        with: {
-          episodes: {
-            limit: 5,
-            orderBy: [desc(episode.createdAt)],
-          },
-        },
-      });
+      const whereClause = and(
+        eq(podcast.userId, ctx.user.id),
+        query ? ilike(podcast.title, `%${query}%`) : undefined,
+      );
+
+      const results = await ctx.db
+        .select({
+          id: podcast.id,
+          podcastId: podcast.podcastId,
+          title: podcast.title,
+          description: podcast.description,
+          imageUrl: podcast.imageUrl,
+          feedUrl: podcast.feedUrl,
+          userId: podcast.userId,
+          createdAt: podcast.createdAt,
+          updatedAt: podcast.updatedAt,
+          total: sql<number>`count(*) over()`.as("total"),
+        })
+        .from(podcast)
+        .where(whereClause)
+        .orderBy(...orderBy)
+        .limit(limit)
+        .offset((page - 1) * limit);
+
+      const totalCount = results.length > 0 ? Number(results[0].total) : 0;
+      const totalPages = Math.ceil(totalCount / limit);
 
       return {
         data: results,
         pagination: {
           page,
           limit,
-          hasMore: results.length === limit,
+          total: totalCount,
+          totalPages,
+          hasMore: page < totalPages,
         },
       };
     }),
