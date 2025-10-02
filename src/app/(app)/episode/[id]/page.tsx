@@ -381,9 +381,9 @@ Content: ${content}
       {/* Episode Header */}
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row gap-4">
-          {/* Thumbnail */}
+          {/* Thumbnail - Desktop only */}
           {episodeData?.thumbnailUrl && (
-            <div className="relative h-32 w-32 shrink-0 overflow-hidden rounded-lg bg-muted">
+            <div className="relative h-32 w-32 hidden sm:block shrink-0 overflow-hidden rounded-lg bg-muted">
               <Image
                 src={episodeData.thumbnailUrl}
                 alt={episodeData.title}
@@ -394,36 +394,52 @@ Content: ${content}
           )}
 
           {/* Title and Metadata */}
-          <div className="flex-1 min-w-0">
-            <h1 className="text-xl sm:text-2xl font-semibold leading-tight mb-2 text-balance">
-              {episodeData?.title}
-            </h1>
+          <div className="flex-1 min-w-0 flex flex-col justify-between">
+            <div className="flex gap-3 items-start">
+              <div className="flex-1">
+                <h1 className="text-xl sm:text-2xl font-semibold leading-tight mb-2 text-balance">
+                  {episodeData?.title}
+                </h1>
 
-            <dl className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground mb-3">
-              {episodeData?.publishedAt && (
-                <div className="flex items-center gap-1.5">
-                  <HugeiconsIcon icon={Calendar03Icon} size={14} />
-                  <dt className="sr-only">Published</dt>
-                  <dd>
-                    {new Date(episodeData.publishedAt).toLocaleDateString(
-                      "en-US",
-                      {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      },
-                    )}
-                  </dd>
+                <dl className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                  {episodeData?.publishedAt && (
+                    <div className="flex items-center gap-1.5">
+                      <HugeiconsIcon icon={Calendar03Icon} size={14} />
+                      <dt className="sr-only">Published</dt>
+                      <dd>
+                        {new Date(episodeData.publishedAt).toLocaleDateString(
+                          "en-US",
+                          {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          },
+                        )}
+                      </dd>
+                    </div>
+                  )}
+                  {episodeData?.durationSec && (
+                    <div className="flex items-center gap-1.5">
+                      <HugeiconsIcon icon={Clock01Icon} size={14} />
+                      <dt className="sr-only">Duration</dt>
+                      <dd>{Math.floor(episodeData.durationSec / 60)} min</dd>
+                    </div>
+                  )}
+                </dl>
+              </div>
+
+              {/* Thumbnail - Mobile only */}
+              {episodeData?.thumbnailUrl && (
+                <div className="relative h-16 w-16 sm:hidden shrink-0 overflow-hidden rounded-lg bg-muted">
+                  <Image
+                    src={episodeData.thumbnailUrl}
+                    alt={episodeData.title}
+                    className="h-full w-full object-cover"
+                    fill
+                  />
                 </div>
               )}
-              {episodeData?.durationSec && (
-                <div className="flex items-center gap-1.5">
-                  <HugeiconsIcon icon={Clock01Icon} size={14} />
-                  <dt className="sr-only">Duration</dt>
-                  <dd>{Math.floor(episodeData.durationSec / 60)} min</dd>
-                </div>
-              )}
-            </dl>
+            </div>
 
             {/* Action Buttons - Desktop only */}
             <div className="hidden sm:inline-flex gap-2">
@@ -1055,6 +1071,7 @@ Content: ${content}
                   <Button
                     variant="outline"
                     size="icon-sm"
+                    className="flex-1"
                     onClick={() =>
                       fetchTranscript(episodeData.transcriptUrl as string)
                     }
@@ -1085,7 +1102,7 @@ Content: ${content}
               </Dialog>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="icon-sm">
+                  <Button variant="outline" size="icon-sm" className="flex-1">
                     <HugeiconsIcon icon={Download01Icon} size={16} />
                     <span className="sr-only">Download</span>
                   </Button>
@@ -1127,35 +1144,50 @@ Content: ${content}
 
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             {/* Left side: Tabs */}
-            <Tabs
-              value={signalFilter}
-              onValueChange={(v) => setSignalFilter(v as typeof signalFilter)}
-            >
-              <TabsList>
-                <TabsTrigger value="pending">
-                  Pending{" "}
-                  <span className="ml-1 text-muted-foreground">
-                    {episodeStats.data?.pending ?? 0}
-                  </span>
-                </TabsTrigger>
-                <TabsTrigger value="actioned">
-                  Processed{" "}
-                  <span className="ml-1 text-muted-foreground">
-                    {episodeStats.data
-                      ? episodeStats.data.saved + episodeStats.data.skipped
-                      : 0}
-                  </span>
-                </TabsTrigger>
-                <TabsTrigger value="all">
-                  All{" "}
-                  <span className="ml-1 text-muted-foreground">
-                    {episodeStats.data?.total ?? 0}
-                  </span>
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
+            <div className="flex items-center justify-between gap-2">
+              <Tabs
+                value={signalFilter}
+                onValueChange={(v) => setSignalFilter(v as typeof signalFilter)}
+              >
+                <TabsList>
+                  <TabsTrigger value="pending">
+                    Pending{" "}
+                    <span className="ml-1 text-muted-foreground">
+                      {episodeStats.data?.pending ?? 0}
+                    </span>
+                  </TabsTrigger>
+                  <TabsTrigger value="actioned">
+                    Processed{" "}
+                    <span className="ml-1 text-muted-foreground">
+                      {episodeStats.data
+                        ? episodeStats.data.saved + episodeStats.data.skipped
+                        : 0}
+                    </span>
+                  </TabsTrigger>
+                  <TabsTrigger value="all">
+                    All{" "}
+                    <span className="ml-1 text-muted-foreground">
+                      {episodeStats.data?.total ?? 0}
+                    </span>
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
 
-            {/* Right side: Action filter and Copy button */}
+              {/* Copy button - Mobile only */}
+              {relatedSignals.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  onClick={handleCopySignals}
+                  className="sm:hidden"
+                >
+                  <HugeiconsIcon icon={Copy01Icon} size={16} />
+                  <span className="sr-only">Copy Signals</span>
+                </Button>
+              )}
+            </div>
+
+            {/* Right side: Action filter and Copy button - Desktop */}
             <div className="flex items-center gap-2">
               {signalFilter === "actioned" && (
                 <Select
@@ -1199,11 +1231,10 @@ Content: ${content}
                   variant="outline"
                   size="icon-sm"
                   onClick={handleCopySignals}
-                  className="sm:size-auto sm:h-8 sm:px-3"
+                  className="hidden sm:flex sm:size-auto sm:h-8 sm:px-3"
                 >
                   <HugeiconsIcon icon={Copy01Icon} size={16} />
                   <span className="hidden sm:inline">Copy Signals</span>
-                  <span className="sr-only sm:hidden">Copy Signals</span>
                 </Button>
               )}
             </div>
