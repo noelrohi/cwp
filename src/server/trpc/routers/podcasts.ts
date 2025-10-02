@@ -2,12 +2,25 @@ import { and, asc, count, desc, eq, ilike, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import Parser from "rss-parser";
 import { z } from "zod";
-import { episode, podcast } from "@/server/db/schema/podcast";
+import {
+  dailySignal,
+  episode,
+  podcast,
+  transcriptChunk,
+} from "@/server/db/schema/podcast";
 import { createTRPCRouter, protectedProcedure } from "../init";
 
 export const podcastsRouter = createTRPCRouter({
   get: protectedProcedure
-    .input(z.object({ podcastId: z.string() }))
+    .input(
+      z.object({
+        podcastId: z.string(),
+        filterBySignals: z
+          .enum(["all", "with-signals", "without-signals"])
+          .optional()
+          .default("all"),
+      }),
+    )
     .query(async ({ ctx, input }) => {
       const result = await ctx.db.query.podcast.findFirst({
         where: and(
@@ -25,6 +38,35 @@ export const podcastsRouter = createTRPCRouter({
 
       if (!result) {
         throw new Error("Podcast not found");
+      }
+
+      // Filter episodes based on signal presence if requested
+      if (input.filterBySignals !== "all" && result.episodes) {
+        // Get all episode IDs that have signals
+        const episodesWithSignals = await ctx.db
+          .selectDistinct({ episodeId: transcriptChunk.episodeId })
+          .from(dailySignal)
+          .innerJoin(
+            transcriptChunk,
+            eq(dailySignal.chunkId, transcriptChunk.id),
+          )
+          .where(eq(dailySignal.userId, ctx.user.id));
+
+        const episodeIdsWithSignals = new Set(
+          episodesWithSignals.map((row) => row.episodeId),
+        );
+
+        // Filter episodes based on the filter type
+        result.episodes = result.episodes.filter((ep) => {
+          const hasSignals = episodeIdsWithSignals.has(ep.id);
+          if (input.filterBySignals === "with-signals") {
+            return hasSignals;
+          }
+          if (input.filterBySignals === "without-signals") {
+            return !hasSignals;
+          }
+          return true;
+        });
       }
 
       return result;

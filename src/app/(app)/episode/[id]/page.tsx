@@ -20,6 +20,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
+import { parseAsStringEnum, useQueryState } from "nuqs";
 import { use, useState } from "react";
 import { toast } from "sonner";
 
@@ -45,6 +46,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Tooltip,
@@ -61,9 +69,22 @@ export default function EpisodeDetailPage(props: {
   const queryClient = useQueryClient();
   const params = use(props.params);
   const [transcript, setTranscript] = useState<TranscriptData | null>(null);
-  const [signalFilter, setSignalFilter] = useState<
-    "all" | "pending" | "actioned"
-  >("pending");
+  const [signalFilter, setSignalFilter] = useQueryState(
+    "filter",
+    parseAsStringEnum<"all" | "pending" | "actioned">([
+      "all",
+      "pending",
+      "actioned",
+    ]).withDefault("pending"),
+  );
+  const [actionFilter, setActionFilter] = useQueryState(
+    "action",
+    parseAsStringEnum<"all" | "saved" | "skipped">([
+      "all",
+      "saved",
+      "skipped",
+    ]).withDefault("all"),
+  );
   const [showProcessDialog, setShowProcessDialog] = useState(false);
   const [showReprocessDialog, setShowReprocessDialog] = useState(false);
   const [showRegenerateDialog, setShowRegenerateDialog] = useState(false);
@@ -80,6 +101,7 @@ export default function EpisodeDetailPage(props: {
     trpc.signals.byEpisode.queryOptions({
       episodeId: params.id,
       filter: signalFilter,
+      actionFilter,
     }),
   );
 
@@ -745,43 +767,87 @@ Content: ${content}
 
       {/* Related Signals */}
       <section className="space-y-3 sm:space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex flex-col gap-3">
           <h2 className="text-base sm:text-lg font-semibold font-serif">
             Related Signals
           </h2>
 
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-            {relatedSignals.length > 0 && (
-              <Button variant="outline" size="sm" onClick={handleCopySignals}>
-                <HugeiconsIcon icon={Copy01Icon} size={16} />
-                Copy Signals
-              </Button>
-            )}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            {/* Left side: Tabs */}
             <Tabs
               value={signalFilter}
               onValueChange={(v) => setSignalFilter(v as typeof signalFilter)}
             >
               <TabsList>
                 <TabsTrigger value="pending">
-                  Pending
-                  {episodeStats.data?.pending ? (
-                    <Badge variant="secondary" className="ml-1.5">
-                      {episodeStats.data.pending}
-                    </Badge>
-                  ) : null}
+                  Pending{" "}
+                  <span className="ml-1 text-muted-foreground">
+                    {episodeStats.data?.pending ?? 0}
+                  </span>
                 </TabsTrigger>
                 <TabsTrigger value="actioned">
-                  Processed
-                  {episodeStats.data &&
-                  episodeStats.data.saved + episodeStats.data.skipped > 0 ? (
-                    <Badge variant="secondary" className="ml-1.5">
-                      {episodeStats.data.saved + episodeStats.data.skipped}
-                    </Badge>
-                  ) : null}
+                  Processed{" "}
+                  <span className="ml-1 text-muted-foreground">
+                    {episodeStats.data
+                      ? episodeStats.data.saved + episodeStats.data.skipped
+                      : 0}
+                  </span>
                 </TabsTrigger>
-                <TabsTrigger value="all">All</TabsTrigger>
+                <TabsTrigger value="all">
+                  All{" "}
+                  <span className="ml-1 text-muted-foreground">
+                    {episodeStats.data?.total ?? 0}
+                  </span>
+                </TabsTrigger>
               </TabsList>
             </Tabs>
+
+            {/* Right side: Action filter and Copy button */}
+            <div className="flex items-center gap-2">
+              {signalFilter === "actioned" && (
+                <Select
+                  value={actionFilter}
+                  onValueChange={(v) =>
+                    setActionFilter(v as "all" | "saved" | "skipped")
+                  }
+                >
+                  <SelectTrigger size="sm" className="w-[140px]">
+                    <SelectValue placeholder="Filter" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" className="text-base">
+                      All{" "}
+                      <span className="font-mono">
+                        (
+                        {episodeStats.data &&
+                        episodeStats.data.saved + episodeStats.data.skipped > 0
+                          ? episodeStats.data.saved + episodeStats.data.skipped
+                          : 0}
+                        )
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="saved" className="text-base">
+                      Saved{" "}
+                      <span className="font-mono">
+                        ({episodeStats.data?.saved ?? 0})
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="skipped" className="text-base">
+                      Skipped{" "}
+                      <span className="font-mono">
+                        ({episodeStats.data?.skipped ?? 0})
+                      </span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+              {relatedSignals.length > 0 && (
+                <Button variant="outline" size="sm" onClick={handleCopySignals}>
+                  <HugeiconsIcon icon={Copy01Icon} size={16} />
+                  Copy Signals
+                </Button>
+              )}
+            </div>
           </div>
         </div>
 

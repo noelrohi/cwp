@@ -328,10 +328,12 @@ export const signalsRouter = createTRPCRouter({
       z.object({
         episodeId: z.string().min(1),
         filter: z.enum(["all", "pending", "actioned"]).optional(),
+        actionFilter: z.enum(["all", "saved", "skipped"]).optional(),
       }),
     )
     .query(async ({ ctx, input }) => {
       const filter = input.filter ?? "pending";
+      const actionFilter = input.actionFilter ?? "all";
 
       // Build where clause based on filter
       const whereConditions = [
@@ -343,6 +345,12 @@ export const signalsRouter = createTRPCRouter({
         whereConditions.push(isNull(dailySignal.userAction));
       } else if (filter === "actioned") {
         whereConditions.push(isNotNull(dailySignal.userAction));
+        // Add additional filter for saved/skipped if specified
+        if (actionFilter === "saved") {
+          whereConditions.push(eq(dailySignal.userAction, "saved"));
+        } else if (actionFilter === "skipped") {
+          whereConditions.push(eq(dailySignal.userAction, "skipped"));
+        }
       }
       // "all" doesn't add any action filter
 
