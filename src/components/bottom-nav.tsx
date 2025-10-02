@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Add01Icon,
   AiMicIcon,
   AiSecurity01Icon,
   DashboardBrowsingIcon,
@@ -13,7 +14,9 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { AddPodcastDialog } from "@/components/blocks/podcasts/add-podcast-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -56,34 +59,41 @@ export function BottomNav() {
   const isAdmin = session?.user?.role === "admin";
   const user = session?.user;
 
-  const allItems = [
-    ...items,
-    ...(isAdmin
-      ? [
-          {
-            title: "Debug",
-            icon: HierarchySquare01Icon,
-            url: "/debug",
-          },
-          {
-            title: "Admin",
-            icon: AiSecurity01Icon,
-            url: "/admin",
-          },
-        ]
-      : []),
-  ];
-
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background md:hidden">
-      <div className="flex items-center justify-around px-2 py-2">
-        {allItems.map((item) => {
+      <div className="flex items-center justify-evenly py-2">
+        {items.slice(0, 2).map((item) => {
           const isActive = pathname === item.url;
           return (
             <Link
               key={item.title}
               href={item.url}
-              className={`flex flex-col items-center gap-1 rounded-lg px-4 py-2 transition-colors ${
+              className={`flex flex-col items-center gap-1 rounded-lg px-3 py-2 transition-colors ${
+                isActive
+                  ? "text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <HugeiconsIcon icon={item.icon} size={20} />
+              <span className="text-xs">{item.title}</span>
+            </Link>
+          );
+        })}
+
+        {/* Add Podcast Button */}
+        <AddPodcastDialog>
+          <Button size="icon" className="h-8 w-10 rounded-lg">
+            <HugeiconsIcon icon={Add01Icon} size={20} />
+          </Button>
+        </AddPodcastDialog>
+
+        {items.slice(2).map((item) => {
+          const isActive = pathname === item.url;
+          return (
+            <Link
+              key={item.title}
+              href={item.url}
+              className={`flex flex-col items-center gap-1 rounded-lg px-3 py-2 transition-colors ${
                 isActive
                   ? "text-foreground"
                   : "text-muted-foreground hover:text-foreground"
@@ -100,7 +110,7 @@ export function BottomNav() {
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="flex flex-col items-center gap-1 rounded-lg px-4 py-2 text-muted-foreground transition-colors hover:text-foreground"
+              className="flex flex-col items-center gap-1 rounded-lg px-3 py-2 text-muted-foreground transition-colors hover:text-foreground"
             >
               {user ? (
                 <Avatar className="h-5 w-5 rounded-full grayscale">
@@ -150,6 +160,21 @@ export function BottomNav() {
                     Settings
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
+                {isAdmin && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem onClick={() => router.push("/debug")}>
+                        <HugeiconsIcon icon={HierarchySquare01Icon} size={16} />
+                        Debug
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => router.push("/admin")}>
+                        <HugeiconsIcon icon={AiSecurity01Icon} size={16} />
+                        Admin
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                  </>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={() => {

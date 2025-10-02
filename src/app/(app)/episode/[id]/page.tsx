@@ -815,9 +815,9 @@ Content: ${content}
                     <SelectValue placeholder="Filter" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all" className="text-base">
+                    <SelectItem value="all">
                       All{" "}
-                      <span className="font-mono">
+                      <span className="text-xs font-mono text-muted-foreground">
                         (
                         {episodeStats.data &&
                         episodeStats.data.saved + episodeStats.data.skipped > 0
@@ -826,15 +826,15 @@ Content: ${content}
                         )
                       </span>
                     </SelectItem>
-                    <SelectItem value="saved" className="text-base">
+                    <SelectItem value="saved">
                       Saved{" "}
-                      <span className="font-mono">
+                      <span className="text-xs font-mono text-muted-foreground">
                         ({episodeStats.data?.saved ?? 0})
                       </span>
                     </SelectItem>
-                    <SelectItem value="skipped" className="text-base">
+                    <SelectItem value="skipped">
                       Skipped{" "}
-                      <span className="font-mono">
+                      <span className="text-xs font-mono text-muted-foreground">
                         ({episodeStats.data?.skipped ?? 0})
                       </span>
                     </SelectItem>
