@@ -394,7 +394,7 @@ Content: ${content}
           )}
 
           {/* Title and Metadata */}
-          <div className="flex-1 min-w-0 flex flex-col justify-between">
+          <div className="flex-1 min-w-0 flex flex-col gap-3 justify-between">
             <div className="flex gap-3 items-start">
               <div className="flex-1">
                 <h1 className="text-xl sm:text-2xl font-semibold leading-tight mb-2 text-balance">
