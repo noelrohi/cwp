@@ -8,7 +8,12 @@ import {
   RssIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import Link from "next/link";
 import { parseAsStringLiteral, useQueryState } from "nuqs";
 import { use } from "react";
@@ -24,6 +29,7 @@ import {
 import { useTRPC } from "@/server/trpc/client";
 
 const signals = ["all", "with-signals", "without-signals"] as const;
+const EPISODE_PAGE_SIZE = 20;
 
 export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
   const trpc = useTRPC();
@@ -37,7 +43,6 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
   const podcast = useQuery(
     trpc.podcasts.get.queryOptions({
       podcastId: params.id,
-      filterBySignals,
     }),
   );
 
@@ -51,10 +56,24 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
       queryClient.invalidateQueries({
         queryKey: trpc.podcasts.get.queryKey({ podcastId: params.id }),
       });
+      queryClient.invalidateQueries(
+        trpc.podcasts.episodesInfinite.infiniteQueryFilter({
+          podcastId: params.id,
+        }),
+      );
     },
   });
 
-  if (podcast.isLoading) {
+  const episodesQuery = useInfiniteQuery({
+    ...trpc.podcasts.episodesInfinite.infiniteQueryOptions({
+      podcastId: params.id,
+      filterBySignals,
+      limit: EPISODE_PAGE_SIZE,
+    }),
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+  });
+
+  if (podcast.isPending) {
     return (
       <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
         <div className="animate-pulse">
@@ -93,6 +112,13 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
   }
 
   const podcastData = podcast.data;
+  const episodes =
+    episodesQuery.data?.pages.flatMap((page) => page.items) ?? [];
+  const isEpisodesLoading = episodesQuery.isPending && episodes.length === 0;
+  const episodeListEmpty = !isEpisodesLoading && episodes.length === 0;
+  const totalEpisodes = podcastData?.episodeCount ?? 0;
+  const episodesError =
+    episodesQuery.error instanceof Error ? episodesQuery.error.message : null;
 
   return (
     <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
@@ -152,7 +178,7 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
               <div className="flex items-center gap-1.5">
                 <HugeiconsIcon icon={Clock01Icon} size={14} />
                 <dt className="sr-only">Episodes</dt>
-                <dd>{podcastData?.episodes?.length || 0} episodes</dd>
+                <dd>{totalEpisodes} episodes</dd>
               </div>
             </dl>
           </div>
@@ -226,51 +252,81 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
           </Select>
         </div>
 
-        {podcastData?.episodes && podcastData.episodes.length > 0 ? (
+        {episodesQuery.isError ? (
+          <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+            Failed to load episodes.
+            {episodesError ? ` ${episodesError}` : " Please try again."}
+          </div>
+        ) : isEpisodesLoading ? (
           <div className="space-y-2">
-            {podcastData.episodes.map((episode) => (
-              <Link
-                key={episode.id}
-                href={`/episode/${episode.id}`}
-                className="block rounded-lg border bg-background p-4 hover:bg-muted/50 transition-colors"
-              >
-                <h3 className="font-medium text-base mb-1.5 hover:text-primary">
-                  {episode.title}
-                </h3>
-
-                <div className="flex items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-                  <div className="flex items-center gap-1.5">
-                    <HugeiconsIcon icon={Calendar03Icon} size={14} />
-                    <span>
-                      {episode.publishedAt
-                        ? new Date(episode.publishedAt).toLocaleDateString(
-                            "en-US",
-                            {
-                              month: "short",
-                              day: "numeric",
-                              year: "numeric",
-                            },
-                          )
-                        : new Date(episode.createdAt).toLocaleDateString(
-                            "en-US",
-                            {
-                              month: "short",
-                              day: "numeric",
-                              year: "numeric",
-                            },
-                          )}
-                    </span>
-                  </div>
-                  {episode.durationSec && (
-                    <div className="flex items-center gap-1.5">
-                      <HugeiconsIcon icon={Clock01Icon} size={14} />
-                      <span>{Math.floor(episode.durationSec / 60)} min</span>
-                    </div>
-                  )}
-                </div>
-              </Link>
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div
+                key={index}
+                className="h-24 w-full animate-pulse rounded-lg border bg-muted/70"
+              />
             ))}
           </div>
+        ) : !episodeListEmpty ? (
+          <>
+            <div className="space-y-2">
+              {episodes.map((episode) => (
+                <Link
+                  key={episode.id}
+                  href={`/episode/${episode.id}`}
+                  className="block rounded-lg border bg-background p-4 hover:bg-muted/50 transition-colors"
+                >
+                  <h3 className="font-medium text-base mb-1.5 hover:text-primary">
+                    {episode.title}
+                  </h3>
+
+                  <div className="flex items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                    <div className="flex items-center gap-1.5">
+                      <HugeiconsIcon icon={Calendar03Icon} size={14} />
+                      <span>
+                        {episode.publishedAt
+                          ? new Date(episode.publishedAt).toLocaleDateString(
+                              "en-US",
+                              {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                              },
+                            )
+                          : new Date(episode.createdAt).toLocaleDateString(
+                              "en-US",
+                              {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                              },
+                            )}
+                      </span>
+                    </div>
+                    {episode.durationSec && (
+                      <div className="flex items-center gap-1.5">
+                        <HugeiconsIcon icon={Clock01Icon} size={14} />
+                        <span>{Math.floor(episode.durationSec / 60)} min</span>
+                      </div>
+                    )}
+                  </div>
+                </Link>
+              ))}
+            </div>
+            {episodesQuery.hasNextPage && (
+              <div className="flex justify-center pt-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => episodesQuery.fetchNextPage()}
+                  disabled={episodesQuery.isFetchingNextPage}
+                >
+                  {episodesQuery.isFetchingNextPage
+                    ? "Loading..."
+                    : "Load more"}
+                </Button>
+              </div>
+            )}
+          </>
         ) : (
           <div className="text-center py-8">
             <div className="text-base text-muted-foreground mb-2">

@@ -1,4 +1,14 @@
-import { and, asc, count, desc, eq, ilike, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  exists,
+  ilike,
+  not,
+  sql,
+} from "drizzle-orm";
 import { nanoid } from "nanoid";
 import Parser from "rss-parser";
 import { z } from "zod";
@@ -15,61 +25,127 @@ export const podcastsRouter = createTRPCRouter({
     .input(
       z.object({
         podcastId: z.string(),
-        filterBySignals: z
-          .enum(["all", "with-signals", "without-signals"])
-          .optional()
-          .default("all"),
       }),
     )
     .query(async ({ ctx, input }) => {
-      const result = await ctx.db.query.podcast.findFirst({
+      const podcastRecord = await ctx.db.query.podcast.findFirst({
         where: and(
           eq(podcast.id, input.podcastId),
           eq(podcast.userId, ctx.user.id),
         ),
-        with: {
-          episodes: {
-            limit: 50,
-            orderBy: [desc(episode.publishedAt)],
-          },
-        },
       });
-      console.log({ result });
 
-      if (!result) {
+      if (!podcastRecord) {
         throw new Error("Podcast not found");
       }
 
-      // Filter episodes based on signal presence if requested
-      if (input.filterBySignals !== "all" && result.episodes) {
-        // Get all episode IDs that have signals
-        const episodesWithSignals = await ctx.db
-          .selectDistinct({ episodeId: transcriptChunk.episodeId })
+      const [episodeCountResult] = await ctx.db
+        .select({ value: count() })
+        .from(episode)
+        .where(
+          and(
+            eq(episode.podcastId, input.podcastId),
+            eq(episode.userId, ctx.user.id),
+          ),
+        );
+
+      return {
+        ...podcastRecord,
+        episodeCount: Number(episodeCountResult?.value ?? 0),
+      };
+    }),
+
+  episodesInfinite: protectedProcedure
+    .input(
+      z.object({
+        podcastId: z.string(),
+        filterBySignals: z
+          .enum(["all", "with-signals", "without-signals"])
+          .optional()
+          .default("all"),
+        limit: z.number().int().min(1).max(50).optional().default(20),
+        cursor: z
+          .object({
+            id: z.string(),
+            publishedAt: z.string().datetime().nullable(),
+            createdAt: z.string().datetime(),
+          })
+          .optional(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const limit = input.limit ?? 20;
+
+      const orderTimestampExpr = sql`coalesce(${episode.publishedAt}, ${episode.createdAt})`;
+      const signalExists = exists(
+        ctx.db
+          .select({ value: sql`1` })
           .from(dailySignal)
           .innerJoin(
             transcriptChunk,
             eq(dailySignal.chunkId, transcriptChunk.id),
           )
-          .where(eq(dailySignal.userId, ctx.user.id));
+          .where(
+            and(
+              eq(dailySignal.userId, ctx.user.id),
+              eq(transcriptChunk.episodeId, episode.id),
+            ),
+          ),
+      );
 
-        const episodeIdsWithSignals = new Set(
-          episodesWithSignals.map((row) => row.episodeId),
-        );
+      const filterCondition = (() => {
+        if (input.filterBySignals === "with-signals") {
+          return signalExists;
+        }
+        if (input.filterBySignals === "without-signals") {
+          return not(signalExists);
+        }
+        return undefined;
+      })();
 
-        // Filter episodes based on the filter type
-        result.episodes = result.episodes.filter((ep) => {
-          const hasSignals = episodeIdsWithSignals.has(ep.id);
-          if (input.filterBySignals === "with-signals") {
-            return hasSignals;
+      const cursorCondition = input.cursor
+        ? (() => {
+            const cursorTimestamp = new Date(
+              input.cursor.publishedAt ?? input.cursor.createdAt,
+            );
+            return sql`
+              (${orderTimestampExpr} < ${cursorTimestamp})
+              or (
+                ${orderTimestampExpr} = ${cursorTimestamp}
+                and ${episode.id} < ${input.cursor.id}
+              )
+            `;
+          })()
+        : undefined;
+
+      const rows = await ctx.db.query.episode.findMany({
+        where: and(
+          eq(episode.podcastId, input.podcastId),
+          eq(episode.userId, ctx.user.id),
+          filterCondition,
+          cursorCondition,
+        ),
+        orderBy: [desc(orderTimestampExpr), desc(episode.id)],
+        limit: limit + 1,
+      });
+
+      const hasMore = rows.length > limit;
+      const items = hasMore ? rows.slice(0, limit) : rows;
+
+      const nextCursor = hasMore
+        ? {
+            id: rows[limit].id,
+            publishedAt: rows[limit].publishedAt
+              ? rows[limit].publishedAt.toISOString()
+              : null,
+            createdAt: rows[limit].createdAt.toISOString(),
           }
-          if (input.filterBySignals === "without-signals") {
-            return !hasSignals;
-          }
-          return true;
-        });
-      }
+        : null;
 
-      return result;
+      return {
+        items,
+        nextCursor,
+      };
     }),
 
   list: protectedProcedure
