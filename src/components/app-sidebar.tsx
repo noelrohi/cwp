@@ -1,5 +1,7 @@
 "use client";
 
+import { BrainIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import type * as React from "react";
 import { ModeToggle } from "@/components/mode-toggle";
 import { NavUser } from "@/components/nav-user";
@@ -8,9 +10,6 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
@@ -26,25 +25,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     <>
       {/* Floating trigger at top-left of the app - hidden on mobile */}
       {!isMobile && !open && (
-        <SidebarTrigger className="fixed top-4 left-4 z-50 rounded-full border border-border bg-background/80 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/70" />
+        <SidebarTrigger className="fixed top-4 left-4 z-50 size-9 rounded-full border border-border bg-background/80 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/70" />
       )}
 
       <Sidebar collapsible="icon" {...props} className="max-md:hidden">
-        <SidebarHeader>
-          <div className="flex items-center gap-2 px-2">
-            <SidebarTrigger className="-ml-1" />
-            <SidebarMenu className="flex-1 overflow-hidden">
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  className="data-[slot=sidebar-menu-button]:!p-1.5"
-                >
-                  <span className="font-bold font-serif text-lg">
-                    Framebreak Intelligence
-                  </span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
+        <SidebarHeader className="pb-4 pt-6">
+          <div className="flex items-center justify-center gap-2 px-2">
+            <HugeiconsIcon icon={BrainIcon} className="size-6 shrink-0" />
+            <div className="flex-1" />
             <ModeToggle />
           </div>
         </SidebarHeader>
@@ -57,7 +45,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
         {open && (
           <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2">
-            <SidebarTrigger className="rounded-full border border-border bg-background shadow-sm" />
+            <SidebarTrigger className="size-9 rounded-full border border-border bg-background shadow-sm" />
           </div>
         )}
       </Sidebar>
