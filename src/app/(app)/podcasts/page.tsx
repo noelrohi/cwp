@@ -267,7 +267,7 @@ export default function Podcasts() {
       )}
 
       {data?.data && data.data.length > 0 && (
-        <div className="mt-8 flex items-center justify-between">
+        <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-base text-muted-foreground">
             Showing {(page - 1) * data.pagination.limit + 1} to{" "}
             {(page - 1) * data.pagination.limit + data.data.length} of{" "}
