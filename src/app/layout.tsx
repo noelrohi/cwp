@@ -26,6 +26,9 @@ export const metadata: Metadata = {
   title: "Framebreak Intelligence",
   description:
     "Turn podcasts and blogs into smart quotes and insights that get better as you use them",
+  appleWebApp: {
+    title: "Framebreak",
+  },
 };
 
 export default function RootLayout({
