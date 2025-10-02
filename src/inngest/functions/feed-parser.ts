@@ -19,7 +19,7 @@ export const feedParserPipeline = inngest.createFunction(
   {
     id: "feed-parser-pipeline",
     retries: 3,
-    concurrency: 10, // Process 10 feeds simultaneously
+    concurrency: 5, // Process 5 feeds simultaneously
   },
   { cron: "0 1 * * *" }, // Run at 1:00 AM daily
   async ({ step, logger }) => {
