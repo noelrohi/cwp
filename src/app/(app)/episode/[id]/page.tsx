@@ -1122,7 +1122,7 @@ Content: ${content}
       <section className="space-y-3 sm:space-y-4">
         <div className="flex flex-col gap-3">
           <h2 className="text-base sm:text-lg font-semibold font-serif">
-            Related Signals
+            Signals of this Episode
           </h2>
 
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
