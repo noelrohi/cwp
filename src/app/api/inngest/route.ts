@@ -7,7 +7,6 @@ import {
   dailyIntelligenceProcessUser,
   dailyIntelligenceReprocessEpisode,
   feedParserPipeline,
-  helloWorld,
   monthlyCleanup,
   updateUserPreferences,
 } from "@/inngest/functions/index";
@@ -15,7 +14,6 @@ import {
 export const { GET, POST, PUT } = serve({
   client: inngest,
   functions: [
-    helloWorld,
     feedParserPipeline,
     dailyIntelligencePipeline,
     dailyIntelligenceProcessUser,
