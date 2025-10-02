@@ -694,7 +694,6 @@ Content: ${content}
                         {transcript && (
                           <TranscriptDisplay
                             transcript={transcript}
-                            onClose={() => {}}
                             speakerMappings={
                               episodeData?.speakerMapping?.speakerMappings
                                 ? JSON.parse(

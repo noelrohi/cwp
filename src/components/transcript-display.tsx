@@ -10,7 +10,6 @@ import type { TranscriptData } from "@/types/transcript";
 
 interface TranscriptDisplayProps {
   transcript: TranscriptData;
-  onClose: () => void;
   speakerMappings?: Record<string, string> | null;
 }
 
@@ -139,7 +138,6 @@ function groupSegmentsIntoParagraphs(
 
 export function TranscriptDisplay({
   transcript,
-  onClose,
   speakerMappings,
 }: TranscriptDisplayProps) {
   const [searchTerm, setSearchTerm] = useState("");
