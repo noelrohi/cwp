@@ -79,6 +79,7 @@ const AudioPlayerBar = memo(function AudioPlayerBar({
       className={cn(
         "border-border/80 bg-background/95 supports-[backdrop-filter]:backdrop-blur",
         "sticky bottom-0 left-0 right-0 border-t",
+        "hidden md:block",
         className,
       )}
     >

@@ -376,7 +376,8 @@ Content: ${content}
 
       {/* Episode Header */}
       <div className="space-y-4">
-        <div className="flex gap-4">
+        <div className="flex flex-col sm:flex-row gap-4">
+          {/* Thumbnail */}
           {episodeData?.thumbnailUrl && (
             <div className="relative h-32 w-32 shrink-0 overflow-hidden rounded-lg bg-muted">
               <Image
@@ -388,8 +389,9 @@ Content: ${content}
             </div>
           )}
 
+          {/* Title and Metadata */}
           <div className="flex-1 min-w-0">
-            <h1 className="text-xl sm:text-2xl font-semibold leading-tight mb-2">
+            <h1 className="text-xl sm:text-2xl font-semibold leading-tight mb-2 text-balance">
               {episodeData?.title}
             </h1>
 
@@ -419,8 +421,8 @@ Content: ${content}
               )}
             </dl>
 
-            {/* Action Buttons */}
-            <div className="flex flex-wrap gap-2">
+            {/* Action Buttons - Desktop only */}
+            <div className="hidden sm:inline-flex gap-2">
               {!isProcessed && (
                 <Dialog
                   open={showProcessDialog}
@@ -645,8 +647,9 @@ Content: ${content}
                                   size={16}
                                 />
                                 You will lose {episodeStats.data.saved} saved
-                                signal{episodeStats.data.saved !== 1 ? "s" : ""}{" "}
-                                from this episode
+                                signal
+                                {episodeStats.data.saved !== 1 ? "s" : ""} from
+                                this episode
                               </p>
                               <p className="text-xs">
                                 (Saves from other episodes are not affected)
@@ -763,6 +766,352 @@ Content: ${content}
             </div>
           </div>
         </div>
+
+        {/* Action Buttons - Mobile only */}
+        <div className="sm:hidden space-y-2">
+          {/* Primary Actions */}
+          <div className="flex flex-col gap-2">
+            {!isProcessed && (
+              <Dialog
+                open={showProcessDialog}
+                onOpenChange={setShowProcessDialog}
+              >
+                <DialogTrigger asChild>
+                  <Button disabled={isProcessing} size="sm" className="w-full">
+                    {isProcessing ? (
+                      <HugeiconsIcon
+                        icon={Loading03Icon}
+                        size={16}
+                        className="animate-spin"
+                      />
+                    ) : (
+                      <HugeiconsIcon icon={SparklesIcon} size={16} />
+                    )}
+                    {processButtonLabel}
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Process Episode</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div className="space-y-2 text-sm text-muted-foreground">
+                      <p className="font-medium text-foreground">
+                        This will process the episode and create signals:
+                      </p>
+                      <ul className="list-disc list-inside space-y-1 ml-2">
+                        <li>Fetch transcript from audio</li>
+                        <li>Split into semantic chunks (~100-800 words)</li>
+                        <li>Identify speakers using AI</li>
+                        <li>Generate embeddings and relevance scores</li>
+                        <li>Create up to 30 signals for review</li>
+                      </ul>
+                      <p className="mt-3">
+                        <strong>Duration:</strong> Usually 2-5 minutes depending
+                        on episode length
+                      </p>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowProcessDialog(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={() =>
+                          processEpisode.mutate({ episodeId: params.id })
+                        }
+                        disabled={isProcessing}
+                      >
+                        {isProcessing ? "Processing..." : "Start Processing"}
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            )}
+
+            {isProcessed && (
+              <>
+                <Dialog
+                  open={showRegenerateDialog}
+                  onOpenChange={setShowRegenerateDialog}
+                >
+                  <DialogTrigger asChild>
+                    <Button
+                      disabled={isRegenerating}
+                      variant="outline"
+                      size="sm"
+                    >
+                      {isRegenerating ? (
+                        <HugeiconsIcon
+                          icon={Loading03Icon}
+                          size={16}
+                          className="animate-spin"
+                        />
+                      ) : (
+                        <HugeiconsIcon icon={SparklesIcon} size={16} />
+                      )}
+                      Regenerate Signals
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Regenerate Signals</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div className="space-y-2 text-sm text-muted-foreground">
+                        <p className="font-medium text-foreground">
+                          This will regenerate signals for this episode only:
+                        </p>
+                        <ul className="list-disc list-inside space-y-1 ml-2">
+                          <li>
+                            Re-score all chunks using your latest preferences
+                          </li>
+                          <li>
+                            Add new signals from previously unselected chunks
+                          </li>
+                          <li>
+                            Apply current stratified sampling (top 30 across
+                            0-100% distribution)
+                          </li>
+                        </ul>
+
+                        {episodeStats.data && (
+                          <div className="mt-3 p-3 bg-muted rounded-lg">
+                            <p className="font-medium text-foreground mb-1">
+                              Current episode signals:
+                            </p>
+                            <div className="flex gap-4 text-xs">
+                              <span>{episodeStats.data.total} total</span>
+                              {episodeStats.data.pending > 0 && (
+                                <span className="text-amber-600 dark:text-amber-400">
+                                  {episodeStats.data.pending} pending
+                                </span>
+                              )}
+                              {episodeStats.data.saved > 0 && (
+                                <span className="text-green-600 dark:text-green-400">
+                                  {episodeStats.data.saved} saved
+                                </span>
+                              )}
+                              {episodeStats.data.skipped > 0 && (
+                                <span className="text-muted-foreground">
+                                  {episodeStats.data.skipped} skipped
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="mt-3 space-y-2">
+                          <p className="text-green-600 dark:text-green-400">
+                            <strong>Preserved:</strong> Your saved and skipped
+                            signals won't be changed
+                          </p>
+                          <p className="text-amber-600 dark:text-amber-400">
+                            <strong>Updated:</strong> Pending signals will be
+                            re-scored with your latest preferences
+                          </p>
+                          <p className="text-blue-600 dark:text-blue-400">
+                            <strong>Added:</strong> New signals may be added
+                            from previously unselected chunks
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => setShowRegenerateDialog(false)}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          onClick={() =>
+                            regenerateSignals.mutate({ episodeId: params.id })
+                          }
+                          disabled={isRegenerating}
+                        >
+                          {isRegenerating
+                            ? "Regenerating..."
+                            : "Regenerate Signals"}
+                        </Button>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+
+                <Dialog
+                  open={showReprocessDialog}
+                  onOpenChange={setShowReprocessDialog}
+                >
+                  <DialogTrigger asChild>
+                    <Button
+                      disabled={isProcessing}
+                      variant="destructive"
+                      size="sm"
+                      className="w-full"
+                    >
+                      {isProcessing ? (
+                        <HugeiconsIcon
+                          icon={Loading03Icon}
+                          size={16}
+                          className="animate-spin"
+                        />
+                      ) : (
+                        <HugeiconsIcon icon={SparklesIcon} size={16} />
+                      )}
+                      Reprocess Episode
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle className="text-destructive flex items-center gap-2">
+                        <HugeiconsIcon icon={AlertCircleIcon} size={20} />
+                        Reprocess Episode from Scratch
+                      </DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div className="space-y-2 text-sm text-muted-foreground">
+                        <p className="font-medium text-destructive">
+                          This will DELETE all existing data and reprocess from
+                          scratch:
+                        </p>
+                        <ul className="list-disc list-inside space-y-1 ml-2">
+                          <li>Delete all transcript chunks</li>
+                          <li>Delete all signals (saved and skipped)</li>
+                          <li>Delete speaker identification mappings</li>
+                          <li>Re-fetch transcript from audio</li>
+                          <li>Re-chunk with current settings</li>
+                          <li>Re-identify speakers using AI</li>
+                          <li>Generate new embeddings</li>
+                          <li>Create new signals</li>
+                        </ul>
+
+                        {episodeStats.data && episodeStats.data.saved > 0 && (
+                          <div className="mt-3 p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
+                            <p className="font-medium text-destructive mb-1 flex items-center gap-1.5">
+                              <HugeiconsIcon icon={AlertCircleIcon} size={16} />
+                              You will lose {episodeStats.data.saved} saved
+                              signal
+                              {episodeStats.data.saved !== 1 ? "s" : ""} from
+                              this episode
+                            </p>
+                            <p className="text-xs">
+                              (Saves from other episodes are not affected)
+                            </p>
+                          </div>
+                        )}
+
+                        <p className="mt-3 font-medium text-foreground">
+                          Use this when:
+                        </p>
+                        <ul className="list-disc list-inside space-y-1 ml-2">
+                          <li>Transcript had errors or quality issues</li>
+                          <li>Speaker identification failed</li>
+                          <li>Chunking logic has been updated</li>
+                        </ul>
+
+                        <p className="mt-3 text-muted-foreground">
+                          <strong>Duration:</strong> 3-7 minutes depending on
+                          episode length
+                        </p>
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => setShowReprocessDialog(false)}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          onClick={() =>
+                            reprocessEpisode.mutate({ episodeId: params.id })
+                          }
+                          disabled={isProcessing}
+                        >
+                          {isProcessing
+                            ? "Reprocessing..."
+                            : "Delete and Reprocess"}
+                        </Button>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </>
+            )}
+          </div>
+
+          {/* Secondary Actions - Icon Buttons */}
+          {episodeData?.transcriptUrl && (
+            <div className="flex gap-2">
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    onClick={() =>
+                      fetchTranscript(episodeData.transcriptUrl as string)
+                    }
+                  >
+                    <HugeiconsIcon icon={File01Icon} size={16} />
+                    <span className="sr-only">View Transcript</span>
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden">
+                  <DialogHeader>
+                    <DialogTitle>Episode Transcript</DialogTitle>
+                  </DialogHeader>
+                  <div className="overflow-auto">
+                    {transcript && (
+                      <TranscriptDisplay
+                        transcript={transcript}
+                        speakerMappings={
+                          episodeData?.speakerMapping?.speakerMappings
+                            ? JSON.parse(
+                                episodeData.speakerMapping.speakerMappings,
+                              )
+                            : null
+                        }
+                      />
+                    )}
+                  </div>
+                </DialogContent>
+              </Dialog>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon-sm">
+                    <HugeiconsIcon icon={Download01Icon} size={16} />
+                    <span className="sr-only">Download</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem asChild>
+                    <a
+                      href={episodeData.transcriptUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Download Transcript
+                    </a>
+                  </DropdownMenuItem>
+                  {episodeData.audioUrl && (
+                    <DropdownMenuItem asChild>
+                      <a
+                        href={episodeData.audioUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Download Audio
+                      </a>
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Related Signals */}
@@ -842,9 +1191,15 @@ Content: ${content}
                 </Select>
               )}
               {relatedSignals.length > 0 && (
-                <Button variant="outline" size="sm" onClick={handleCopySignals}>
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  onClick={handleCopySignals}
+                  className="sm:size-auto sm:h-8 sm:px-3"
+                >
                   <HugeiconsIcon icon={Copy01Icon} size={16} />
-                  Copy Signals
+                  <span className="hidden sm:inline">Copy Signals</span>
+                  <span className="sr-only sm:hidden">Copy Signals</span>
                 </Button>
               )}
             </div>
