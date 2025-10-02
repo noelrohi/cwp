@@ -251,7 +251,7 @@ export const dailyIntelligenceProcessEpisode = inngest.createFunction(
         return await ensureEpisodeTranscript({
           db,
           episode: normalisedEpisode,
-          force: false,
+          force: episodeData.status !== "processed", // Force refetch if not cleanly processed
         });
       });
 
