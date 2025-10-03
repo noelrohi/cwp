@@ -6,6 +6,7 @@ export {
   userEngagementAnalyzer,
 } from "./additional-monitoring";
 export {
+  handleBulkSkip,
   monthlyCleanup,
   updateUserPreferences,
 } from "./continuous-learning";

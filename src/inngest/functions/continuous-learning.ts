@@ -136,6 +136,41 @@ export const updateUserPreferences = inngest.createFunction(
 );
 
 /**
+ * Handle bulk skip operations efficiently
+ * Updates user preferences counters without processing each signal individually
+ */
+export const handleBulkSkip = inngest.createFunction(
+  { id: "handle-bulk-skip" },
+  { event: "signal/bulk-skipped" },
+  async ({ event, step }) => {
+    const { userId, count } = event.data;
+
+    await step.run("update-skip-counters", async () => {
+      const prefs = await ensureUserPreferencesRow(userId);
+
+      const totalActions = prefs.totalSaved + prefs.totalSkipped + count;
+      const newEngagementScore =
+        totalActions > 0 ? prefs.totalSaved / totalActions : 0.5;
+
+      await db
+        .update(userPreferences)
+        .set({
+          totalSkipped: prefs.totalSkipped + count,
+          averageEngagementScore: newEngagementScore,
+          lastUpdated: new Date(),
+        })
+        .where(eq(userPreferences.userId, userId));
+    });
+
+    return {
+      message: "Bulk skip processed successfully",
+      userId,
+      count,
+    };
+  },
+);
+
+/**
  * Update user behavioral preferences based on save/skip actions
  * Much simpler than centroid approach - just tracks what users engage with
  */

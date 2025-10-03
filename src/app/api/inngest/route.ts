@@ -7,6 +7,7 @@ import {
   dailyIntelligenceProcessUser,
   dailyIntelligenceReprocessEpisode,
   feedParserPipeline,
+  handleBulkSkip,
   monthlyCleanup,
   updateUserPreferences,
 } from "@/inngest/functions/index";
@@ -22,5 +23,6 @@ export const { GET, POST, PUT } = serve({
     dailyIntelligenceGenerateSignals,
     updateUserPreferences,
     monthlyCleanup,
+    handleBulkSkip,
   ],
 });
