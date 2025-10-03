@@ -32,12 +32,14 @@ export const signalsRouter = createTRPCRouter({
           limit: z.number().int().min(1).max(200).optional(),
           episodeId: z.string().optional(),
           filter: z.enum(["all", "pending", "processed"]).optional(),
+          confidenceFilter: z.enum(["all", "high", "medium", "low"]).optional(),
         })
         .optional(),
     )
     .query(async ({ ctx, input }) => {
       const limit = input?.limit ?? DEFAULT_SIGNAL_LIMIT;
       const filter = input?.filter ?? "pending";
+      const confidenceFilter = input?.confidenceFilter ?? "all";
 
       if (input?.episodeId) {
         const whereConditions = [
@@ -49,6 +51,17 @@ export const signalsRouter = createTRPCRouter({
           whereConditions.push(isNull(dailySignal.userAction));
         } else if (filter === "processed") {
           whereConditions.push(isNotNull(dailySignal.userAction));
+        }
+
+        // Add confidence filter
+        if (confidenceFilter === "high") {
+          whereConditions.push(sql`${dailySignal.relevanceScore} >= 0.65`);
+        } else if (confidenceFilter === "medium") {
+          whereConditions.push(
+            sql`${dailySignal.relevanceScore} >= 0.5 AND ${dailySignal.relevanceScore} < 0.65`,
+          );
+        } else if (confidenceFilter === "low") {
+          whereConditions.push(sql`${dailySignal.relevanceScore} < 0.5`);
         }
 
         const rows = await ctx.db
@@ -161,6 +174,17 @@ export const signalsRouter = createTRPCRouter({
         whereConditions.push(isNull(dailySignal.userAction));
       } else if (filter === "processed") {
         whereConditions.push(isNotNull(dailySignal.userAction));
+      }
+
+      // Add confidence filter
+      if (confidenceFilter === "high") {
+        whereConditions.push(sql`${dailySignal.relevanceScore} >= 0.65`);
+      } else if (confidenceFilter === "medium") {
+        whereConditions.push(
+          sql`${dailySignal.relevanceScore} >= 0.5 AND ${dailySignal.relevanceScore} < 0.65`,
+        );
+      } else if (confidenceFilter === "low") {
+        whereConditions.push(sql`${dailySignal.relevanceScore} < 0.5`);
       }
 
       const rows = await ctx.db.query.dailySignal.findMany({
@@ -282,46 +306,66 @@ export const signalsRouter = createTRPCRouter({
       };
     }),
 
-  episodesWithSignals: protectedProcedure.query(async ({ ctx }) => {
-    const rows = await ctx.db
-      .select({
-        episodeId: episode.id,
-        episodeTitle: episode.title,
-        episodePublishedAt: episode.publishedAt,
-        podcastId: podcast.id,
-        podcastTitle: podcast.title,
-        signalCount: count(dailySignal.id),
-      })
-      .from(dailySignal)
-      .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
-      .innerJoin(episode, eq(transcriptChunk.episodeId, episode.id))
-      .innerJoin(podcast, eq(episode.podcastId, podcast.id))
-      .where(
-        and(
-          eq(dailySignal.userId, ctx.user.id),
-          isNull(dailySignal.userAction),
-        ),
-      )
-      .groupBy(
-        episode.id,
-        episode.title,
-        episode.publishedAt,
-        podcast.id,
-        podcast.title,
-      )
-      .orderBy(desc(sql`count(${dailySignal.id})`));
+  episodesWithSignals: protectedProcedure
+    .input(
+      z
+        .object({
+          confidenceFilter: z.enum(["all", "high", "medium", "low"]).optional(),
+        })
+        .optional(),
+    )
+    .query(async ({ ctx, input }) => {
+      const confidenceFilter = input?.confidenceFilter ?? "all";
+      const whereConditions = [
+        eq(dailySignal.userId, ctx.user.id),
+        isNull(dailySignal.userAction),
+      ];
 
-    return rows.map((row) => ({
-      id: row.episodeId,
-      title: row.episodeTitle || "Untitled Episode",
-      publishedAt: row.episodePublishedAt,
-      podcast: {
-        id: row.podcastId,
-        title: row.podcastTitle || "Unknown Podcast",
-      },
-      signalCount: row.signalCount,
-    }));
-  }),
+      // Add confidence filter
+      if (confidenceFilter === "high") {
+        whereConditions.push(sql`${dailySignal.relevanceScore} >= 0.65`);
+      } else if (confidenceFilter === "medium") {
+        whereConditions.push(
+          sql`${dailySignal.relevanceScore} >= 0.5 AND ${dailySignal.relevanceScore} < 0.65`,
+        );
+      } else if (confidenceFilter === "low") {
+        whereConditions.push(sql`${dailySignal.relevanceScore} < 0.5`);
+      }
+
+      const rows = await ctx.db
+        .select({
+          episodeId: episode.id,
+          episodeTitle: episode.title,
+          episodePublishedAt: episode.publishedAt,
+          podcastId: podcast.id,
+          podcastTitle: podcast.title,
+          signalCount: count(dailySignal.id),
+        })
+        .from(dailySignal)
+        .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
+        .innerJoin(episode, eq(transcriptChunk.episodeId, episode.id))
+        .innerJoin(podcast, eq(episode.podcastId, podcast.id))
+        .where(and(...whereConditions))
+        .groupBy(
+          episode.id,
+          episode.title,
+          episode.publishedAt,
+          podcast.id,
+          podcast.title,
+        )
+        .orderBy(desc(sql`count(${dailySignal.id})`));
+
+      return rows.map((row) => ({
+        id: row.episodeId,
+        title: row.episodeTitle || "Untitled Episode",
+        publishedAt: row.episodePublishedAt,
+        podcast: {
+          id: row.podcastId,
+          title: row.podcastTitle || "Unknown Podcast",
+        },
+        signalCount: row.signalCount,
+      }));
+    }),
 
   byEpisode: protectedProcedure
     .input(
@@ -747,25 +791,37 @@ export const signalsRouter = createTRPCRouter({
       z
         .object({
           episodeId: z.string().optional(),
+          confidenceFilter: z.enum(["all", "high", "medium", "low"]).optional(),
         })
         .optional(),
     )
     .mutation(async ({ ctx, input }) => {
       const episodeId = input?.episodeId;
+      const confidenceFilter = input?.confidenceFilter ?? "all";
+
+      // Build where conditions
+      const whereConditions = [
+        eq(dailySignal.userId, ctx.user.id),
+        isNull(dailySignal.userAction),
+      ];
+
+      // Add confidence filter
+      if (confidenceFilter === "high") {
+        whereConditions.push(sql`${dailySignal.relevanceScore} >= 0.65`);
+      } else if (confidenceFilter === "medium") {
+        whereConditions.push(
+          sql`${dailySignal.relevanceScore} >= 0.5 AND ${dailySignal.relevanceScore} < 0.65`,
+        );
+      } else if (confidenceFilter === "low") {
+        whereConditions.push(sql`${dailySignal.relevanceScore} < 0.5`);
+      }
 
       // If episodeId is provided, only skip signals from that episode
-      let pendingSignalsQuery = ctx.db
-        .select({ id: dailySignal.id })
-        .from(dailySignal)
-        .where(
-          and(
-            eq(dailySignal.userId, ctx.user.id),
-            isNull(dailySignal.userAction),
-          ),
-        );
+      let pendingSignalsQuery;
 
       if (episodeId) {
         // Need to join with transcript_chunk to filter by episode
+        whereConditions.push(eq(transcriptChunk.episodeId, episodeId));
         pendingSignalsQuery = ctx.db
           .select({ id: dailySignal.id })
           .from(dailySignal)
@@ -773,13 +829,12 @@ export const signalsRouter = createTRPCRouter({
             transcriptChunk,
             eq(dailySignal.chunkId, transcriptChunk.id),
           )
-          .where(
-            and(
-              eq(dailySignal.userId, ctx.user.id),
-              isNull(dailySignal.userAction),
-              eq(transcriptChunk.episodeId, episodeId),
-            ),
-          );
+          .where(and(...whereConditions));
+      } else {
+        pendingSignalsQuery = ctx.db
+          .select({ id: dailySignal.id })
+          .from(dailySignal)
+          .where(and(...whereConditions));
       }
 
       const pendingSignals = await pendingSignalsQuery;
@@ -798,6 +853,17 @@ export const signalsRouter = createTRPCRouter({
             pendingSignals.map((s) => s.id),
           ),
         );
+
+      // Send a single bulk event for the training pipeline
+      await inngest.send({
+        name: "signal/bulk-skipped",
+        data: {
+          userId: ctx.user.id,
+          count: pendingSignals.length,
+          episodeId: episodeId || null,
+          confidenceFilter: confidenceFilter,
+        },
+      });
 
       return { success: true, skippedCount: pendingSignals.length };
     }),

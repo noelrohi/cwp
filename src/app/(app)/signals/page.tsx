@@ -97,20 +97,28 @@ function PendingSignalsTab() {
   const [pendingAction, setPendingAction] = useState<SignalAction | null>(null);
   const [isSkippingAll, setIsSkippingAll] = useState(false);
   const [selectedEpisodeId, setSelectedEpisodeId] = useState<string>("all");
-  const [selectedConfidence, setSelectedConfidence] = useState<string>("all");
+  const [selectedConfidence, setSelectedConfidence] = useState<
+    "all" | "high" | "medium" | "low"
+  >("all");
 
   const episodesQuery = useQuery(
-    trpc.signals.episodesWithSignals.queryOptions(),
+    trpc.signals.episodesWithSignals.queryOptions({
+      confidenceFilter:
+        selectedConfidence !== "all" ? selectedConfidence : undefined,
+    }),
   );
   const signalsQuery = useQuery(
     trpc.signals.list.queryOptions({
-      limit: 100,
+      limit: 200, // Use max allowed by server
       episodeId: selectedEpisodeId !== "all" ? selectedEpisodeId : undefined,
+      confidenceFilter:
+        selectedConfidence !== "all" ? selectedConfidence : undefined,
     }),
   );
 
   const actionMutation = useMutation(trpc.signals.action.mutationOptions());
   const undoMutation = useMutation(trpc.signals.undo.mutationOptions());
+  const skipAllMutation = useMutation(trpc.signals.skipAll.mutationOptions());
 
   const handleAction = async (signalId: string, action: SignalAction) => {
     setPendingSignalId(signalId);
@@ -157,16 +165,20 @@ function PendingSignalsTab() {
   const handleSkipAll = async () => {
     setIsSkippingAll(true);
     try {
-      const signalIds = signals.map((s) => s.id);
-
-      await Promise.all(
-        signalIds.map((signalId) =>
-          actionMutation.mutateAsync({ signalId, action: "skipped" }),
-        ),
-      );
+      const result = await skipAllMutation.mutateAsync({
+        episodeId: selectedEpisodeId !== "all" ? selectedEpisodeId : undefined,
+        confidenceFilter:
+          selectedConfidence !== "all" ? selectedConfidence : undefined,
+      });
 
       queryClient.invalidateQueries({ queryKey: trpc.signals.list.queryKey() });
-      toast.success(`Skipped ${signalIds.length} signals`);
+      queryClient.invalidateQueries({
+        queryKey: trpc.signals.episodesWithSignals.queryKey(),
+      });
+      queryClient.invalidateQueries({
+        queryKey: trpc.signals.metrics.queryKey(),
+      });
+      toast.success(`Skipped ${result.skippedCount} signals`);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unable to skip signals.";
@@ -221,7 +233,8 @@ Content: ${content}
   const fetchErrorMessage =
     fetchError && fetchError instanceof Error ? fetchError.message : undefined;
 
-  const allSignals = useMemo(() => {
+  // Server now handles all filtering, so no client-side filtering needed
+  const signals = useMemo(() => {
     return (signalsQuery.data ?? []).sort((a, b) => {
       // First sort by episode publish date (most recent first)
       const dateA = a.episode?.publishedAt
@@ -239,7 +252,7 @@ Content: ${content}
       const timestampB = b.chunk.startTimeSec ?? 0;
       return timestampA - timestampB;
     });
-  }, [signalsQuery.data]);
+  }, [signalsQuery.data, selectedConfidence]);
 
   const episodeOptions = useMemo(() => {
     return (episodesQuery.data ?? []).map((episode) => ({
@@ -253,29 +266,6 @@ Content: ${content}
   const totalSignalsCount = useMemo(() => {
     return episodeOptions.reduce((sum, ep) => sum + ep.count, 0);
   }, [episodeOptions]);
-
-  // Filter signals by confidence only (episode filtering is server-side)
-  const signals = useMemo(() => {
-    let filtered = allSignals;
-
-    if (selectedConfidence !== "all") {
-      filtered = filtered.filter((signal) => {
-        const score = signal.relevanceScore ?? 0;
-        switch (selectedConfidence) {
-          case "high":
-            return score >= 0.65;
-          case "medium":
-            return score >= 0.5 && score < 0.65;
-          case "low":
-            return score < 0.5;
-          default:
-            return true;
-        }
-      });
-    }
-
-    return filtered;
-  }, [allSignals, selectedConfidence]);
 
   // Preload audio for unique episodes when signals are loaded
   useEffect(() => {
@@ -342,7 +332,11 @@ Content: ${content}
             </Select>
             <Select
               value={selectedConfidence}
-              onValueChange={setSelectedConfidence}
+              onValueChange={(value) =>
+                setSelectedConfidence(
+                  value as "all" | "high" | "medium" | "low",
+                )
+              }
             >
               <SelectTrigger className="w-full @sm:w-[180px]">
                 <SelectValue placeholder="Confidence" />
@@ -363,7 +357,7 @@ Content: ${content}
                 variant="outline"
                 size="sm"
                 onClick={handleSkipAll}
-                disabled={isSkippingAll || signals.length === 0}
+                disabled={isSkippingAll || totalSignalsCount === 0}
               >
                 {isSkippingAll ? (
                   <HugeiconsIcon
@@ -374,7 +368,7 @@ Content: ${content}
                 ) : (
                   <HugeiconsIcon icon={BookmarkRemove01Icon} size={16} />
                 )}
-                Skip All ({signals.length})
+                Skip All ({totalSignalsCount})
               </Button>
             </div>
           </div>
