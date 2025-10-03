@@ -138,6 +138,14 @@ export const updateUserPreferences = inngest.createFunction(
 /**
  * Handle bulk skip operations efficiently
  * Updates user preferences counters without processing each signal individually
+ *
+ * Note: The skipped signals are already marked in the DB with userAction: "skipped"
+ * The next signal generation will automatically fetch these as negative examples
+ * for contrastive learning (if user has >= 5 skipped chunks).
+ *
+ * This means bulk skips DO affect future signal relevance scores:
+ * - Chunks similar to bulk-skipped content will get LOWER scores
+ * - Contrastive formula: relevanceScore = (savedSim - skippedSim + 2) / 4
  */
 export const handleBulkSkip = inngest.createFunction(
   { id: "handle-bulk-skip" },

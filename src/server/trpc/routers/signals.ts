@@ -817,6 +817,7 @@ export const signalsRouter = createTRPCRouter({
       }
 
       // If episodeId is provided, only skip signals from that episode
+      // biome-ignore lint/suspicious/noImplicitAnyLet: **
       let pendingSignalsQuery;
 
       if (episodeId) {
