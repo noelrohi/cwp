@@ -129,111 +129,111 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="relative flex flex-col h-full mx-auto w-full max-w-3xl">
-      {/* Scrollable conversation area with bottom padding for composer */}
-      <div className="flex-1 overflow-y-auto pb-32">
-        <Conversation>
-          <ConversationContent>
-            {messages.length === 0 ? (
-              <ConversationEmptyState
-                className="mt-24"
-                icon={<MessageSquare className="size-12" />}
-                title="Start a conversation"
-                description="Ask me anything about your podcasts and episodes"
-              />
-            ) : (
-              messages.map((message: ChatUIMessage) => (
-                <Message from={message.role} key={message.id}>
-                  <MessageContent variant="flat">
-                    {message.parts.map((part, i: number) => {
-                      switch (part.type) {
-                        case "data-searchResults":
-                          return (
-                            <Task
-                              key={`${message.id}-search-${i}`}
-                              className="mb-4"
-                              defaultOpen
-                            >
-                              <TaskTrigger
-                                title={
-                                  part.data.status === "searching"
-                                    ? `Searching for "${part.data.query}"...`
-                                    : `Found ${part.data.totalFound} result${part.data.totalFound !== 1 ? "s" : ""} for "${part.data.query}"`
-                                }
-                              />
-                              <TaskContent>
-                                {part.data.status === "searching" ? (
-                                  <TaskItem>
-                                    <span className="text-muted-foreground">
-                                      Searching your saved podcast content...
-                                    </span>
-                                  </TaskItem>
-                                ) : (
-                                  <TaskItem>
-                                    <span className="text-sm text-muted-foreground">
-                                      Retrieved {part.data.totalFound} relevant
-                                      transcript segments
-                                    </span>
-                                  </TaskItem>
-                                )}
-                              </TaskContent>
-                            </Task>
-                          );
-                        case "data-retrievedChunks":
-                          return (
-                            <CollapsibleChunks
-                              key={`${message.id}-chunks-${i}`}
-                              chunks={part.data.chunks}
+    <div className="flex flex-col h-svh">
+      {/* Scrollable conversation area with bottom padding for fixed input */}
+      <Conversation className="flex-1 pb-[120px]">
+        <ConversationContent className="mx-auto w-full max-w-3xl">
+          {messages.length === 0 ? (
+            <ConversationEmptyState
+              className="mt-24"
+              icon={<MessageSquare className="size-12" />}
+              title="Start a conversation"
+              description="Ask me anything about your podcasts and episodes"
+            />
+          ) : (
+            messages.map((message: ChatUIMessage) => (
+              <Message from={message.role} key={message.id}>
+                <MessageContent variant="flat">
+                  {message.parts.map((part, i: number) => {
+                    switch (part.type) {
+                      case "data-searchResults":
+                        return (
+                          <Task
+                            key={`${message.id}-search-${i}`}
+                            className="mb-4"
+                            defaultOpen
+                          >
+                            <TaskTrigger
+                              title={
+                                part.data.status === "searching"
+                                  ? `Searching for "${part.data.query}"...`
+                                  : `Found ${part.data.totalFound} result${part.data.totalFound !== 1 ? "s" : ""} for "${part.data.query}"`
+                              }
                             />
-                          );
-                        case "text":
-                          return (
-                            <Response key={`${message.id}-${i}`}>
-                              {part.text}
-                            </Response>
-                          );
-                        default:
-                          return null;
-                      }
-                    })}
-                  </MessageContent>
-                </Message>
-              ))
-            )}
-          </ConversationContent>
-          <ConversationScrollButton />
-        </Conversation>
-      </div>
+                            <TaskContent>
+                              {part.data.status === "searching" ? (
+                                <TaskItem>
+                                  <span className="text-muted-foreground">
+                                    Searching your saved podcast content...
+                                  </span>
+                                </TaskItem>
+                              ) : (
+                                <TaskItem>
+                                  <span className="text-sm text-muted-foreground">
+                                    Retrieved {part.data.totalFound} relevant
+                                    transcript segments
+                                  </span>
+                                </TaskItem>
+                              )}
+                            </TaskContent>
+                          </Task>
+                        );
+                      case "data-retrievedChunks":
+                        return (
+                          <CollapsibleChunks
+                            key={`${message.id}-chunks-${i}`}
+                            chunks={part.data.chunks}
+                          />
+                        );
+                      case "text":
+                        return (
+                          <Response key={`${message.id}-${i}`}>
+                            {part.text}
+                          </Response>
+                        );
+                      default:
+                        return null;
+                    }
+                  })}
+                </MessageContent>
+              </Message>
+            ))
+          )}
+        </ConversationContent>
+        <ConversationScrollButton />
+      </Conversation>
 
-      {/* Fixed composer at bottom */}
-      <div className="absolute bottom-0 left-0 right-0 bg-background p-4 border-t">
-        <PromptInput onSubmit={handleSubmit} className="mx-auto w-full">
-          <PromptInputBody className="border-none">
-            <PromptInputAttachments>
-              {(attachment) => <PromptInputAttachment data={attachment} />}
-            </PromptInputAttachments>
-            <PromptInputTextarea
-              value={input}
-              placeholder="Ask a question..."
-              className="md:text-base"
-              onChange={(e) => setInput(e.currentTarget.value)}
-            />
-          </PromptInputBody>
-          <PromptInputToolbar className="border-none">
-            <PromptInputTools>
-              <PromptInputActionMenu>
-                <PromptInputActionMenuTrigger />
-                <PromptInputActionMenuContent>
-                  <PromptInputActionAddAttachments />
-                </PromptInputActionMenuContent>
-              </PromptInputActionMenu>
-            </PromptInputTools>
-            <PromptInputSubmit
-              status={status === "streaming" ? "streaming" : "ready"}
-              disabled={!input.trim()}
-            />
-          </PromptInputToolbar>
-        </PromptInput>
+      {/* Fixed prompt input at bottom */}
+      <div className="absolute bottom-0 inset-x-0 p-4 bg-background/95 backdrop-blur-md supports-[backdrop-filter]:bg-background/80">
+        <div className="mx-auto w-full max-w-3xl">
+          <PromptInput onSubmit={handleSubmit}>
+            <PromptInputBody className="border-none">
+              <PromptInputAttachments>
+                {(attachment) => <PromptInputAttachment data={attachment} />}
+              </PromptInputAttachments>
+              <PromptInputTextarea
+                value={input}
+                placeholder="Ask a question..."
+                className="md:text-base"
+                onChange={(e) => setInput(e.currentTarget.value)}
+              />
+            </PromptInputBody>
+            <PromptInputToolbar className="border-none">
+              <PromptInputTools>
+                <PromptInputActionMenu>
+                  <PromptInputActionMenuTrigger />
+                  <PromptInputActionMenuContent>
+                    <PromptInputActionAddAttachments />
+                  </PromptInputActionMenuContent>
+                </PromptInputActionMenu>
+              </PromptInputTools>
+              <PromptInputSubmit
+                status={status === "streaming" ? "streaming" : "ready"}
+                disabled={!input.trim()}
+              />
+            </PromptInputToolbar>
+          </PromptInput>
+        </div>
       </div>
     </div>
   );
