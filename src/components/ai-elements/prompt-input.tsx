@@ -2,11 +2,11 @@
 
 import type { ChatStatus, FileUIPart } from "ai";
 import {
+  ArrowUpIcon,
   ImageIcon,
   Loader2Icon,
   PaperclipIcon,
   PlusIcon,
-  SendIcon,
   SquareIcon,
   XIcon,
 } from "lucide-react";
@@ -14,6 +14,7 @@ import { nanoid } from "nanoid";
 import {
   type ChangeEventHandler,
   Children,
+  type ClipboardEventHandler,
   type ComponentProps,
   createContext,
   type FormEvent,
@@ -89,7 +90,7 @@ export function PromptInputAttachment({
       {...props}
     >
       {data.mediaType?.startsWith("image/") && data.url ? (
-        /* biome-ignore lint/performance/noImgElement: preview thumbnails for uploads */
+        // biome-ignore lint/performance/noImgElement: **
         <img
           alt={data.filename || "attachment"}
           className="size-full rounded-md object-cover"
@@ -227,6 +228,7 @@ export const PromptInput = ({
   maxFileSize,
   onError,
   onSubmit,
+  children,
   ...props
 }: PromptInputProps) => {
   const [items, setItems] = useState<(FileUIPart & { id: string })[]>([]);
@@ -400,14 +402,38 @@ export const PromptInput = ({
     }
   };
 
+  const convertBlobUrlToDataUrl = async (url: string): Promise<string> => {
+    const response = await fetch(url);
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
+
   const handleSubmit: FormEventHandler<HTMLFormElement> = (event) => {
     event.preventDefault();
 
-    const files: FileUIPart[] = items.map(({ ...item }) => ({
-      ...item,
-    }));
+    const formData = new FormData(event.currentTarget);
+    const text = (formData.get("message") as string) || "";
 
-    onSubmit({ text: event.currentTarget.message.value, files }, event);
+    // Convert blob URLs to data URLs asynchronously
+    Promise.all(
+      items.map(async ({ id, ...item }) => {
+        if (item.url?.startsWith("blob:")) {
+          return {
+            ...item,
+            url: await convertBlobUrlToDataUrl(item.url),
+          };
+        }
+        return item;
+      }),
+    ).then((files: FileUIPart[]) => {
+      onSubmit({ text, files }, event);
+      clear();
+    });
   };
 
   const ctx = useMemo<AttachmentsContext>(
@@ -440,7 +466,9 @@ export const PromptInput = ({
         )}
         onSubmit={handleSubmit}
         {...props}
-      />
+      >
+        {children}
+      </form>
     </AttachmentsContext.Provider>
   );
 };
@@ -462,6 +490,8 @@ export const PromptInputTextarea = ({
   placeholder = "What would you like to know?",
   ...props
 }: PromptInputTextareaProps) => {
+  const attachments = usePromptInputAttachments();
+
   const handleKeyDown: KeyboardEventHandler<HTMLTextAreaElement> = (e) => {
     if (e.key === "Enter") {
       // Don't submit if IME composition is in progress
@@ -483,6 +513,30 @@ export const PromptInputTextarea = ({
     }
   };
 
+  const handlePaste: ClipboardEventHandler<HTMLTextAreaElement> = (event) => {
+    const items = event.clipboardData?.items;
+
+    if (!items) {
+      return;
+    }
+
+    const files: File[] = [];
+
+    for (const item of items) {
+      if (item.kind === "file") {
+        const file = item.getAsFile();
+        if (file) {
+          files.push(file);
+        }
+      }
+    }
+
+    if (files.length > 0) {
+      event.preventDefault();
+      attachments.add(files);
+    }
+  };
+
   return (
     <Textarea
       className={cn(
@@ -497,6 +551,7 @@ export const PromptInputTextarea = ({
         onChange?.(e);
       }}
       onKeyDown={handleKeyDown}
+      onPaste={handlePaste}
       placeholder={placeholder}
       {...props}
     />
@@ -613,7 +668,7 @@ export const PromptInputSubmit = ({
   children,
   ...props
 }: PromptInputSubmitProps) => {
-  let Icon = <SendIcon className="size-4" />;
+  let Icon = <ArrowUpIcon className="size-4" />;
 
   if (status === "submitted") {
     Icon = <Loader2Icon className="size-4 animate-spin" />;
@@ -625,6 +680,7 @@ export const PromptInputSubmit = ({
 
   return (
     <Button
+      aria-label="Submit"
       className={cn("gap-1.5 rounded-lg", className)}
       size={size}
       type="submit"
