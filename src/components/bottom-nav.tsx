@@ -59,6 +59,10 @@ export function BottomNav() {
   const isAdmin = session?.user?.role === "admin";
   const user = session?.user;
 
+  if (pathname === "/chat") {
+    return null;
+  }
+
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background md:hidden">
       <div className="flex items-center justify-evenly py-2">

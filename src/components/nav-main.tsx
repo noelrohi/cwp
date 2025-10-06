@@ -6,6 +6,7 @@ import {
   DashboardBrowsingIcon,
   HierarchySquare01Icon,
   Idea01Icon,
+  MessageMultiple01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import Link from "next/link";
@@ -32,6 +33,11 @@ const items: NavItem[] = [
     title: "Dashboard",
     icon: DashboardBrowsingIcon,
     url: "/dashboard",
+  },
+  {
+    title: "Chat",
+    icon: MessageMultiple01Icon,
+    url: "/chat",
   },
   {
     title: "Signals",

@@ -12,7 +12,6 @@ export const Image = ({
   mediaType,
   ...props
 }: ImageProps) => (
-  /* biome-ignore lint/performance/noImgElement: data URL previews are acceptable here */
   <img
     {...props}
     alt={props.alt}

@@ -3,9 +3,9 @@
  * Run with: pnpm tsx scripts/get-user-id.ts
  */
 
-import { db } from "@/server/db";
-import { userPreferences, user } from "@/server/db/schema";
 import { desc, sql } from "drizzle-orm";
+import { db } from "@/server/db";
+import { user, userPreferences } from "@/server/db/schema";
 
 async function main() {
   console.log("Fetching users with signal activity...\n");
