@@ -1,4 +1,4 @@
-import { and, cosineDistance, desc, eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { generateEmbedding } from "@/lib/embedding";
 import {
@@ -29,11 +29,15 @@ export const ragRouter = createTRPCRouter({
       }),
     )
     .query(async ({ ctx, input }) => {
-      // Generate embedding for search query
-      const queryEmbedding = await generateEmbedding(input.query);
+      console.log(`\n🔍 [RAG Router: searchSaved] Query: "${input.query}"`);
+      console.log(`   User: ${ctx.user.id}`);
+      console.log(`   Limit: ${input.limit}`);
 
-      // Calculate similarity using Drizzle's cosineDistance helper
-      const similarity = sql<number>`1 - ${cosineDistance(transcriptChunk.embedding, queryEmbedding)}`;
+      // Generate embedding for search query
+      const startEmbed = Date.now();
+      const queryEmbedding = await generateEmbedding(input.query);
+      const embeddingString = JSON.stringify(queryEmbedding);
+      console.log(`   Embedding generated in ${Date.now() - startEmbed}ms`);
 
       const whereConditions = [
         eq(dailySignal.userId, ctx.user.id),
@@ -48,6 +52,7 @@ export const ragRouter = createTRPCRouter({
         );
       }
 
+      const startQuery = Date.now();
       const results = await ctx.db
         .select({
           chunkId: transcriptChunk.id,
@@ -68,15 +73,22 @@ export const ragRouter = createTRPCRouter({
           relevanceScore: dailySignal.relevanceScore,
           savedAt: dailySignal.actionedAt,
           // Vector similarity
-          similarity,
+          similarity: sql<number>`1 - (${transcriptChunk.embedding} <=> ${embeddingString}::vector)`,
         })
         .from(dailySignal)
         .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
         .innerJoin(episode, eq(transcriptChunk.episodeId, episode.id))
         .innerJoin(podcast, eq(episode.podcastId, podcast.id))
         .where(and(...whereConditions))
-        .orderBy(desc(similarity))
+        .orderBy(
+          sql`${transcriptChunk.embedding} <=> ${embeddingString}::vector`,
+        )
         .limit(input.limit);
+
+      console.log(`   Query executed in ${Date.now() - startQuery}ms`);
+      console.log(
+        `✅ [RAG Router: searchSaved] Found ${results.length} results\n`,
+      );
 
       return results.map((r) => ({
         ...r,
@@ -99,7 +111,7 @@ export const ragRouter = createTRPCRouter({
     )
     .query(async ({ ctx, input }) => {
       const queryEmbedding = await generateEmbedding(input.query);
-      const similarity = sql<number>`1 - ${cosineDistance(transcriptChunk.embedding, queryEmbedding)}`;
+      const embeddingString = JSON.stringify(queryEmbedding);
 
       const whereConditions = [
         eq(podcast.userId, ctx.user.id),
@@ -130,13 +142,15 @@ export const ragRouter = createTRPCRouter({
           podcastId: podcast.id,
           podcastTitle: podcast.title,
           podcastImageUrl: podcast.imageUrl,
-          similarity,
+          similarity: sql<number>`1 - (${transcriptChunk.embedding} <=> ${embeddingString}::vector)`,
         })
         .from(transcriptChunk)
         .innerJoin(episode, eq(transcriptChunk.episodeId, episode.id))
         .innerJoin(podcast, eq(episode.podcastId, podcast.id))
         .where(and(...whereConditions))
-        .orderBy(desc(similarity))
+        .orderBy(
+          sql`${transcriptChunk.embedding} <=> ${embeddingString}::vector`,
+        )
         .limit(input.limit);
 
       return results.map((r) => ({
@@ -160,7 +174,7 @@ export const ragRouter = createTRPCRouter({
     )
     .query(async ({ ctx, input }) => {
       const queryEmbedding = await generateEmbedding(input.query);
-      const semanticSimilarity = sql<number>`1 - ${cosineDistance(transcriptChunk.embedding, queryEmbedding)}`;
+      const embeddingString = JSON.stringify(queryEmbedding);
 
       const whereConditions = [
         eq(dailySignal.userId, ctx.user.id),
@@ -186,7 +200,7 @@ export const ragRouter = createTRPCRouter({
           podcastTitle: podcast.title,
           podcastImageUrl: podcast.imageUrl,
           // Multiple signals for scoring
-          semanticSimilarity,
+          semanticSimilarity: sql<number>`1 - (${transcriptChunk.embedding} <=> ${embeddingString}::vector)`,
           aiRelevanceScore: dailySignal.relevanceScore,
           userAction: dailySignal.userAction,
           actionedAt: dailySignal.actionedAt,
@@ -196,7 +210,9 @@ export const ragRouter = createTRPCRouter({
         .innerJoin(episode, eq(transcriptChunk.episodeId, episode.id))
         .innerJoin(podcast, eq(episode.podcastId, podcast.id))
         .where(and(...whereConditions))
-        .orderBy(desc(semanticSimilarity))
+        .orderBy(
+          sql`${transcriptChunk.embedding} <=> ${embeddingString}::vector`,
+        )
         .limit(input.limit);
 
       // Re-rank with hybrid scoring
@@ -229,7 +245,7 @@ export const ragRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       // Generate query embedding
       const queryEmbedding = await generateEmbedding(input.query);
-      const similarity = sql<number>`1 - ${cosineDistance(transcriptChunk.embedding, queryEmbedding)}`;
+      const embeddingString = JSON.stringify(queryEmbedding);
 
       // Fetch search results
       const results = await ctx.db
@@ -251,7 +267,9 @@ export const ragRouter = createTRPCRouter({
             sql`${transcriptChunk.embedding} IS NOT NULL`,
           ),
         )
-        .orderBy(desc(similarity))
+        .orderBy(
+          sql`${transcriptChunk.embedding} <=> ${embeddingString}::vector`,
+        )
         .limit(input.limit);
 
       // Format for LLM

@@ -22,7 +22,7 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
           <div className="fixed top-4 right-4 z-50 md:hidden">
             <ModeToggle />
           </div>
-          <SidebarInset className="flex-1 pb-28 md:peer-data-[variant=inset]:mb-0 md:peer-data-[variant=inset]:rounded-b-none">
+          <SidebarInset className="flex-1 md:peer-data-[variant=inset]:mb-0 md:peer-data-[variant=inset]:rounded-b-none">
             {children}
           </SidebarInset>
           <AudioPlayerBar />

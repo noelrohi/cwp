@@ -1,10 +1,48 @@
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { convertToModelMessages, streamText, type UIMessage } from "ai";
-import { z } from "zod";
+import {
+  convertToModelMessages,
+  createUIMessageStream,
+  createUIMessageStreamResponse,
+  stepCountIs,
+  streamText,
+  type UIMessage,
+} from "ai";
+import { createTools } from "@/ai/tools";
 import { auth } from "@/lib/auth";
 import { db } from "@/server/db";
 import { createCallerFactory } from "@/server/trpc/init";
 import { appRouter } from "@/server/trpc/root";
+
+// Define custom message type with data parts
+export type ChatUIMessage = UIMessage<
+  never,
+  {
+    status: {
+      message: string;
+      type: "info" | "success" | "error";
+    };
+    searchResults: {
+      query: string;
+      totalFound: number;
+      status: "searching" | "complete";
+    };
+    retrievedChunks: {
+      chunks: Array<{
+        content: string;
+        podcast: string;
+        episode: string;
+        speaker: string;
+        timestamp: string;
+        citation: string;
+        similarity: number;
+        relevanceScore?: number;
+        startTimeSec?: number;
+        endTimeSec?: number;
+        episodeAudioUrl?: string;
+      }>;
+    };
+  }
+>;
 
 const openrouter = createOpenRouter({
   apiKey: process.env.OPENROUTER_API_KEY,
@@ -17,16 +55,28 @@ const openrouter = createOpenRouter({
 export const maxDuration = 30;
 
 export async function POST(req: Request) {
+  console.log("\n🚀 [Chat API] POST request received");
+
   // Get the session to ensure user is authenticated
   const session = await auth.api.getSession({
     headers: req.headers,
   });
 
   if (!session) {
+    console.log("❌ [Chat API] Unauthorized - no session");
     return new Response("Unauthorized", { status: 401 });
   }
 
+  console.log(`✅ [Chat API] Authenticated user: ${session.user.id}`);
+
   const { messages }: { messages: UIMessage[] } = await req.json();
+  console.log(`📨 [Chat API] Received ${messages.length} messages`);
+  if (messages.length > 0) {
+    const lastMsg = messages[messages.length - 1];
+    console.log(
+      `📝 [Chat API] Last message: ${JSON.stringify(lastMsg).slice(0, 150)}...`,
+    );
+  }
 
   // Create tRPC caller for RAG operations
   const createCaller = createCallerFactory(appRouter);
@@ -35,114 +85,18 @@ export async function POST(req: Request) {
     session: session.session,
     user: session.user,
   });
+  console.log("🔧 [Chat API] tRPC caller created");
 
-  // Define tools with proper typing
-  const tools = {
-    search_saved_content: {
-      description:
-        "Search the user's saved podcast content semantically. Returns transcript chunks with full context (episode, podcast, speaker, timestamp). Use this when the user asks about topics they've saved or want to remember.",
-      inputSchema: z.object({
-        query: z
-          .string()
-          .describe("The semantic search query - be specific and focused"),
-        limit: z
-          .number()
-          .int()
-          .min(1)
-          .max(20)
-          .default(5)
-          .describe("Number of results to return (default: 5)"),
-        minRelevanceScore: z
-          .number()
-          .min(0)
-          .max(1)
-          .optional()
-          .describe(
-            "Minimum AI relevance score filter (0-1). Higher = more selective",
-          ),
-      }),
-      execute: async ({
-        query,
-        limit,
-        minRelevanceScore,
-      }: {
-        query: string;
-        limit: number;
-        minRelevanceScore?: number;
-      }) => {
-        const results = await trpc.rag.searchSaved({
-          query,
-          limit,
-          minRelevanceScore,
-        });
+  console.log("🤖 [Chat API] Initializing UI message stream...");
 
-        return {
-          results: results.map((r) => ({
-            content: r.content,
-            podcast: r.podcastTitle,
-            episode: r.episodeTitle,
-            speaker: r.speaker || "Unknown",
-            timestamp: formatTimestamp(r.startTimeSec),
-            citation: r.citation,
-            similarity: Number(r.similarity?.toFixed(3) || 0),
-            relevanceScore: r.relevanceScore,
-          })),
-          totalFound: results.length,
-        };
-      },
-    },
-    search_all_content: {
-      description:
-        "Search ALL podcast episodes in the user's library (not just saved content). Use when user explicitly asks to search beyond their saved content or when saved search returns no results.",
-      inputSchema: z.object({
-        query: z.string().describe("The semantic search query"),
-        limit: z
-          .number()
-          .int()
-          .min(1)
-          .max(20)
-          .default(10)
-          .describe("Number of results to return (default: 10)"),
-        podcastIds: z
-          .array(z.string())
-          .optional()
-          .describe("Optional: filter by specific podcast IDs"),
-      }),
-      execute: async ({
-        query,
-        limit,
-        podcastIds,
-      }: {
-        query: string;
-        limit: number;
-        podcastIds?: string[];
-      }) => {
-        const results = await trpc.rag.searchAll({
-          query,
-          limit,
-          podcastIds,
-        });
+  const stream = createUIMessageStream<ChatUIMessage>({
+    execute: ({ writer }) => {
+      console.log("📡 [Chat API] Streaming response...\n");
 
-        return {
-          results: results.map((r) => ({
-            content: r.content,
-            podcast: r.podcastTitle,
-            episode: r.episodeTitle,
-            speaker: r.speaker || "Unknown",
-            timestamp: formatTimestamp(r.startTimeSec),
-            citation: r.citation,
-            similarity: Number(r.similarity?.toFixed(3) || 0),
-          })),
-          totalFound: results.length,
-        };
-      },
-    },
-  };
-
-  const result = streamText({
-    model: openrouter("openai/gpt-5-codex"),
-    messages: convertToModelMessages(messages),
-    system: `You are CWP (Chat With Podcasts) — an AI assistant that helps users discover and understand insights from their saved podcast content.
+      const result = streamText({
+        model: openrouter("openai/gpt-4.1-mini"),
+        messages: convertToModelMessages(messages),
+        system: `You are a helpful AI assistant that helps users discover and understand insights from their saved podcast content.
 
 Core identity:
 - You have access to the user's personally curated podcast library
@@ -166,22 +120,21 @@ Tone:
 - Direct and practical
 - Conversational but not chatty
 - Emphasize what was actually said over your interpretations`,
-    tools,
+        tools: createTools(trpc, writer),
+        stopWhen: stepCountIs(10),
+        onFinish: ({ text, toolCalls, finishReason, usage }) => {
+          console.log({ text });
+          console.log("\n✨ [Chat API] Stream finished");
+          console.log(`   Finish reason: ${finishReason}`);
+          console.log(`   Tool calls: ${toolCalls?.length ?? 0}`);
+          console.log(`   Response length: ${text?.length ?? 0} chars`);
+          console.log(`   Usage: ${JSON.stringify(usage)}`);
+        },
+      });
+
+      writer.merge(result.toUIMessageStream());
+    },
   });
 
-  return result.toUIMessageStreamResponse();
-}
-
-// Helper function to format timestamps for citations
-function formatTimestamp(seconds: number | null): string {
-  if (seconds === null) return "unknown time";
-
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = Math.floor(seconds % 60);
-
-  if (hours > 0) {
-    return `${hours}:${minutes.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
-  }
-  return `${minutes}:${secs.toString().padStart(2, "0")}`;
+  return createUIMessageStreamResponse({ stream });
 }
