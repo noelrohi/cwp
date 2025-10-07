@@ -86,6 +86,7 @@ function CollapsibleChunks({ chunks }: { chunks: ChunkData[] }) {
             speakerLabel={chunk.speaker}
             startTimeSec={chunk.startTimeSec ?? null}
             endTimeSec={chunk.endTimeSec ?? null}
+            className="w-full sm:max-w-2xl"
             metadata={[
               { label: chunk.podcast },
               { label: chunk.episode },
@@ -130,7 +131,7 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="flex flex-col h-svh">
+    <div className="flex flex-col min-h-dvh relative">
       {/* Floating sidebar trigger for mobile only */}
       {isMobile && (
         <Button
@@ -143,8 +144,7 @@ export default function ChatPage() {
         </Button>
       )}
 
-      {/* Scrollable conversation area with bottom padding for fixed input */}
-      <Conversation className="flex-1 pb-[120px]">
+      <Conversation className="flex-1">
         <ConversationContent className="mx-auto w-full max-w-3xl">
           {messages.length === 0 ? (
             <ConversationEmptyState
@@ -216,9 +216,9 @@ export default function ChatPage() {
         <ConversationScrollButton />
       </Conversation>
 
-      {/* Fixed prompt input at bottom */}
-      <div className="absolute bottom-0 inset-x-0 p-4 bg-background/95 backdrop-blur-md supports-[backdrop-filter]:bg-background/80">
-        <div className="mx-auto w-full max-w-3xl">
+      {/* Sticky prompt input at bottom */}
+      <div className="sticky bottom-0 inset-x-0 z-20 mt-auto bg-background/95 backdrop-blur-md supports-[backdrop-filter]:bg-background/80">
+        <div className="mx-auto w-full max-w-3xl px-4 pb-4 pt-3">
           <PromptInput onSubmit={handleSubmit}>
             <PromptInputBody className="border-none">
               <PromptInputAttachments>
