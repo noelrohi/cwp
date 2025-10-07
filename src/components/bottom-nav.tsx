@@ -9,7 +9,7 @@ import {
   UserCircleIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -24,11 +24,17 @@ import { useSidebar } from "@/components/ui/sidebar";
 import { signOut, useSession } from "@/lib/auth-client";
 
 export function BottomNav() {
+  const pathname = usePathname();
   const router = useRouter();
   const { data: session } = useSession();
   const isAdmin = session?.user?.role === "admin";
   const user = session?.user;
   const { toggleSidebar } = useSidebar();
+
+  // Hide bottom nav on chat page to avoid blocking the composer
+  if (pathname === "/chat") {
+    return null;
+  }
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background md:hidden">

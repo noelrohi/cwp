@@ -3,8 +3,9 @@
 import { useChat } from "@ai-sdk/react";
 import { SidebarLeftIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { IconMessage2Bolt } from "@tabler/icons-react";
 import { DefaultChatTransport } from "ai";
-import { ChevronDown, MessageSquare } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 import type { ChatUIMessage } from "@/app/api/chat/route";
 import { SignalCard } from "@/blocks/signals/signal-card";
@@ -17,10 +18,6 @@ import {
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import {
   PromptInput,
-  PromptInputActionAddAttachments,
-  PromptInputActionMenu,
-  PromptInputActionMenuContent,
-  PromptInputActionMenuTrigger,
   PromptInputAttachment,
   PromptInputAttachments,
   PromptInputBody,
@@ -152,9 +149,9 @@ export default function ChatPage() {
           {messages.length === 0 ? (
             <ConversationEmptyState
               className="mt-24"
-              icon={<MessageSquare className="size-12" />}
+              icon={<IconMessage2Bolt className="size-12" />}
               title="Start a conversation"
-              description="Ask me anything about your podcasts and episodes"
+              description="Ask anything about your saved signals"
             />
           ) : (
             messages.map((message: ChatUIMessage) => (
@@ -236,12 +233,12 @@ export default function ChatPage() {
             </PromptInputBody>
             <PromptInputToolbar className="border-none">
               <PromptInputTools>
-                <PromptInputActionMenu>
+                {/* <PromptInputActionMenu>
                   <PromptInputActionMenuTrigger />
                   <PromptInputActionMenuContent>
                     <PromptInputActionAddAttachments />
                   </PromptInputActionMenuContent>
-                </PromptInputActionMenu>
+                </PromptInputActionMenu> */}
               </PromptInputTools>
               <PromptInputSubmit
                 status={status === "streaming" ? "streaming" : "ready"}
