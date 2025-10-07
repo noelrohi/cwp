@@ -217,9 +217,9 @@ export default function ChatPage() {
       </Conversation>
 
       {/* Sticky prompt input at bottom */}
-      <div className="sticky bottom-0 inset-x-0 z-20 mt-auto bg-background/95 backdrop-blur-md supports-[backdrop-filter]:bg-background/80">
+      <div className="sticky bottom-0 inset-x-0 z-20 mt-auto">
         <div className="mx-auto w-full max-w-3xl px-4 pb-4 pt-3">
-          <PromptInput onSubmit={handleSubmit}>
+          <PromptInput onSubmit={handleSubmit} className="backdrop-blur-md">
             <PromptInputBody className="border-none">
               <PromptInputAttachments>
                 {(attachment) => <PromptInputAttachment data={attachment} />}
