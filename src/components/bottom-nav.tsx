@@ -2,6 +2,7 @@
 
 import {
   AiSecurity01Icon,
+  FileAttachmentIcon,
   HierarchySquare01Icon,
   Logout01Icon,
   Settings01Icon,
@@ -107,6 +108,10 @@ export function BottomNav() {
                   <DropdownMenuItem disabled>
                     <HugeiconsIcon icon={Settings01Icon} size={16} />
                     Settings
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => router.push("/articles")}>
+                    <HugeiconsIcon icon={FileAttachmentIcon} size={16} />
+                    Articles
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
                 {isAdmin && (

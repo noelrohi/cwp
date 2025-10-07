@@ -4,6 +4,7 @@ import {
   AiMicIcon,
   AiSecurity01Icon,
   DashboardBrowsingIcon,
+  FileAttachmentIcon,
   HierarchySquare01Icon,
   Idea01Icon,
   MessageMultiple01Icon,
@@ -48,6 +49,11 @@ const items: NavItem[] = [
     title: "Podcasts",
     icon: AiMicIcon,
     url: "/podcasts",
+  },
+  {
+    title: "Articles",
+    icon: FileAttachmentIcon,
+    url: "/articles",
   },
   // {
   //   title: "Patterns",
