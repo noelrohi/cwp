@@ -9,6 +9,7 @@ import {
   Copy01Icon,
   FilterIcon,
   Loading03Icon,
+  PodcastIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -239,21 +240,7 @@ Content: ${content}
   // Server now handles all filtering, so no client-side filtering needed
   const signals = useMemo(() => {
     return (signalsQuery.data ?? []).sort((a, b) => {
-      // First sort by episode publish date (most recent first)
-      const dateA = a.episode?.publishedAt
-        ? new Date(a.episode.publishedAt)
-        : new Date(0);
-      const dateB = b.episode?.publishedAt
-        ? new Date(b.episode.publishedAt)
-        : new Date(0);
-      const dateComparison = dateB.getTime() - dateA.getTime();
-
-      if (dateComparison !== 0) return dateComparison;
-
-      // If dates are the same, sort by timestamp within episode (earliest first)
-      const timestampA = a.chunk.startTimeSec ?? 0;
-      const timestampB = b.chunk.startTimeSec ?? 0;
-      return timestampA - timestampB;
+      return (b.relevanceScore ?? 0) - (a.relevanceScore ?? 0);
     });
   }, [signalsQuery.data]);
 
@@ -347,8 +334,8 @@ Content: ${content}
               <SelectContent>
                 <SelectItem value="all">All Confidence</SelectItem>
                 <SelectItem value="high">High (≥65%)</SelectItem>
-                <SelectItem value="medium">Medium (50-65%)</SelectItem>
-                <SelectItem value="low">Low (&lt;50%)</SelectItem>
+                <SelectItem value="medium">Medium (40-65%)</SelectItem>
+                <SelectItem value="low">Low (&lt;40%)</SelectItem>
               </SelectContent>
             </Select>
             <div className="flex gap-2">
@@ -390,9 +377,15 @@ Content: ${content}
             const speakerDisplay = signal.speakerName || "Unknown speaker";
             const metadata: SignalCardMetadataItem[] = [];
             if (signal.episode) {
-              if (signal.episode.podcast?.title) {
+              if (signal.episode.title) {
                 metadata.push({
                   icon: <HugeiconsIcon icon={AiMicIcon} size={12} />,
+                  label: signal.episode.title,
+                });
+              }
+              if (signal.episode.podcast?.title) {
+                metadata.push({
+                  icon: <HugeiconsIcon icon={PodcastIcon} size={12} />,
                   label: signal.episode.podcast.title,
                 });
               }

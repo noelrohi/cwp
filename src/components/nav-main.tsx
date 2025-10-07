@@ -35,7 +35,7 @@ type NavItem = {
   icon: typeof DashboardBrowsingIcon;
   url?: string;
   badge?: string;
-  items?: { title: string; url: string }[];
+  items?: { title: string; url: string; badge?: string }[];
 };
 
 const items: NavItem[] = [
@@ -54,7 +54,7 @@ const items: NavItem[] = [
     icon: Idea01Icon,
     items: [
       { title: "Episodes", url: "/signals/episodes" },
-      { title: "Articles", url: "/signals/articles" },
+      { title: "Articles", url: "/signals/articles", badge: "WIP" },
     ],
   },
   {
@@ -141,6 +141,14 @@ export function NavMain() {
                               <SidebarMenuSubButton asChild isActive={isActive}>
                                 <Link href={subItem.url}>
                                   <span>{subItem.title}</span>
+                                  {subItem.badge && (
+                                    <Badge
+                                      variant="secondary"
+                                      className="ml-auto text-xs"
+                                    >
+                                      {subItem.badge}
+                                    </Badge>
+                                  )}
                                 </Link>
                               </SidebarMenuSubButton>
                             </SidebarMenuSubItem>

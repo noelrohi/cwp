@@ -59,10 +59,10 @@ export const signalsRouter = createTRPCRouter({
           whereConditions.push(sql`${dailySignal.relevanceScore} >= 0.65`);
         } else if (confidenceFilter === "medium") {
           whereConditions.push(
-            sql`${dailySignal.relevanceScore} >= 0.5 AND ${dailySignal.relevanceScore} < 0.65`,
+            sql`${dailySignal.relevanceScore} >= 0.4 AND ${dailySignal.relevanceScore} < 0.65`,
           );
         } else if (confidenceFilter === "low") {
-          whereConditions.push(sql`${dailySignal.relevanceScore} < 0.5`);
+          whereConditions.push(sql`${dailySignal.relevanceScore} < 0.4`);
         }
 
         const rows = await ctx.db
@@ -327,10 +327,10 @@ export const signalsRouter = createTRPCRouter({
         whereConditions.push(sql`${dailySignal.relevanceScore} >= 0.65`);
       } else if (confidenceFilter === "medium") {
         whereConditions.push(
-          sql`${dailySignal.relevanceScore} >= 0.5 AND ${dailySignal.relevanceScore} < 0.65`,
+          sql`${dailySignal.relevanceScore} >= 0.4 AND ${dailySignal.relevanceScore} < 0.65`,
         );
       } else if (confidenceFilter === "low") {
-        whereConditions.push(sql`${dailySignal.relevanceScore} < 0.5`);
+        whereConditions.push(sql`${dailySignal.relevanceScore} < 0.4`);
       }
 
       const rows = await ctx.db
@@ -869,10 +869,10 @@ export const signalsRouter = createTRPCRouter({
         whereConditions.push(sql`${dailySignal.relevanceScore} >= 0.65`);
       } else if (confidenceFilter === "medium") {
         whereConditions.push(
-          sql`${dailySignal.relevanceScore} >= 0.5 AND ${dailySignal.relevanceScore} < 0.65`,
+          sql`${dailySignal.relevanceScore} >= 0.4 AND ${dailySignal.relevanceScore} < 0.65`,
         );
       } else if (confidenceFilter === "low") {
-        whereConditions.push(sql`${dailySignal.relevanceScore} < 0.5`);
+        whereConditions.push(sql`${dailySignal.relevanceScore} < 0.4`);
       }
 
       // If episodeId is provided, only skip signals from that episode
@@ -1283,10 +1283,10 @@ export const signalsRouter = createTRPCRouter({
         whereConditions.push(sql`${dailySignal.relevanceScore} >= 0.65`);
       } else if (confidenceFilter === "medium") {
         whereConditions.push(
-          sql`${dailySignal.relevanceScore} >= 0.5 AND ${dailySignal.relevanceScore} < 0.65`,
+          sql`${dailySignal.relevanceScore} >= 0.4 AND ${dailySignal.relevanceScore} < 0.65`,
         );
       } else if (confidenceFilter === "low") {
-        whereConditions.push(sql`${dailySignal.relevanceScore} < 0.5`);
+        whereConditions.push(sql`${dailySignal.relevanceScore} < 0.4`);
       }
 
       const rows = await ctx.db
@@ -1353,10 +1353,10 @@ export const signalsRouter = createTRPCRouter({
         whereConditions.push(sql`${dailySignal.relevanceScore} >= 0.65`);
       } else if (confidenceFilter === "medium") {
         whereConditions.push(
-          sql`${dailySignal.relevanceScore} >= 0.5 AND ${dailySignal.relevanceScore} < 0.65`,
+          sql`${dailySignal.relevanceScore} >= 0.4 AND ${dailySignal.relevanceScore} < 0.65`,
         );
       } else if (confidenceFilter === "low") {
-        whereConditions.push(sql`${dailySignal.relevanceScore} < 0.5`);
+        whereConditions.push(sql`${dailySignal.relevanceScore} < 0.4`);
       }
 
       const rows = await ctx.db
@@ -1374,7 +1374,7 @@ export const signalsRouter = createTRPCRouter({
         .from(dailySignal)
         .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
         .where(and(...whereConditions))
-        .orderBy(desc(dailySignal.signalDate), desc(dailySignal.relevanceScore))
+        .orderBy(desc(dailySignal.relevanceScore))
         .limit(limit);
 
       const unpresentedIds = rows

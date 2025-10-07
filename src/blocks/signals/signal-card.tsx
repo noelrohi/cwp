@@ -115,8 +115,10 @@ export function SignalCard(props: SignalCardProps) {
                   metadata[0].icon ? "pl-2" : "",
                 )}
               >
-                {metadata[0].icon}
-                <span className="truncate max-w-32 sm:max-w-none">
+                {metadata[0].icon && (
+                  <span className="shrink-0">{metadata[0].icon}</span>
+                )}
+                <span className="break-words line-clamp-2 sm:truncate">
                   {metadata[0].label}
                 </span>
               </span>
@@ -128,12 +130,14 @@ export function SignalCard(props: SignalCardProps) {
                   <span
                     key={`${item.label}-${index + 1}`}
                     className={cn(
-                      "inline-flex items-center gap-1 rounded-full bg-muted/60 px-2.5 py-1 sm:px-3 whitespace-nowrap",
+                      "inline-flex items-center gap-1 rounded-full bg-muted/60 px-2.5 py-1 sm:px-3 sm:whitespace-nowrap",
                       item.icon ? "pl-2" : "",
                     )}
                   >
-                    {item.icon}
-                    <span className="truncate">{item.label}</span>
+                    {item.icon && <span className="shrink-0">{item.icon}</span>}
+                    <span className="break-words line-clamp-2 sm:truncate">
+                      {item.label}
+                    </span>
                   </span>
                 ))}
               </div>

@@ -197,7 +197,7 @@ function PendingArticleSignalsTab() {
 
   const signals = useMemo(() => {
     return (signalsQuery.data ?? []).sort(
-      (a, b) => b.relevanceScore - a.relevanceScore,
+      (a, b) => (b.relevanceScore ?? 0) - (a.relevanceScore ?? 0),
     );
   }, [signalsQuery.data]);
 
@@ -262,8 +262,8 @@ function PendingArticleSignalsTab() {
               <SelectContent>
                 <SelectItem value="all">All Confidence</SelectItem>
                 <SelectItem value="high">High (≥65%)</SelectItem>
-                <SelectItem value="medium">Medium (50-65%)</SelectItem>
-                <SelectItem value="low">Low (&lt;50%)</SelectItem>
+                <SelectItem value="medium">Medium (40-65%)</SelectItem>
+                <SelectItem value="low">Low (&lt;40%)</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -282,6 +282,12 @@ function PendingArticleSignalsTab() {
             const metadata: SignalCardMetadataItem[] = [];
 
             if (signal.article) {
+              if (signal.article.title) {
+                metadata.push({
+                  icon: <HugeiconsIcon icon={FileAttachmentIcon} size={12} />,
+                  label: signal.article.title,
+                });
+              }
               if (signal.article.siteName) {
                 metadata.push({
                   icon: <HugeiconsIcon icon={Globe02Icon} size={12} />,
