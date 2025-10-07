@@ -182,53 +182,50 @@ export const signalsRouter = createTRPCRouter({
         whereConditions.push(sql`${dailySignal.relevanceScore} >= 0.65`);
       } else if (confidenceFilter === "medium") {
         whereConditions.push(
-          sql`${dailySignal.relevanceScore} >= 0.5 AND ${dailySignal.relevanceScore} < 0.65`,
+          sql`${dailySignal.relevanceScore} >= 0.4 AND ${dailySignal.relevanceScore} < 0.65`,
         );
       } else if (confidenceFilter === "low") {
-        whereConditions.push(sql`${dailySignal.relevanceScore} < 0.5`);
+        whereConditions.push(sql`${dailySignal.relevanceScore} < 0.4`);
       }
 
-      const rows = await ctx.db.query.dailySignal.findMany({
-        where: and(...whereConditions),
-        orderBy: [
-          desc(dailySignal.signalDate),
-          desc(dailySignal.relevanceScore),
-        ],
-        limit,
-        with: {
-          chunk: {
-            columns: {
-              id: true,
-              content: true,
-              speaker: true,
-              startTimeSec: true,
-              endTimeSec: true,
-              episodeId: true,
-            },
-            with: {
-              episode: {
-                columns: {
-                  id: true,
-                  title: true,
-                  publishedAt: true,
-                  audioUrl: true,
-                  durationSec: true,
-                  podcastId: true,
-                },
-                with: {
-                  podcast: {
-                    columns: {
-                      id: true,
-                      title: true,
-                      imageUrl: true,
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      });
+      const rows = await ctx.db
+        .select({
+          id: dailySignal.id,
+          relevanceScore: dailySignal.relevanceScore,
+          signalDate: dailySignal.signalDate,
+          title: dailySignal.title,
+          summary: dailySignal.summary,
+          excerpt: dailySignal.excerpt,
+          speakerName: dailySignal.speakerName,
+          userAction: dailySignal.userAction,
+          presentedAt: dailySignal.presentedAt,
+          chunkId: transcriptChunk.id,
+          chunkContent: transcriptChunk.content,
+          chunkSpeaker: transcriptChunk.speaker,
+          chunkStartTimeSec: transcriptChunk.startTimeSec,
+          chunkEndTimeSec: transcriptChunk.endTimeSec,
+          episodeId: episode.id,
+          episodeTitle: episode.title,
+          episodePublishedAt: episode.publishedAt,
+          episodeAudioUrl: episode.audioUrl,
+          episodeDurationSec: episode.durationSec,
+          podcastId: podcast.id,
+          podcastTitle: podcast.title,
+          podcastImageUrl: podcast.imageUrl,
+        })
+        .from(dailySignal)
+        .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
+        .innerJoin(episode, eq(transcriptChunk.episodeId, episode.id))
+        .leftJoin(podcast, eq(episode.podcastId, podcast.id))
+        .where(
+          and(
+            ...whereConditions,
+            isNotNull(transcriptChunk.episodeId),
+            isNull(transcriptChunk.articleId),
+          ),
+        )
+        .orderBy(desc(dailySignal.signalDate), desc(dailySignal.relevanceScore))
+        .limit(limit);
 
       const unpresentedIds = rows
         .filter((row) => row.presentedAt === null)
@@ -245,30 +242,30 @@ export const signalsRouter = createTRPCRouter({
         id: row.id,
         relevanceScore: row.relevanceScore,
         signalDate: row.signalDate,
-        title: row.title ?? buildFallbackTitle(row.chunk.content),
-        summary: row.summary ?? buildFallbackSummary(row.chunk.content),
-        excerpt: row.excerpt ?? buildFallbackExcerpt(row.chunk.content),
+        title: row.title ?? buildFallbackTitle(row.chunkContent),
+        summary: row.summary ?? buildFallbackSummary(row.chunkContent),
+        excerpt: row.excerpt ?? buildFallbackExcerpt(row.chunkContent),
         speakerName: row.speakerName,
         userAction: row.userAction,
         chunk: {
-          id: row.chunk.id,
-          content: row.chunk.content,
-          speaker: row.chunk.speaker,
-          startTimeSec: row.chunk.startTimeSec,
-          endTimeSec: row.chunk.endTimeSec,
+          id: row.chunkId,
+          content: row.chunkContent,
+          speaker: row.chunkSpeaker,
+          startTimeSec: row.chunkStartTimeSec,
+          endTimeSec: row.chunkEndTimeSec,
         },
-        episode: row.chunk.episode
+        episode: row.episodeId
           ? {
-              id: row.chunk.episode.id,
-              title: row.chunk.episode.title,
-              publishedAt: row.chunk.episode.publishedAt,
-              audioUrl: row.chunk.episode.audioUrl,
-              durationSec: row.chunk.episode.durationSec,
-              podcast: row.chunk.episode.podcast
+              id: row.episodeId,
+              title: row.episodeTitle,
+              publishedAt: row.episodePublishedAt,
+              audioUrl: row.episodeAudioUrl,
+              durationSec: row.episodeDurationSec,
+              podcast: row.podcastId
                 ? {
-                    id: row.chunk.episode.podcast.id,
-                    title: row.chunk.episode.podcast.title,
-                    imageUrl: row.chunk.episode.podcast.imageUrl,
+                    id: row.podcastId,
+                    title: row.podcastTitle,
+                    imageUrl: row.podcastImageUrl,
                   }
                 : null,
             }
