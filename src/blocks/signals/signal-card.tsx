@@ -105,7 +105,7 @@ export function SignalCard(props: SignalCardProps) {
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         {metadata.length > 0 ? (
-          <div className="grid grid-cols-[1fr,auto] gap-x-3 gap-y-1.5 items-start text-sm font-medium text-muted-foreground sm:flex sm:flex-wrap sm:items-center sm:gap-2">
+          <div className="grid grid-cols-[1fr,auto] gap-x-3 gap-y-1.5 items-start text-sm font-medium text-muted-foreground sm:flex sm:flex-wrap sm:items-center sm:gap-2 min-w-0 flex-1">
             {/* Mobile: Two-column layout with podcast name full width */}
             {/* Desktop: Horizontal flex layout */}
             {metadata[0] && (
@@ -141,11 +141,11 @@ export function SignalCard(props: SignalCardProps) {
           </div>
         ) : null}
         {audio ? (
-          <div className="flex gap-2">
+          <div className="flex gap-2 shrink-0">
             <Button
               size="sm"
               variant="secondary"
-              className="flex-1 sm:flex-none"
+              className="w-full sm:w-auto"
               onClick={() => void handlePlayClick()}
             >
               {isCurrentTrackEnded ? (

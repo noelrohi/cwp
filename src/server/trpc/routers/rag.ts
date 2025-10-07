@@ -5,6 +5,7 @@ import {
   article,
   dailySignal,
   episode,
+  episodeSpeakerMapping,
   podcast,
   transcriptChunk,
 } from "@/server/db/schema/podcast";
@@ -79,6 +80,8 @@ export const ragRouter = createTRPCRouter({
           // Signals
           relevanceScore: dailySignal.relevanceScore,
           savedAt: dailySignal.actionedAt,
+          // Speaker mappings
+          speakerMappings: episodeSpeakerMapping.speakerMappings,
           // Vector similarity
           similarity: sql<number>`1 - (${transcriptChunk.embedding} <=> ${embeddingString}::vector)`,
         })
@@ -87,6 +90,10 @@ export const ragRouter = createTRPCRouter({
         .leftJoin(episode, eq(transcriptChunk.episodeId, episode.id))
         .leftJoin(podcast, eq(episode.podcastId, podcast.id))
         .leftJoin(article, eq(transcriptChunk.articleId, article.id))
+        .leftJoin(
+          episodeSpeakerMapping,
+          eq(episode.id, episodeSpeakerMapping.episodeId),
+        )
         .where(and(...whereConditions))
         .orderBy(
           sql`${transcriptChunk.embedding} <=> ${embeddingString}::vector`,
@@ -105,8 +112,12 @@ export const ragRouter = createTRPCRouter({
           ? `${r.articleSiteName || "Article"} - ${r.articleTitle} (${r.articleAuthor || "Unknown author"})`
           : `${r.podcastTitle} - ${r.episodeTitle} (${formatTimestamp(r.startTimeSec)})`;
 
+        // Resolve speaker name using mappings
+        const speakerName = resolveSpeakerName(r.speaker, r.speakerMappings);
+
         return {
           ...r,
+          speaker: speakerName,
           citation,
         };
       });
@@ -168,12 +179,18 @@ export const ragRouter = createTRPCRouter({
           articleUrl: article.url,
           articleAuthor: article.author,
           articleSiteName: article.siteName,
+          // Speaker mappings
+          speakerMappings: episodeSpeakerMapping.speakerMappings,
           similarity: sql<number>`1 - (${transcriptChunk.embedding} <=> ${embeddingString}::vector)`,
         })
         .from(transcriptChunk)
         .leftJoin(episode, eq(transcriptChunk.episodeId, episode.id))
         .leftJoin(podcast, eq(episode.podcastId, podcast.id))
         .leftJoin(article, eq(transcriptChunk.articleId, article.id))
+        .leftJoin(
+          episodeSpeakerMapping,
+          eq(episode.id, episodeSpeakerMapping.episodeId),
+        )
         .where(and(...whereConditions))
         .orderBy(
           sql`${transcriptChunk.embedding} <=> ${embeddingString}::vector`,
@@ -186,8 +203,12 @@ export const ragRouter = createTRPCRouter({
           ? `${r.articleSiteName || "Article"} - ${r.articleTitle} (${r.articleAuthor || "Unknown author"})`
           : `${r.podcastTitle} - ${r.episodeTitle} (${formatTimestamp(r.startTimeSec)})`;
 
+        // Resolve speaker name using mappings
+        const speakerName = resolveSpeakerName(r.speaker, r.speakerMappings);
+
         return {
           ...r,
+          speaker: speakerName,
           citation,
         };
       });
@@ -338,4 +359,39 @@ function formatTimestamp(seconds: number | null): string {
     return `${hours}:${minutes.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   }
   return `${minutes}:${secs.toString().padStart(2, "0")}`;
+}
+
+// Helper function to resolve speaker labels to names
+function resolveSpeakerName(
+  speakerLabel: string | null,
+  speakerMappings: string | null,
+): string {
+  if (!speakerLabel) {
+    return "Unknown speaker";
+  }
+
+  // If we have speaker mappings (JSON: {"0": "John Doe", "1": "Jane Smith"})
+  if (speakerMappings) {
+    try {
+      const mappings = JSON.parse(speakerMappings) as Record<string, string>;
+      const resolved = mappings[speakerLabel];
+      if (resolved?.trim()) {
+        return resolved.trim();
+      }
+    } catch {
+      // Invalid JSON, fall through to default logic
+    }
+  }
+
+  // Fallback: if speaker is just a number, format it nicely
+  if (/^\d+$/.test(speakerLabel)) {
+    const speakerNum = Number.parseInt(speakerLabel, 10);
+    if (speakerNum === 0) {
+      return "Host";
+    }
+    return `Guest ${speakerNum}`;
+  }
+
+  // If speaker label is not a number, use it as-is with "Speaker" prefix
+  return `Speaker ${speakerLabel}`;
 }
