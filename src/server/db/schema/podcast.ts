@@ -1,5 +1,6 @@
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
+  check,
   doublePrecision,
   index,
   integer,
@@ -95,13 +96,47 @@ export const episode = pgTable(
   ],
 );
 
+// Articles/blog posts that users want to process
+export const article = pgTable(
+  "article",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    url: text("url").notNull(),
+    title: text("title").notNull(),
+    author: text("author"),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    siteName: text("site_name"),
+    excerpt: text("excerpt"),
+    status: episodeStatusEnum("status").default("pending").notNull(),
+    errorMessage: text("error_message"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    index().on(table.userId),
+    index().on(table.status),
+    unique().on(table.userId, table.url),
+  ],
+);
+
 export const transcriptChunk = pgTable(
   "transcript_chunk",
   {
     id: text("id").primaryKey(),
-    episodeId: text("episode_id")
-      .references(() => episode.id, { onDelete: "cascade" })
-      .notNull(),
+    // Make episodeId nullable to support articles
+    episodeId: text("episode_id").references(() => episode.id, {
+      onDelete: "cascade",
+    }),
+    // Add articleId for article chunks
+    articleId: text("article_id").references(() => article.id, {
+      onDelete: "cascade",
+    }),
     speaker: text("speaker"),
     content: text("content").notNull(),
     startTimeSec: integer("start_time_sec"),
@@ -114,7 +149,16 @@ export const transcriptChunk = pgTable(
   },
   (table) => [
     index().on(table.episodeId),
+    index().on(table.articleId),
     index().using("hnsw", table.embedding.op("vector_cosine_ops")),
+    // Ensure exactly one source is set (either episodeId OR articleId, not both, not neither)
+    check(
+      "chunk_source_check",
+      sql`(
+        (episode_id IS NOT NULL AND article_id IS NULL) OR
+        (episode_id IS NULL AND article_id IS NOT NULL)
+      )`,
+    ),
   ],
 );
 
@@ -129,6 +173,7 @@ export const dailySignal = pgTable(
     userId: text("user_id").notNull(),
     signalDate: timestamp("signal_date", { withTimezone: true }).notNull(),
     relevanceScore: doublePrecision("relevance_score").notNull(), // 0.0 to 1.0
+    similarityScore: doublePrecision("similarity_score"), // Keep for backward compatibility
     title: text("title"),
     summary: text("summary"),
     excerpt: text("excerpt"),
@@ -166,6 +211,9 @@ export const userPreferences = pgTable(
     averageEngagementScore: doublePrecision("average_engagement_score").default(
       0.5,
     ),
+    // Legacy columns - kept for backward compatibility, not actively used
+    savedCentroid: vector("saved_centroid", { dimensions: 1536 }),
+    embedding: vector("embedding", { dimensions: 1536 }),
     lastUpdated: timestamp("last_updated", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -242,6 +290,10 @@ export const transcriptChunkRelations = relations(
       fields: [transcriptChunk.episodeId],
       references: [episode.id],
     }),
+    article: one(article, {
+      fields: [transcriptChunk.articleId],
+      references: [article.id],
+    }),
     dailySignals: many(dailySignal),
     savedChunks: many(savedChunk),
   }),
@@ -269,4 +321,8 @@ export const savedChunkRelations = relations(savedChunk, ({ one }) => ({
     fields: [savedChunk.chunkId],
     references: [transcriptChunk.id],
   }),
+}));
+
+export const articleRelations = relations(article, ({ many }) => ({
+  transcriptChunks: many(transcriptChunk),
 }));

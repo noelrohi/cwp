@@ -2,7 +2,8 @@
 
 import { Loading03Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import React from "react";
 import {
   Card,
   CardContent,
@@ -10,6 +11,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -54,6 +61,7 @@ export default function DebugPage() {
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="training">Training Data</TabsTrigger>
+          <TabsTrigger value="articles">Articles (POC)</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-6">
@@ -62,6 +70,10 @@ export default function DebugPage() {
 
         <TabsContent value="training" className="mt-6">
           <TrainingDataTab />
+        </TabsContent>
+
+        <TabsContent value="articles" className="mt-6">
+          <ArticlesTab />
         </TabsContent>
       </Tabs>
     </main>
@@ -468,5 +480,224 @@ function TrainingSkeleton() {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function ArticlesTab() {
+  const trpc = useTRPC();
+  const [url, setUrl] = React.useState("");
+  const [selectedArticleId, setSelectedArticleId] = React.useState<
+    string | null
+  >(null);
+
+  const articlesQuery = useQuery(trpc.articles.list.queryOptions());
+  const processArticle = useMutation(trpc.articles.process.mutationOptions());
+  const selectedArticle = useQuery({
+    ...trpc.articles.getById.queryOptions({ id: selectedArticleId || "" }),
+    enabled: !!selectedArticleId,
+  });
+
+  const handleProcess = async () => {
+    if (!url.trim()) return;
+
+    processArticle.mutate(
+      { url: url.trim() },
+      {
+        onSuccess: () => {
+          setUrl("");
+          articlesQuery.refetch();
+        },
+      },
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Process Article (POC)</CardTitle>
+          <CardDescription>
+            Paste any article URL to extract, chunk, and embed it
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex gap-2">
+            <input
+              type="url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://example.com/article"
+              className="flex-1 px-3 py-2 rounded-md border border-input bg-background"
+              disabled={processArticle.isPending}
+            />
+            <button
+              type="button"
+              onClick={handleProcess}
+              disabled={processArticle.isPending || !url.trim()}
+              className="px-4 py-2 rounded-md bg-primary text-primary-foreground disabled:opacity-50"
+            >
+              {processArticle.isPending ? "Processing..." : "Process"}
+            </button>
+          </div>
+
+          {processArticle.isSuccess && (
+            <div className="p-4 rounded-lg border bg-green-500/10 border-green-500/20">
+              <div className="font-medium text-green-700 dark:text-green-400 mb-1">
+                ✓ Article processed successfully
+              </div>
+              <div className="text-sm text-muted-foreground">
+                Created {processArticle.data.chunkCount} chunks and{" "}
+                {processArticle.data.signalCount} signals
+              </div>
+            </div>
+          )}
+
+          {processArticle.isError && (
+            <div className="p-4 rounded-lg border bg-red-500/10 border-red-500/20">
+              <div className="font-medium text-red-700 dark:text-red-400 mb-1">
+                ✗ Failed to process article
+              </div>
+              <div className="text-sm text-muted-foreground">
+                {processArticle.error.message}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Processed Articles</CardTitle>
+          <CardDescription>
+            Articles you've processed (most recent first)
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {articlesQuery.isLoading ? (
+            <div className="flex items-center justify-center p-8">
+              <HugeiconsIcon
+                icon={Loading03Icon}
+                size={24}
+                className="animate-spin text-muted-foreground"
+              />
+            </div>
+          ) : articlesQuery.data && articlesQuery.data.length > 0 ? (
+            <div className="space-y-3">
+              {articlesQuery.data.map((article) => (
+                <div
+                  key={article.id}
+                  className="p-4 rounded-lg border border-border bg-muted/20"
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex-1">
+                      <div className="font-medium mb-1">{article.title}</div>
+                      <div className="text-sm text-muted-foreground">
+                        {article.url}
+                      </div>
+                    </div>
+                    <span
+                      className={`text-xs px-2 py-1 rounded ${
+                        article.status === "processed"
+                          ? "bg-green-500/20 text-green-700 dark:text-green-400"
+                          : article.status === "processing"
+                            ? "bg-blue-500/20 text-blue-700 dark:text-blue-400"
+                            : "bg-red-500/20 text-red-700 dark:text-red-400"
+                      }`}
+                    >
+                      {article.status}
+                    </span>
+                  </div>
+                  {article.author && (
+                    <div className="text-sm text-muted-foreground mb-2">
+                      By {article.author}
+                    </div>
+                  )}
+                  {article.status === "processed" && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedArticleId(article.id)}
+                      className="text-sm text-primary hover:underline"
+                    >
+                      View Chunks & Embeddings →
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center p-8 text-muted-foreground">
+              No articles processed yet. Try adding one above!
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Chunk Viewer Dialog */}
+      {selectedArticleId && (
+        <Dialog
+          open={!!selectedArticleId}
+          onOpenChange={(open) => !open && setSelectedArticleId(null)}
+        >
+          <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+            <DialogHeader>
+              <DialogTitle>
+                {selectedArticle.data?.title || "Article Chunks"}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="flex-1 overflow-auto">
+              {selectedArticle.isLoading ? (
+                <div className="flex items-center justify-center p-8">
+                  <HugeiconsIcon
+                    icon={Loading03Icon}
+                    size={24}
+                    className="animate-spin text-muted-foreground"
+                  />
+                </div>
+              ) : selectedArticle.data?.transcriptChunks &&
+                selectedArticle.data.transcriptChunks.length > 0 ? (
+                <div className="space-y-4">
+                  <div className="text-sm text-muted-foreground">
+                    Showing {selectedArticle.data.transcriptChunks.length}{" "}
+                    chunks with embeddings
+                  </div>
+                  {selectedArticle.data.transcriptChunks.map((chunk, idx) => (
+                    <div
+                      key={chunk.id}
+                      className="p-4 rounded-lg border border-border bg-muted/20"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium">
+                          Chunk {idx + 1}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {chunk.wordCount} words
+                        </span>
+                      </div>
+                      <p className="text-sm mb-3 line-clamp-4">
+                        {chunk.content}
+                      </p>
+                      {chunk.embedding && (
+                        <details className="text-xs">
+                          <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                            Show embedding (1536 dimensions)
+                          </summary>
+                          <div className="mt-2 p-2 bg-muted/40 rounded font-mono overflow-x-auto">
+                            [{chunk.embedding.slice(0, 10).join(", ")}, ...]
+                          </div>
+                        </details>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center p-8 text-muted-foreground">
+                  No chunks found
+                </div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+    </div>
   );
 }

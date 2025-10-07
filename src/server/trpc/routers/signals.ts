@@ -14,6 +14,7 @@ import { nanoid } from "nanoid";
 import { z } from "zod";
 import { inngest } from "@/inngest/client";
 import {
+  article,
   dailySignal,
   episode,
   podcast,
@@ -1201,6 +1202,117 @@ export const signalsRouter = createTRPCRouter({
       centroidNorm,
     };
   }),
+
+  // Article signal endpoints
+  byArticle: protectedProcedure
+    .input(
+      z.object({
+        articleId: z.string().min(1),
+        filter: z.enum(["all", "pending", "actioned"]).optional(),
+        actionFilter: z.enum(["all", "saved", "skipped"]).optional(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const filter = input.filter ?? "pending";
+      const actionFilter = input.actionFilter ?? "all";
+
+      const whereConditions = [
+        eq(dailySignal.userId, ctx.user.id),
+        eq(transcriptChunk.articleId, input.articleId),
+      ];
+
+      if (filter === "pending") {
+        whereConditions.push(isNull(dailySignal.userAction));
+      } else if (filter === "actioned") {
+        whereConditions.push(isNotNull(dailySignal.userAction));
+        if (actionFilter === "saved") {
+          whereConditions.push(eq(dailySignal.userAction, "saved"));
+        } else if (actionFilter === "skipped") {
+          whereConditions.push(eq(dailySignal.userAction, "skipped"));
+        }
+      }
+
+      const rows = await ctx.db
+        .select({
+          id: dailySignal.id,
+          relevanceScore: dailySignal.relevanceScore,
+          signalDate: dailySignal.signalDate,
+          title: dailySignal.title,
+          summary: dailySignal.summary,
+          excerpt: dailySignal.excerpt,
+          userAction: dailySignal.userAction,
+          actionedAt: dailySignal.actionedAt,
+          chunkId: dailySignal.chunkId,
+          chunkContent: transcriptChunk.content,
+          relatedArticleId: article.id,
+          relatedArticleTitle: article.title,
+          relatedArticleUrl: article.url,
+          relatedArticleAuthor: article.author,
+          relatedArticleSiteName: article.siteName,
+        })
+        .from(dailySignal)
+        .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
+        .innerJoin(article, eq(transcriptChunk.articleId, article.id))
+        .where(and(...whereConditions))
+        .orderBy(desc(dailySignal.relevanceScore));
+
+      return rows.map((row) => ({
+        id: row.id,
+        relevanceScore: row.relevanceScore,
+        signalDate: row.signalDate,
+        title: row.title,
+        summary: row.summary,
+        excerpt: row.excerpt,
+        speakerName: null,
+        userAction: row.userAction,
+        actionedAt: row.actionedAt,
+        chunk: {
+          id: row.chunkId,
+          content: row.chunkContent,
+          speaker: null,
+          startTimeSec: null,
+          endTimeSec: null,
+        },
+        article: {
+          id: row.relatedArticleId,
+          title: row.relatedArticleTitle,
+          url: row.relatedArticleUrl,
+          author: row.relatedArticleAuthor,
+          siteName: row.relatedArticleSiteName,
+        },
+      }));
+    }),
+
+  articleStats: protectedProcedure
+    .input(
+      z.object({
+        articleId: z.string().min(1),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const stats = await ctx.db
+        .select({
+          total: count(),
+          pending: sql<number>`SUM(CASE WHEN ${dailySignal.userAction} IS NULL THEN 1 ELSE 0 END)`,
+          saved: sql<number>`SUM(CASE WHEN ${dailySignal.userAction} = 'saved' THEN 1 ELSE 0 END)`,
+          skipped: sql<number>`SUM(CASE WHEN ${dailySignal.userAction} = 'skipped' THEN 1 ELSE 0 END)`,
+        })
+        .from(dailySignal)
+        .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
+        .where(
+          and(
+            eq(dailySignal.userId, ctx.user.id),
+            eq(transcriptChunk.articleId, input.articleId),
+          ),
+        );
+
+      return {
+        total: Number(stats[0]?.total) || 0,
+        pending: Number(stats[0]?.pending) || 0,
+        saved: Number(stats[0]?.saved) || 0,
+        skipped: Number(stats[0]?.skipped) || 0,
+      };
+    }),
 });
 
 function calculateCentroid(embeddings: number[][]): number[] {

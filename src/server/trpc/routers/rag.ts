@@ -1,7 +1,8 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { generateEmbedding } from "@/lib/embedding";
 import {
+  article,
   dailySignal,
   episode,
   podcast,
@@ -60,15 +61,21 @@ export const ragRouter = createTRPCRouter({
           speaker: transcriptChunk.speaker,
           startTimeSec: transcriptChunk.startTimeSec,
           endTimeSec: transcriptChunk.endTimeSec,
-          // Episode context
+          // Episode context (nullable for articles)
           episodeId: episode.id,
           episodeTitle: episode.title,
           episodePublishedAt: episode.publishedAt,
           episodeAudioUrl: episode.audioUrl,
-          // Podcast context
+          // Podcast context (nullable for articles)
           podcastId: podcast.id,
           podcastTitle: podcast.title,
           podcastImageUrl: podcast.imageUrl,
+          // Article context (nullable for podcasts)
+          articleId: article.id,
+          articleTitle: article.title,
+          articleUrl: article.url,
+          articleAuthor: article.author,
+          articleSiteName: article.siteName,
           // Signals
           relevanceScore: dailySignal.relevanceScore,
           savedAt: dailySignal.actionedAt,
@@ -77,8 +84,9 @@ export const ragRouter = createTRPCRouter({
         })
         .from(dailySignal)
         .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
-        .innerJoin(episode, eq(transcriptChunk.episodeId, episode.id))
-        .innerJoin(podcast, eq(episode.podcastId, podcast.id))
+        .leftJoin(episode, eq(transcriptChunk.episodeId, episode.id))
+        .leftJoin(podcast, eq(episode.podcastId, podcast.id))
+        .leftJoin(article, eq(transcriptChunk.articleId, article.id))
         .where(and(...whereConditions))
         .orderBy(
           sql`${transcriptChunk.embedding} <=> ${embeddingString}::vector`,
@@ -90,11 +98,18 @@ export const ragRouter = createTRPCRouter({
         `✅ [RAG Router: searchSaved] Found ${results.length} results\n`,
       );
 
-      return results.map((r) => ({
-        ...r,
-        // Format for LLM context
-        citation: `${r.podcastTitle} - ${r.episodeTitle} (${formatTimestamp(r.startTimeSec)})`,
-      }));
+      return results.map((r) => {
+        // Determine source type and create appropriate citation
+        const isArticle = !!r.articleId;
+        const citation = isArticle
+          ? `${r.articleSiteName || "Article"} - ${r.articleTitle} (${r.articleAuthor || "Unknown author"})`
+          : `${r.podcastTitle} - ${r.episodeTitle} (${formatTimestamp(r.startTimeSec)})`;
+
+        return {
+          ...r,
+          citation,
+        };
+      });
     }),
 
   /**
@@ -113,9 +128,13 @@ export const ragRouter = createTRPCRouter({
       const queryEmbedding = await generateEmbedding(input.query);
       const embeddingString = JSON.stringify(queryEmbedding);
 
+      // Search both podcasts and articles
       const whereConditions = [
-        eq(podcast.userId, ctx.user.id),
         sql`${transcriptChunk.embedding} IS NOT NULL`,
+        or(
+          eq(podcast.userId, ctx.user.id), // For podcasts
+          eq(article.userId, ctx.user.id), // For articles
+        ),
       ];
 
       // Optional: filter by specific podcasts
@@ -135,6 +154,7 @@ export const ragRouter = createTRPCRouter({
           speaker: transcriptChunk.speaker,
           startTimeSec: transcriptChunk.startTimeSec,
           endTimeSec: transcriptChunk.endTimeSec,
+          // Episode/podcast (nullable for articles)
           episodeId: episode.id,
           episodeTitle: episode.title,
           episodePublishedAt: episode.publishedAt,
@@ -142,21 +162,35 @@ export const ragRouter = createTRPCRouter({
           podcastId: podcast.id,
           podcastTitle: podcast.title,
           podcastImageUrl: podcast.imageUrl,
+          // Article (nullable for podcasts)
+          articleId: article.id,
+          articleTitle: article.title,
+          articleUrl: article.url,
+          articleAuthor: article.author,
+          articleSiteName: article.siteName,
           similarity: sql<number>`1 - (${transcriptChunk.embedding} <=> ${embeddingString}::vector)`,
         })
         .from(transcriptChunk)
-        .innerJoin(episode, eq(transcriptChunk.episodeId, episode.id))
-        .innerJoin(podcast, eq(episode.podcastId, podcast.id))
+        .leftJoin(episode, eq(transcriptChunk.episodeId, episode.id))
+        .leftJoin(podcast, eq(episode.podcastId, podcast.id))
+        .leftJoin(article, eq(transcriptChunk.articleId, article.id))
         .where(and(...whereConditions))
         .orderBy(
           sql`${transcriptChunk.embedding} <=> ${embeddingString}::vector`,
         )
         .limit(input.limit);
 
-      return results.map((r) => ({
-        ...r,
-        citation: `${r.podcastTitle} - ${r.episodeTitle} (${formatTimestamp(r.startTimeSec)})`,
-      }));
+      return results.map((r) => {
+        const isArticle = !!r.articleId;
+        const citation = isArticle
+          ? `${r.articleSiteName || "Article"} - ${r.articleTitle} (${r.articleAuthor || "Unknown author"})`
+          : `${r.podcastTitle} - ${r.episodeTitle} (${formatTimestamp(r.startTimeSec)})`;
+
+        return {
+          ...r,
+          citation,
+        };
+      });
     }),
 
   /**

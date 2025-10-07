@@ -614,7 +614,7 @@ type UserPreferenceRecord = typeof userPreferences.$inferSelect;
 type ChunkRecord = {
   id: string;
   content: string;
-  episodeId: string;
+  episodeId: string; // This pipeline is podcast-only, so episodeId is always present
   embedding: number[] | null;
   createdAt: Date;
   episodeTitle: string | null;
@@ -697,6 +697,8 @@ async function getNewChunksForUser(
       and(
         eq(podcast.userId, userId),
         sql`${transcriptChunk.embedding} IS NOT NULL`,
+        // Only get podcast chunks (not articles)
+        sql`${transcriptChunk.episodeId} IS NOT NULL`,
         // Only exclude existing signals if NOT force regenerating
         forceRegenerate ? undefined : sql`${dailySignal.id} IS NULL`,
         // Filter by specific episode if provided
@@ -711,7 +713,8 @@ async function getNewChunksForUser(
   console.log(
     `User ${userId}: getNewChunksForUser returned ${chunks.length} chunks${episodeId ? ` (episode: ${episodeId})` : ""}${forceRegenerate ? " [including existing signals]" : ""}`,
   );
-  return chunks;
+  // Type assertion: we filtered for podcast chunks only, so episodeId is never null here
+  return chunks as ChunkRecord[];
 }
 
 async function scoreChunksForRelevance(
