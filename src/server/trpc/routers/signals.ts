@@ -703,7 +703,12 @@ export const signalsRouter = createTRPCRouter({
           eq(dailySignal.userId, ctx.user.id),
         ),
       )
-      .where(eq(savedChunk.userId, ctx.user.id))
+      .where(
+        and(
+          eq(savedChunk.userId, ctx.user.id),
+          isNotNull(transcriptChunk.episodeId),
+        ),
+      )
       .orderBy(desc(savedChunk.savedAt));
 
     return savedChunksWithSignals.map((row) => {
@@ -757,6 +762,59 @@ export const signalsRouter = createTRPCRouter({
         },
       };
     });
+  }),
+
+  savedArticles: protectedProcedure.query(async ({ ctx }) => {
+    const savedArticleChunks = await ctx.db
+      .select({
+        savedChunkId: savedChunk.id,
+        chunkId: savedChunk.chunkId,
+        chunkContent: transcriptChunk.content,
+        highlightExtractedQuote: savedChunk.highlightExtractedQuote,
+        highlightExtractedAt: savedChunk.highlightExtractedAt,
+        savedAt: savedChunk.savedAt,
+        articleId: article.id,
+        articleTitle: article.title,
+        articleUrl: article.url,
+        articleAuthor: article.author,
+        articleSiteName: article.siteName,
+        articlePublishedAt: article.publishedAt,
+        relevanceScore: dailySignal.relevanceScore,
+      })
+      .from(savedChunk)
+      .innerJoin(transcriptChunk, eq(savedChunk.chunkId, transcriptChunk.id))
+      .innerJoin(article, eq(transcriptChunk.articleId, article.id))
+      .leftJoin(
+        dailySignal,
+        and(
+          eq(dailySignal.chunkId, savedChunk.chunkId),
+          eq(dailySignal.userId, ctx.user.id),
+        ),
+      )
+      .where(
+        and(
+          eq(savedChunk.userId, ctx.user.id),
+          isNotNull(transcriptChunk.articleId),
+        ),
+      )
+      .orderBy(desc(savedChunk.savedAt));
+
+    return savedArticleChunks.map((row) => ({
+      id: row.savedChunkId,
+      content: row.chunkContent,
+      highlightQuote: row.highlightExtractedQuote,
+      highlightExtractedAt: row.highlightExtractedAt,
+      savedAt: row.savedAt,
+      relevanceScore: row.relevanceScore,
+      article: {
+        id: row.articleId,
+        title: row.articleTitle,
+        url: row.articleUrl,
+        author: row.articleAuthor,
+        siteName: row.articleSiteName,
+        publishedAt: row.articlePublishedAt,
+      },
+    }));
   }),
 
   unsave: protectedProcedure
@@ -1204,6 +1262,179 @@ export const signalsRouter = createTRPCRouter({
   }),
 
   // Article signal endpoints
+  articlesWithSignals: protectedProcedure
+    .input(
+      z
+        .object({
+          confidenceFilter: z.enum(["all", "high", "medium", "low"]).optional(),
+        })
+        .optional(),
+    )
+    .query(async ({ ctx, input }) => {
+      const confidenceFilter = input?.confidenceFilter ?? "all";
+      const whereConditions = [
+        eq(dailySignal.userId, ctx.user.id),
+        isNull(dailySignal.userAction),
+        isNotNull(transcriptChunk.articleId),
+      ];
+
+      // Add confidence filter
+      if (confidenceFilter === "high") {
+        whereConditions.push(sql`${dailySignal.relevanceScore} >= 0.65`);
+      } else if (confidenceFilter === "medium") {
+        whereConditions.push(
+          sql`${dailySignal.relevanceScore} >= 0.5 AND ${dailySignal.relevanceScore} < 0.65`,
+        );
+      } else if (confidenceFilter === "low") {
+        whereConditions.push(sql`${dailySignal.relevanceScore} < 0.5`);
+      }
+
+      const rows = await ctx.db
+        .select({
+          articleId: article.id,
+          articleTitle: article.title,
+          articleUrl: article.url,
+          articleAuthor: article.author,
+          articleSiteName: article.siteName,
+          articlePublishedAt: article.publishedAt,
+          signalCount: count(dailySignal.id),
+        })
+        .from(dailySignal)
+        .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
+        .innerJoin(article, eq(transcriptChunk.articleId, article.id))
+        .where(and(...whereConditions))
+        .groupBy(
+          article.id,
+          article.title,
+          article.url,
+          article.author,
+          article.siteName,
+          article.publishedAt,
+        )
+        .orderBy(desc(sql`count(${dailySignal.id})`));
+
+      return rows.map((row) => ({
+        id: row.articleId,
+        title: row.articleTitle || "Untitled Article",
+        url: row.articleUrl,
+        author: row.articleAuthor,
+        siteName: row.articleSiteName,
+        publishedAt: row.articlePublishedAt,
+        signalCount: row.signalCount,
+      }));
+    }),
+
+  listArticleSignals: protectedProcedure
+    .input(
+      z
+        .object({
+          limit: z.number().int().min(1).max(200).optional(),
+          articleId: z.string().optional(),
+          confidenceFilter: z.enum(["all", "high", "medium", "low"]).optional(),
+        })
+        .optional(),
+    )
+    .query(async ({ ctx, input }) => {
+      const limit = input?.limit ?? DEFAULT_SIGNAL_LIMIT;
+      const confidenceFilter = input?.confidenceFilter ?? "all";
+
+      const whereConditions = [
+        eq(dailySignal.userId, ctx.user.id),
+        isNull(dailySignal.userAction),
+        isNotNull(transcriptChunk.articleId),
+      ];
+
+      if (input?.articleId) {
+        whereConditions.push(eq(transcriptChunk.articleId, input.articleId));
+      }
+
+      // Add confidence filter
+      if (confidenceFilter === "high") {
+        whereConditions.push(sql`${dailySignal.relevanceScore} >= 0.65`);
+      } else if (confidenceFilter === "medium") {
+        whereConditions.push(
+          sql`${dailySignal.relevanceScore} >= 0.5 AND ${dailySignal.relevanceScore} < 0.65`,
+        );
+      } else if (confidenceFilter === "low") {
+        whereConditions.push(sql`${dailySignal.relevanceScore} < 0.5`);
+      }
+
+      const rows = await ctx.db
+        .select({
+          id: dailySignal.id,
+          relevanceScore: dailySignal.relevanceScore,
+          signalDate: dailySignal.signalDate,
+          title: dailySignal.title,
+          summary: dailySignal.summary,
+          excerpt: dailySignal.excerpt,
+          userAction: dailySignal.userAction,
+          chunkId: dailySignal.chunkId,
+          presentedAt: dailySignal.presentedAt,
+        })
+        .from(dailySignal)
+        .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
+        .where(and(...whereConditions))
+        .orderBy(desc(dailySignal.signalDate), desc(dailySignal.relevanceScore))
+        .limit(limit);
+
+      const unpresentedIds = rows
+        .filter((row) => row.presentedAt === null)
+        .map((row) => row.id);
+
+      if (unpresentedIds.length > 0) {
+        await ctx.db
+          .update(dailySignal)
+          .set({ presentedAt: new Date() })
+          .where(inArray(dailySignal.id, unpresentedIds));
+      }
+
+      const enrichedRows = await Promise.all(
+        rows.map(async (row) => {
+          const chunk = await ctx.db.query.transcriptChunk.findFirst({
+            where: eq(transcriptChunk.id, row.chunkId),
+            with: {
+              article: {
+                columns: {
+                  id: true,
+                  title: true,
+                  url: true,
+                  author: true,
+                  siteName: true,
+                  publishedAt: true,
+                },
+              },
+            },
+          });
+
+          return {
+            id: row.id,
+            relevanceScore: row.relevanceScore,
+            signalDate: row.signalDate,
+            title: row.title ?? buildFallbackTitle(chunk?.content ?? ""),
+            summary: row.summary ?? buildFallbackSummary(chunk?.content ?? ""),
+            excerpt: row.excerpt ?? buildFallbackExcerpt(chunk?.content ?? ""),
+            userAction: row.userAction,
+            chunk: {
+              id: chunk?.id ?? row.chunkId,
+              content: chunk?.content ?? "",
+            },
+            article: chunk?.article
+              ? {
+                  id: chunk.article.id,
+                  title: chunk.article.title,
+                  url: chunk.article.url,
+                  author: chunk.article.author,
+                  siteName: chunk.article.siteName,
+                  publishedAt: chunk.article.publishedAt,
+                }
+              : null,
+          };
+        }),
+      );
+
+      return enrichedRows;
+    }),
+
   byArticle: protectedProcedure
     .input(
       z.object({

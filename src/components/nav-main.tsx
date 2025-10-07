@@ -14,19 +14,28 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
 import { useSession } from "@/lib/auth-client";
 
 type NavItem = {
   title: string;
   icon: typeof DashboardBrowsingIcon;
-  url: string;
+  url?: string;
   badge?: string;
+  items?: { title: string; url: string }[];
 };
 
 const items: NavItem[] = [
@@ -43,7 +52,10 @@ const items: NavItem[] = [
   {
     title: "Signals",
     icon: Idea01Icon,
-    url: "/signals",
+    items: [
+      { title: "Episodes", url: "/signals/episodes" },
+      { title: "Articles", url: "/signals/articles" },
+    ],
   },
   {
     title: "Podcasts",
@@ -97,6 +109,51 @@ export function NavMain() {
       <SidebarGroupContent className="flex flex-col gap-2">
         <SidebarMenu>
           {allItems.map((item) => {
+            // Handle collapsible items (with sub-items)
+            if (item.items && item.items.length > 0) {
+              const isAnySubItemActive = item.items.some((subItem) =>
+                pathname.startsWith(subItem.url),
+              );
+              return (
+                <Collapsible
+                  key={item.title}
+                  asChild
+                  defaultOpen={isAnySubItemActive}
+                >
+                  <SidebarMenuItem>
+                    <CollapsibleTrigger asChild>
+                      <SidebarMenuButton
+                        tooltip={item.title}
+                        isActive={isAnySubItemActive}
+                      >
+                        {item.icon && (
+                          <HugeiconsIcon icon={item.icon} size={20} />
+                        )}
+                        <span className="text-base">{item.title}</span>
+                      </SidebarMenuButton>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <SidebarMenuSub className="border-border">
+                        {item.items.map((subItem) => {
+                          const isActive = pathname === subItem.url;
+                          return (
+                            <SidebarMenuSubItem key={subItem.title}>
+                              <SidebarMenuSubButton asChild isActive={isActive}>
+                                <Link href={subItem.url}>
+                                  <span>{subItem.title}</span>
+                                </Link>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          );
+                        })}
+                      </SidebarMenuSub>
+                    </CollapsibleContent>
+                  </SidebarMenuItem>
+                </Collapsible>
+              );
+            }
+
+            // Handle regular items
             const isActive = pathname === item.url;
             return (
               <SidebarMenuItem key={item.title}>
@@ -105,7 +162,7 @@ export function NavMain() {
                   tooltip={item.title}
                   isActive={isActive}
                 >
-                  <Link href={item.url}>
+                  <Link href={item.url ?? "#"}>
                     {item.icon && <HugeiconsIcon icon={item.icon} size={20} />}
                     <span className="text-base">{item.title}</span>
                     {item.badge && (
