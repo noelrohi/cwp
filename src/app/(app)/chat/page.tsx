@@ -1,6 +1,8 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
+import { SidebarLeftIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { DefaultChatTransport } from "ai";
 import { ChevronDown, MessageSquare } from "lucide-react";
 import { useState } from "react";
@@ -41,6 +43,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { useSidebar } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 
 type ChunkData = {
@@ -114,6 +117,7 @@ function CollapsibleChunks({ chunks }: { chunks: ChunkData[] }) {
 
 export default function ChatPage() {
   const [input, setInput] = useState("");
+  const { toggleSidebar, isMobile } = useSidebar();
 
   const { messages, sendMessage, status } = useChat<ChatUIMessage>({
     transport: new DefaultChatTransport({
@@ -130,6 +134,18 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col h-svh">
+      {/* Floating sidebar trigger for mobile only */}
+      {isMobile && (
+        <Button
+          onClick={toggleSidebar}
+          size="icon"
+          variant="outline"
+          className="fixed top-4 left-4 z-50 size-10 rounded-full border border-border bg-background/80 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/70 md:hidden"
+        >
+          <HugeiconsIcon icon={SidebarLeftIcon} size={20} />
+        </Button>
+      )}
+
       {/* Scrollable conversation area with bottom padding for fixed input */}
       <Conversation className="flex-1 pb-[120px]">
         <ConversationContent className="mx-auto w-full max-w-3xl">

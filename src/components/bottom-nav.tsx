@@ -1,22 +1,16 @@
 "use client";
 
 import {
-  Add01Icon,
-  AiMicIcon,
   AiSecurity01Icon,
-  DashboardBrowsingIcon,
   HierarchySquare01Icon,
-  Idea01Icon,
   Logout01Icon,
   Settings01Icon,
+  SidebarLeftIcon,
   UserCircleIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { AddPodcastDialog } from "@/components/blocks/podcasts/add-podcast-dialog";
+import { useRouter } from "next/navigation";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,103 +20,51 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useSidebar } from "@/components/ui/sidebar";
 import { signOut, useSession } from "@/lib/auth-client";
 
-type NavItem = {
-  title: string;
-  icon: typeof DashboardBrowsingIcon;
-  url: string;
-};
-
-const items: NavItem[] = [
-  {
-    title: "Dashboard",
-    icon: DashboardBrowsingIcon,
-    url: "/dashboard",
-  },
-  {
-    title: "Signals",
-    icon: Idea01Icon,
-    url: "/signals",
-  },
-  {
-    title: "Podcasts",
-    icon: AiMicIcon,
-    url: "/podcasts",
-  },
-];
-
 export function BottomNav() {
-  const pathname = usePathname();
   const router = useRouter();
   const { data: session } = useSession();
   const isAdmin = session?.user?.role === "admin";
   const user = session?.user;
-
-  if (pathname === "/chat") {
-    return null;
-  }
+  const { toggleSidebar } = useSidebar();
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background md:hidden">
-      <div className="flex items-center justify-evenly py-2">
-        {items.slice(0, 2).map((item) => {
-          const isActive = pathname === item.url;
-          return (
-            <Link
-              key={item.title}
-              href={item.url}
-              className={`flex flex-col items-center gap-1 rounded-lg px-3 py-2 transition-colors ${
-                isActive
-                  ? "text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <HugeiconsIcon icon={item.icon} size={20} />
-            </Link>
-          );
-        })}
+      <div className="flex items-center justify-around py-3">
+        {/* Menu Button */}
+        <button
+          type="button"
+          onClick={toggleSidebar}
+          className="flex flex-col items-center gap-1 rounded-lg px-4 py-2 text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <HugeiconsIcon icon={SidebarLeftIcon} size={22} />
+          <span className="text-xs">Menu</span>
+        </button>
 
-        {/* Add Podcast Button */}
-        <AddPodcastDialog>
-          <Button size="icon" className="h-8 w-10 rounded-lg">
-            <HugeiconsIcon icon={Add01Icon} size={20} />
-          </Button>
-        </AddPodcastDialog>
-
-        {items.slice(2).map((item) => {
-          const isActive = pathname === item.url;
-          return (
-            <Link
-              key={item.title}
-              href={item.url}
-              className={`flex flex-col items-center gap-1 rounded-lg px-3 py-2 transition-colors ${
-                isActive
-                  ? "text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <HugeiconsIcon icon={item.icon} size={20} />
-            </Link>
-          );
-        })}
-
-        {/* User Settings Menu */}
+        {/* User Profile Menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="flex flex-col items-center gap-1 rounded-lg px-3 py-2 text-muted-foreground transition-colors hover:text-foreground"
+              className="flex flex-col items-center gap-1 rounded-lg px-4 py-2 text-muted-foreground transition-colors hover:text-foreground"
             >
               {user ? (
-                <Avatar className="h-5 w-5 rounded-full grayscale">
-                  <AvatarImage src={user.image ?? ""} alt={user.name || ""} />
-                  <AvatarFallback className="text-[10px]">
-                    {user.name?.charAt(0) || "U"}
-                  </AvatarFallback>
-                </Avatar>
+                <>
+                  <Avatar className="h-5 w-5 rounded-full">
+                    <AvatarImage src={user.image ?? ""} alt={user.name || ""} />
+                    <AvatarFallback className="text-[10px]">
+                      {user.name?.charAt(0) || "U"}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="text-xs">Profile</span>
+                </>
               ) : (
-                <HugeiconsIcon icon={Settings01Icon} size={20} />
+                <>
+                  <HugeiconsIcon icon={UserCircleIcon} size={22} />
+                  <span className="text-xs">Profile</span>
+                </>
               )}
             </button>
           </DropdownMenuTrigger>

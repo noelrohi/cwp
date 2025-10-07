@@ -1,11 +1,13 @@
-import { getSessionCookie } from "better-auth/cookies";
+import { headers } from "next/headers";
 import { type NextRequest, NextResponse } from "next/server";
+import { auth } from "./lib/auth";
 
 const authRoutes = ["/sign-in", "/sign-up"];
 
 const protectedRoutes = [
   "/artifacts",
   "/dashboard",
+  "/chat",
   "/episode",
   "/playground",
   "/podcast",
@@ -17,7 +19,9 @@ const protectedRoutes = [
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   console.log({ pathname });
-  const session = getSessionCookie(request);
+  const session = await auth.api.getSession({
+    headers: await headers(),
+  });
 
   // If user is authenticated but trying to access auth routes
   if (session && authRoutes.some((route) => pathname.startsWith(route))) {
@@ -36,6 +40,7 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
+  runtime: "nodejs",
   matcher: [
     "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
     "/(api|trpc)(.*)",
