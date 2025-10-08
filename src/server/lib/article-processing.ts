@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { cosineSimilarity } from "ai";
 import { and, eq, sql } from "drizzle-orm";
 import { generateEmbedding } from "@/lib/embedding";
 import type { db as dbInstance } from "@/server/db";
@@ -77,7 +78,10 @@ export async function extractArticleContent(
   }
 
   // Extract content (everything after "Markdown Content:")
-  const content = lines.slice(contentStartIndex).join("\n").trim();
+  let content = lines.slice(contentStartIndex).join("\n").trim();
+
+  // Clean up markdown artifacts that pollute embeddings
+  content = cleanMarkdownContent(content);
 
   if (!content || content.length < 100) {
     throw new Error("Article content too short or empty");
@@ -93,6 +97,47 @@ export async function extractArticleContent(
   };
 }
 
+/**
+ * Clean markdown content to improve chunk quality
+ * Removes formatting noise while preserving semantic meaning
+ */
+function cleanMarkdownContent(content: string): string {
+  let cleaned = content;
+
+  // Remove horizontal rules (---, ===, etc.)
+  cleaned = cleaned.replace(/^[\s]*[-=]{3,}[\s]*$/gm, "");
+
+  // Remove image references with embedded URLs - they pollute embeddings
+  // Captures: ![alt text](url) or [Image: description](url)
+  cleaned = cleaned.replace(/!\[([^\]]*)\]\([^)]+\)/g, "");
+  cleaned = cleaned.replace(/\[Image[^\]]*\]\([^)]+\)/gi, "");
+
+  // Clean inline links but preserve the text
+  // [link text](url) -> link text
+  cleaned = cleaned.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
+
+  // Remove standalone URLs on their own lines
+  cleaned = cleaned.replace(/^https?:\/\/[^\s]+$/gm, "");
+
+  // Normalize blockquote markers (> ) to preserve quoted text
+  cleaned = cleaned.replace(/^>\s*/gm, "");
+
+  // Remove excessive emphasis markers but preserve the text
+  cleaned = cleaned.replace(/\*\*([^*]+)\*\*/g, "$1"); // bold
+  cleaned = cleaned.replace(/\*([^*]+)\*/g, "$1"); // italic
+  cleaned = cleaned.replace(/_([^_]+)_/g, "$1"); // italic underscore
+
+  // Remove code block markers but preserve code content
+  cleaned = cleaned.replace(/```[\w]*\n/g, "");
+  cleaned = cleaned.replace(/```/g, "");
+
+  // Clean up excessive whitespace
+  cleaned = cleaned.replace(/\n{3,}/g, "\n\n"); // max 2 newlines
+  cleaned = cleaned.replace(/[ \t]+/g, " "); // normalize spaces
+
+  return cleaned.trim();
+}
+
 interface ChunkArticleParams {
   db: DatabaseClient;
   articleId: string;
@@ -103,7 +148,7 @@ interface ChunkArticleParams {
 
 /**
  * Chunk article content into smaller pieces for embedding
- * Simpler than podcast chunking - no speakers, no timestamps
+ * Uses semantic boundaries and proper size constraints
  */
 export async function chunkArticleContent({
   db,
@@ -112,8 +157,15 @@ export async function chunkArticleContent({
   minTokens = 150,
   maxTokens = 400,
 }: ChunkArticleParams): Promise<{ chunkCount: number }> {
-  // Simple paragraph-based chunking for articles
-  const paragraphs = content.split(/\n\n+/).filter((p) => p.trim());
+  // Split into paragraphs and filter out noise
+  const paragraphs = content
+    .split(/\n\n+/)
+    .map((p) => p.trim())
+    .filter((p) => {
+      // Filter out very short paragraphs that are likely artifacts
+      const wordCount = p.split(/\s+/).length;
+      return wordCount >= 10 && p.length > 50;
+    });
 
   if (paragraphs.length === 0) {
     return { chunkCount: 0 };
@@ -124,29 +176,83 @@ export async function chunkArticleContent({
   let currentWordCount = 0;
 
   for (const paragraph of paragraphs) {
-    const words = paragraph.trim().split(/\s+/);
+    const words = paragraph.split(/\s+/);
     const wordCount = words.length;
 
-    // If adding this paragraph would exceed maxTokens, save current chunk
-    if (
-      currentWordCount > 0 &&
-      currentWordCount + wordCount > maxTokens * 1.1
-    ) {
+    // Check if this paragraph is too large on its own
+    if (wordCount > maxTokens) {
+      // Save current chunk if exists
       if (currentWordCount >= minTokens) {
         chunks.push({
           content: currentChunk.trim(),
           wordCount: currentWordCount,
         });
+        currentChunk = "";
+        currentWordCount = 0;
       }
-      currentChunk = "";
-      currentWordCount = 0;
+
+      // Split large paragraph by sentences
+      const sentences = paragraph.match(/[^.!?]+[.!?]+/g) || [paragraph];
+      let sentenceChunk = "";
+      let sentenceWordCount = 0;
+
+      for (const sentence of sentences) {
+        const sentenceWords = sentence.trim().split(/\s+/).length;
+
+        if (
+          sentenceWordCount > 0 &&
+          sentenceWordCount + sentenceWords > maxTokens
+        ) {
+          if (sentenceWordCount >= minTokens) {
+            chunks.push({
+              content: sentenceChunk.trim(),
+              wordCount: sentenceWordCount,
+            });
+          }
+          sentenceChunk = sentence;
+          sentenceWordCount = sentenceWords;
+        } else {
+          sentenceChunk += (sentenceChunk ? " " : "") + sentence;
+          sentenceWordCount += sentenceWords;
+
+          if (sentenceWordCount >= minTokens) {
+            chunks.push({
+              content: sentenceChunk.trim(),
+              wordCount: sentenceWordCount,
+            });
+            sentenceChunk = "";
+            sentenceWordCount = 0;
+          }
+        }
+      }
+
+      if (sentenceWordCount > 0) {
+        currentChunk = sentenceChunk;
+        currentWordCount = sentenceWordCount;
+      }
+      continue;
     }
 
+    // Would adding this paragraph exceed our target?
+    if (currentWordCount > 0 && currentWordCount + wordCount > maxTokens) {
+      // Save current chunk if it meets minimum
+      if (currentWordCount >= minTokens) {
+        chunks.push({
+          content: currentChunk.trim(),
+          wordCount: currentWordCount,
+        });
+        currentChunk = "";
+        currentWordCount = 0;
+      }
+    }
+
+    // Add paragraph to current chunk
     currentChunk += (currentChunk ? "\n\n" : "") + paragraph;
     currentWordCount += wordCount;
 
-    // If we've reached a good size and paragraph is a natural break
-    if (currentWordCount >= minTokens) {
+    // If we're in the sweet spot (between min and preferred), save it
+    const preferredSize = (minTokens + maxTokens) / 2;
+    if (currentWordCount >= preferredSize && currentWordCount <= maxTokens) {
       chunks.push({
         content: currentChunk.trim(),
         wordCount: currentWordCount,
@@ -214,23 +320,6 @@ export async function chunkArticleContent({
 }
 
 /**
- * Calculate cosine similarity between two vectors
- */
-function cosineSimilarity(a: number[], b: number[]): number {
-  let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
-
-  for (let i = 0; i < a.length; i++) {
-    dotProduct += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-
-  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
-}
-
-/**
  * Calculate centroid of multiple embeddings
  */
 function calculateCentroid(embeddings: number[][]): number[] {
@@ -254,7 +343,7 @@ function calculateCentroid(embeddings: number[][]): number[] {
 /**
  * Generate signals for article chunks using same logic as podcasts
  */
-async function generateArticleSignals({
+export async function generateArticleSignals({
   db,
   articleId,
   userId,
@@ -416,12 +505,13 @@ interface ProcessArticleParams {
   db: DatabaseClient;
   userId: string;
   url: string;
+  articleId?: string;
 }
 
 /**
  * Complete article processing pipeline:
  * 1. Extract content via Jina AI
- * 2. Create article record
+ * 2. Create article record (or use existing)
  * 3. Chunk content
  * 4. Generate embeddings
  */
@@ -429,14 +519,17 @@ export async function processArticle({
   db,
   userId,
   url,
+  articleId: existingArticleId,
 }: ProcessArticleParams): Promise<ArticleProcessingResult> {
+  let articleId: string;
+
   // Check if article already exists for this user
   const existing = await db.query.article.findFirst({
     where: (article, { and, eq }) =>
       and(eq(article.userId, userId), eq(article.url, url)),
   });
 
-  if (existing) {
+  if (existing && !existingArticleId) {
     throw new Error("Article already processed");
   }
 
@@ -447,19 +540,34 @@ export async function processArticle({
     throw new Error("Article content too short or empty");
   }
 
-  // Create article record
-  const articleId = randomUUID();
-  await db.insert(articleSchema).values({
-    id: articleId,
-    userId,
-    url,
-    title: extracted.title,
-    author: extracted.author,
-    publishedAt: extracted.publishedAt,
-    siteName: extracted.siteName,
-    excerpt: extracted.excerpt,
-    status: "processing",
-  });
+  // Create or update article record
+  if (existingArticleId || existing) {
+    articleId = existingArticleId || existing!.id;
+    await db
+      .update(articleSchema)
+      .set({
+        status: "processing",
+        title: extracted.title,
+        author: extracted.author,
+        publishedAt: extracted.publishedAt,
+        siteName: extracted.siteName,
+        excerpt: extracted.excerpt,
+      })
+      .where(eq(articleSchema.id, articleId));
+  } else {
+    articleId = randomUUID();
+    await db.insert(articleSchema).values({
+      id: articleId,
+      userId,
+      url,
+      title: extracted.title,
+      author: extracted.author,
+      publishedAt: extracted.publishedAt,
+      siteName: extracted.siteName,
+      excerpt: extracted.excerpt,
+      status: "processing",
+    });
+  }
 
   try {
     // Chunk and embed

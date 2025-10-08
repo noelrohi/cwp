@@ -9,6 +9,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { Response } from "@/components/ai-elements/response";
 import { useAudioPlayer } from "@/components/audio-player/audio-player-provider";
 import { Button } from "@/components/ui/button";
 import {
@@ -43,6 +44,7 @@ export type SignalCardProps = {
   children?: ReactNode;
   className?: string;
   snipButton?: ReactNode;
+  renderMarkdown?: boolean;
 };
 
 export function SignalCard(props: SignalCardProps) {
@@ -57,6 +59,7 @@ export function SignalCard(props: SignalCardProps) {
     children,
     className,
     snipButton,
+    renderMarkdown = false,
   } = props;
 
   const [isExpanded, setIsExpanded] = useState(false);
@@ -173,7 +176,9 @@ export function SignalCard(props: SignalCardProps) {
       <div className="mt-3 rounded-lg bg-muted/50 p-3 sm:mt-4 sm:p-4">
         <div className="space-y-2">
           <div className="flex flex-col gap-1 text-sm text-muted-foreground sm:flex-row sm:items-center sm:gap-2">
-            <span className="font-mono">{timestampLabel ?? "--:--"}</span>
+            {timestampLabel && (
+              <span className="font-mono">{timestampLabel}</span>
+            )}
             {resolvedSpeaker && (
               <>
                 <span className="hidden sm:inline">•</span>
@@ -183,9 +188,15 @@ export function SignalCard(props: SignalCardProps) {
           </div>
           {hasHighlight ? (
             <div className="space-y-2">
-              <p className="text-base leading-relaxed text-foreground/90 whitespace-pre-line">
-                {highlightContent?.trim()}
-              </p>
+              {renderMarkdown ? (
+                <Response className="text-base leading-relaxed text-foreground/90">
+                  {highlightContent?.trim()}
+                </Response>
+              ) : (
+                <p className="text-base leading-relaxed text-foreground/90 whitespace-pre-line">
+                  {highlightContent?.trim()}
+                </p>
+              )}
               <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
                 <CollapsibleTrigger asChild>
                   <Button
@@ -204,12 +215,22 @@ export function SignalCard(props: SignalCardProps) {
                   </Button>
                 </CollapsibleTrigger>
                 <CollapsibleContent className="mt-2 pt-2 border-t border-muted">
-                  <p className="leading-relaxed text-muted-foreground whitespace-pre-line">
-                    {chunkContent.trim()}
-                  </p>
+                  {renderMarkdown ? (
+                    <Response className="leading-relaxed text-muted-foreground">
+                      {chunkContent.trim()}
+                    </Response>
+                  ) : (
+                    <p className="leading-relaxed text-muted-foreground whitespace-pre-line">
+                      {chunkContent.trim()}
+                    </p>
+                  )}
                 </CollapsibleContent>
               </Collapsible>
             </div>
+          ) : renderMarkdown ? (
+            <Response className="text-base leading-relaxed text-foreground/90">
+              {chunkContent.trim()}
+            </Response>
           ) : (
             <p className="text-base leading-relaxed text-foreground/90 whitespace-pre-line">
               {chunkContent.trim()}

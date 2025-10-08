@@ -1,270 +1,275 @@
 "use client";
 
-import { Loading03Icon } from "@hugeicons/core-free-icons";
+import {
+  Add01Icon,
+  Alert01Icon,
+  Delete01Icon,
+  Loading03Icon,
+  MoreHorizontalCircle01Icon,
+  Search01Icon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import React from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
+import { useQueryState } from "nuqs";
 import { toast } from "sonner";
+import { AddArticleFeedDialog } from "@/components/blocks/articles/add-article-feed-dialog";
 import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useDebounce } from "@/hooks/use-debounce";
 import { useTRPC } from "@/server/trpc/client";
 
 export default function ArticlesPage() {
   const trpc = useTRPC();
-  const [url, setUrl] = React.useState("");
-  const [selectedArticleId, setSelectedArticleId] = React.useState<
-    string | null
-  >(null);
+  const qc = useQueryClient();
 
-  const articlesQuery = useQuery(trpc.articles.list.queryOptions());
-  const processArticle = useMutation(trpc.articles.process.mutationOptions());
-  const selectedArticle = useQuery({
-    ...trpc.articles.getById.queryOptions({ id: selectedArticleId || "" }),
-    enabled: !!selectedArticleId,
+  const [searchQuery, setSearchQuery] = useQueryState("q", {
+    defaultValue: "",
+  });
+  const [sortBy, setSortBy] = useQueryState("sort", { defaultValue: "date" });
+  const [page, setPage] = useQueryState("page", {
+    defaultValue: 1,
+    parse: (value) => Number(value) || 1,
   });
 
-  const handleProcess = async () => {
-    if (!url.trim()) return;
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
-    processArticle.mutate(
-      { url: url.trim() },
-      {
-        onSuccess: () => {
-          setUrl("");
-          articlesQuery.refetch();
-          toast.success("Article processed successfully");
-        },
-        onError: (error) => {
-          toast.error(error.message || "Failed to process article");
-        },
-      },
-    );
+  const { data, isLoading, error } = useQuery(
+    trpc.articles.listFeeds.queryOptions({
+      page,
+      limit: 20,
+      query: debouncedSearchQuery.trim() || undefined,
+      sortBy: sortBy as "date" | "title",
+    }),
+  );
+
+  const removeFeed = useMutation(trpc.articles.removeFeed.mutationOptions());
+
+  const handleRemoveFeed = async (feedId: string) => {
+    try {
+      await removeFeed.mutateAsync({ feedId });
+      qc.invalidateQueries({ queryKey: trpc.articles.listFeeds.queryKey() });
+      toast.success("Feed removed from library");
+    } catch (error) {
+      console.error("Failed to remove feed:", error);
+      toast.error("Failed to remove feed");
+    }
   };
 
   return (
     <main className="mx-auto w-full container space-y-6 px-4 py-6 sm:px-6 sm:py-8">
-      <header>
-        <h1 className="text-2xl font-semibold font-serif">Articles</h1>
-        <p className="text-muted-foreground">
-          Process articles to extract and embed content into your knowledge base
-        </p>
-      </header>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-xl sm:text-2xl font-semibold font-serif">
+          Your Article Feeds
+        </h1>
 
-      {/* Process Article Section */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Process New Article</CardTitle>
-          <CardDescription>
-            Paste any article URL to extract, chunk, and embed it
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex gap-2">
-            <Input
-              type="url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://example.com/article"
-              disabled={processArticle.isPending}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && url.trim()) {
-                  handleProcess();
-                }
-              }}
-            />
-            <Button
-              onClick={handleProcess}
-              disabled={processArticle.isPending || !url.trim()}
+        <AddArticleFeedDialog>
+          <Button className="w-full sm:w-auto">
+            <HugeiconsIcon icon={Add01Icon} size={16} />
+            Add Feed
+          </Button>
+        </AddArticleFeedDialog>
+      </div>
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
+        <div className="relative flex-1">
+          <HugeiconsIcon
+            icon={Search01Icon}
+            size={16}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+          />
+          <Input
+            type="text"
+            placeholder="Search feeds..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+
+        <Select value={sortBy} onValueChange={setSortBy}>
+          <SelectTrigger className="w-full sm:w-40">
+            <SelectValue placeholder="Sort by Date" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="date">Sort by Date</SelectItem>
+            <SelectItem value="title">Sort by Title</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-3">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <div
+              key={index}
+              className="flex items-center gap-4 rounded-lg border bg-background p-4"
             >
-              {processArticle.isPending ? (
-                <>
-                  <HugeiconsIcon
-                    icon={Loading03Icon}
-                    size={16}
-                    className="animate-spin"
+              <Skeleton className="h-12 w-12 rounded-lg" />
+              <div className="flex-1">
+                <Skeleton className="h-4 w-3/4 mb-2" />
+                <Skeleton className="h-3 w-1/3" />
+              </div>
+              <Skeleton className="h-8 w-8 rounded" />
+            </div>
+          ))}
+        </div>
+      ) : error ? (
+        <div className="text-center py-12">
+          <div className="flex items-center justify-center mb-4">
+            <HugeiconsIcon
+              icon={Alert01Icon}
+              size={32}
+              className="text-destructive"
+            />
+          </div>
+          <h3 className="text-lg font-semibold mb-2">Failed to load feeds</h3>
+          <p className="text-base text-muted-foreground mb-4">
+            {error.message || "An error occurred while loading your feeds."}
+          </p>
+          <Button variant="outline" onClick={() => window.location.reload()}>
+            Try again
+          </Button>
+        </div>
+      ) : data?.data && data.data.length > 0 ? (
+        <div className="space-y-3">
+          {data.data.map((feed) => (
+            <Link
+              key={feed.id}
+              href={`/article/${feed.id}`}
+              className="flex items-center gap-4 rounded-lg border bg-background p-4 hover:bg-muted/50 transition-colors"
+            >
+              <div className="h-12 w-12 rounded-lg bg-muted flex-shrink-0">
+                {feed.imageUrl ? (
+                  // biome-ignore lint/performance/noImgElement: **
+                  <img
+                    src={feed.imageUrl}
+                    alt={feed.title}
+                    className="h-full w-full rounded-lg object-cover"
                   />
-                  Processing...
-                </>
-              ) : (
-                "Process"
-              )}
+                ) : (
+                  <div className="h-full w-full rounded-lg bg-gradient-to-br from-blue-500 to-purple-600" />
+                )}
+              </div>
+
+              <div className="flex-1 min-w-0">
+                <h3 className="font-semibold text-base line-clamp-2">
+                  {feed.title}
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  {new Date(feed.createdAt).toLocaleDateString("en-US", {
+                    month: "long",
+                    day: "numeric",
+                    year: "numeric",
+                  })}
+                </p>
+              </div>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0"
+                    onClick={(e) => e.preventDefault()}
+                  >
+                    <HugeiconsIcon
+                      icon={MoreHorizontalCircle01Icon}
+                      size={16}
+                    />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleRemoveFeed(feed.id);
+                    }}
+                    disabled={removeFeed.isPending}
+                    className="text-destructive"
+                  >
+                    <HugeiconsIcon icon={Delete01Icon} size={16} />
+                    {removeFeed.isPending ? (
+                      <HugeiconsIcon
+                        icon={Loading03Icon}
+                        size={16}
+                        className="animate-spin"
+                      />
+                    ) : (
+                      "Remove"
+                    )}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </Link>
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-12">
+          <div className="text-base text-muted-foreground mb-4">
+            {debouncedSearchQuery
+              ? "No feeds found."
+              : "No article feeds in your library yet."}
+          </div>
+          {!debouncedSearchQuery && (
+            <div className="space-y-4">
+              <p className="text-base text-muted-foreground">
+                Add article feeds to your library to get started.
+              </p>
+              <AddArticleFeedDialog>
+                <Button variant="outline">
+                  <HugeiconsIcon icon={Add01Icon} size={16} />
+                  Add Your First Feed
+                </Button>
+              </AddArticleFeedDialog>
+            </div>
+          )}
+        </div>
+      )}
+
+      {data?.data && data.data.length > 0 && (
+        <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-base text-muted-foreground">
+            Showing {(page - 1) * data.pagination.limit + 1} to{" "}
+            {(page - 1) * data.pagination.limit + data.data.length} of{" "}
+            {data.pagination.total} results
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage(page - 1)}
+              disabled={page === 1}
+            >
+              Previous
+            </Button>
+            <span className="flex items-center px-3 text-sm">
+              Page {page} of {data.pagination.totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage(page + 1)}
+              disabled={!data.pagination.hasMore}
+            >
+              Next
             </Button>
           </div>
-
-          {processArticle.isSuccess && (
-            <div className="p-4 rounded-lg border bg-green-500/10 border-green-500/20">
-              <div className="font-medium text-green-700 dark:text-green-400 mb-1">
-                ✓ Article processed successfully
-              </div>
-              <div className="text-sm text-muted-foreground">
-                Created {processArticle.data.chunkCount} chunks and{" "}
-                {processArticle.data.signalCount} signals
-              </div>
-            </div>
-          )}
-
-          {processArticle.isError && (
-            <div className="p-4 rounded-lg border bg-red-500/10 border-red-500/20">
-              <div className="font-medium text-red-700 dark:text-red-400 mb-1">
-                ✗ Failed to process article
-              </div>
-              <div className="text-sm text-muted-foreground">
-                {processArticle.error.message}
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Processed Articles List */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Processed Articles</CardTitle>
-          <CardDescription>
-            Articles you've processed (most recent first)
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {articlesQuery.isLoading ? (
-            <div className="flex items-center justify-center p-8">
-              <HugeiconsIcon
-                icon={Loading03Icon}
-                size={24}
-                className="animate-spin text-muted-foreground"
-              />
-            </div>
-          ) : articlesQuery.data && articlesQuery.data.length > 0 ? (
-            <div className="space-y-3">
-              {articlesQuery.data.map((article) => (
-                <div
-                  key={article.id}
-                  className="p-4 rounded-lg border border-border bg-muted/20 hover:bg-muted/30 transition-colors"
-                >
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium mb-1 line-clamp-1">
-                        {article.title}
-                      </div>
-                      <div className="text-sm text-muted-foreground truncate">
-                        {article.url}
-                      </div>
-                    </div>
-                    <span
-                      className={`text-xs px-2 py-1 rounded flex-shrink-0 ml-2 ${
-                        article.status === "processed"
-                          ? "bg-green-500/20 text-green-700 dark:text-green-400"
-                          : article.status === "processing"
-                            ? "bg-blue-500/20 text-blue-700 dark:text-blue-400"
-                            : "bg-red-500/20 text-red-700 dark:text-red-400"
-                      }`}
-                    >
-                      {article.status}
-                    </span>
-                  </div>
-                  {article.author && (
-                    <div className="text-sm text-muted-foreground mb-2">
-                      By {article.author}
-                    </div>
-                  )}
-                  {article.status === "processed" && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setSelectedArticleId(article.id)}
-                      className="h-8 px-2 text-primary hover:text-primary"
-                    >
-                      View Chunks & Embeddings →
-                    </Button>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center p-8 text-muted-foreground">
-              No articles processed yet. Try adding one above!
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Chunk Viewer Dialog */}
-      {selectedArticleId && (
-        <Dialog
-          open={!!selectedArticleId}
-          onOpenChange={(open) => !open && setSelectedArticleId(null)}
-        >
-          <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
-            <DialogHeader>
-              <DialogTitle>
-                {selectedArticle.data?.title || "Article Chunks"}
-              </DialogTitle>
-            </DialogHeader>
-            <div className="flex-1 overflow-auto">
-              {selectedArticle.isLoading ? (
-                <div className="flex items-center justify-center p-8">
-                  <HugeiconsIcon
-                    icon={Loading03Icon}
-                    size={24}
-                    className="animate-spin text-muted-foreground"
-                  />
-                </div>
-              ) : selectedArticle.data?.transcriptChunks &&
-                selectedArticle.data.transcriptChunks.length > 0 ? (
-                <div className="space-y-4">
-                  <div className="text-sm text-muted-foreground">
-                    Showing {selectedArticle.data.transcriptChunks.length}{" "}
-                    chunks with embeddings
-                  </div>
-                  {selectedArticle.data.transcriptChunks.map((chunk, idx) => (
-                    <div
-                      key={chunk.id}
-                      className="p-4 rounded-lg border border-border bg-muted/20"
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium">
-                          Chunk {idx + 1}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {chunk.wordCount} words
-                        </span>
-                      </div>
-                      <p className="text-sm mb-3 whitespace-pre-wrap">
-                        {chunk.content}
-                      </p>
-                      {chunk.embedding && (
-                        <details className="text-xs">
-                          <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-                            Show embedding (1536 dimensions)
-                          </summary>
-                          <div className="mt-2 p-2 bg-muted/40 rounded font-mono overflow-x-auto">
-                            [{chunk.embedding.slice(0, 10).join(", ")}, ...]
-                          </div>
-                        </details>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center p-8 text-muted-foreground">
-                  No chunks found
-                </div>
-              )}
-            </div>
-          </DialogContent>
-        </Dialog>
+        </div>
       )}
     </main>
   );

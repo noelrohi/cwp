@@ -1479,6 +1479,7 @@ export const signalsRouter = createTRPCRouter({
           relatedArticleUrl: article.url,
           relatedArticleAuthor: article.author,
           relatedArticleSiteName: article.siteName,
+          relatedArticlePublishedAt: article.publishedAt,
         })
         .from(dailySignal)
         .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
@@ -1509,6 +1510,7 @@ export const signalsRouter = createTRPCRouter({
           url: row.relatedArticleUrl,
           author: row.relatedArticleAuthor,
           siteName: row.relatedArticleSiteName,
+          publishedAt: row.relatedArticlePublishedAt,
         },
       }));
     }),

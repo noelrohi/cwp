@@ -102,6 +102,9 @@ export const article = pgTable(
   {
     id: text("id").primaryKey(),
     userId: text("user_id").notNull(),
+    feedId: text("feed_id").references(() => articleFeed.id, {
+      onDelete: "set null",
+    }),
     url: text("url").notNull(),
     title: text("title").notNull(),
     author: text("author"),
@@ -121,6 +124,7 @@ export const article = pgTable(
   (table) => [
     index().on(table.userId),
     index().on(table.status),
+    index().on(table.feedId),
     unique().on(table.userId, table.url),
   ],
 );
@@ -354,6 +358,34 @@ export const flashcardRelations = relations(flashcard, ({ one }) => ({
   }),
 }));
 
+export const articleFeed = pgTable(
+  "article_feed",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    feedUrl: text("feed_url").notNull(),
+    title: text("title").notNull(),
+    description: text("description"),
+    imageUrl: text("image_url"),
+    metadata: text("metadata"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    index().on(table.userId),
+    unique().on(table.userId, table.feedUrl),
+  ],
+);
+
 export const articleRelations = relations(article, ({ many }) => ({
   transcriptChunks: many(transcriptChunk),
+}));
+
+export const articleFeedRelations = relations(articleFeed, ({ many }) => ({
+  articles: many(article),
 }));
