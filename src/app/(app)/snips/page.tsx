@@ -176,7 +176,7 @@ function FlashcardItem({
           style={{ transformStyle: "preserve-3d" }}
         >
           <Item
-            variant="muted"
+            variant="outline"
             className="absolute inset-0 flex-col justify-between h-full"
             style={{ backfaceVisibility: "hidden" }}
           >

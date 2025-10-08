@@ -11,6 +11,7 @@ import {
   Scissor01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -55,7 +56,7 @@ const items: NavItem[] = [
     icon: Idea01Icon,
     items: [
       { title: "Episodes", url: "/signals/episodes" },
-      { title: "Articles", url: "/signals/articles", badge: "WIP" },
+      { title: "Articles", url: "/signals/articles" },
     ],
   },
   {
@@ -126,7 +127,7 @@ export function NavMain() {
                   asChild
                   defaultOpen={isAnySubItemActive}
                 >
-                  <SidebarMenuItem>
+                  <SidebarMenuItem className="group/collapsible">
                     <CollapsibleTrigger asChild>
                       <SidebarMenuButton
                         tooltip={item.title}
@@ -136,6 +137,7 @@ export function NavMain() {
                           <HugeiconsIcon icon={item.icon} size={20} />
                         )}
                         <span className="text-base">{item.title}</span>
+                        <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
                       </SidebarMenuButton>
                     </CollapsibleTrigger>
                     <CollapsibleContent>
