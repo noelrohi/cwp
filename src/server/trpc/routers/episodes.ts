@@ -1,10 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { inngest } from "@/inngest/client";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
-import { episode } from "@/server/db/schema/podcast";
+import {
+  dailySignal,
+  episode,
+  transcriptChunk,
+} from "@/server/db/schema/podcast";
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "../init";
 
 export const episodesRouter = createTRPCRouter({
@@ -82,7 +86,43 @@ export const episodesRouter = createTRPCRouter({
         },
       });
 
-      return rows;
+      // Fetch signal counts for all episodes in a single query
+      const episodeIds = rows.map((ep) => ep.id);
+
+      if (episodeIds.length === 0) {
+        return rows.map((ep) => ({
+          ...ep,
+          signalCounts: { total: 0, pending: 0 },
+        }));
+      }
+
+      const signalCounts = await ctx.db
+        .select({
+          episodeId: transcriptChunk.episodeId,
+          total: count(dailySignal.id),
+          pending: sql<number>`SUM(CASE WHEN ${dailySignal.userAction} IS NULL THEN 1 ELSE 0 END)`,
+        })
+        .from(dailySignal)
+        .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
+        .where(
+          and(
+            eq(dailySignal.userId, ctx.user.id),
+            inArray(transcriptChunk.episodeId, episodeIds),
+          ),
+        )
+        .groupBy(transcriptChunk.episodeId);
+
+      const signalCountMap = new Map(
+        signalCounts.map((sc) => [
+          sc.episodeId,
+          { total: Number(sc.total), pending: Number(sc.pending) },
+        ]),
+      );
+
+      return rows.map((ep) => ({
+        ...ep,
+        signalCounts: signalCountMap.get(ep.id) ?? { total: 0, pending: 0 },
+      }));
     }),
 
   processEpisode: protectedProcedure

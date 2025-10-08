@@ -47,24 +47,16 @@ function getDateGroup(date: string | null): string {
   }
 }
 
-function StatusIndicator({
+function SignalCountIndicator({
+  signalCounts,
   status,
 }: {
+  signalCounts: { total: number; pending: number };
   status: "pending" | "processing" | "processed" | "failed" | "retrying";
 }) {
-  switch (status) {
-    case "processed":
-      return (
-        <div
-          className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400"
-          title="Processed"
-        >
-          <HugeiconsIcon icon={TickDouble02Icon} size={16} />
-          <span className="text-xs font-medium">Ready</span>
-        </div>
-      );
-    case "processing":
-    case "retrying":
+  // Show processing/failed states when no signals yet
+  if (signalCounts.total === 0) {
+    if (status === "processing" || status === "retrying") {
       return (
         <div
           className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400"
@@ -78,7 +70,8 @@ function StatusIndicator({
           <span className="text-xs font-medium">Processing</span>
         </div>
       );
-    case "failed":
+    }
+    if (status === "failed") {
       return (
         <div
           className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400"
@@ -88,17 +81,44 @@ function StatusIndicator({
           <span className="text-xs font-medium">Failed</span>
         </div>
       );
-    default:
-      return (
-        <div
-          className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted text-muted-foreground"
-          title="Pending"
-        >
-          <HugeiconsIcon icon={TimeQuarterPassIcon} size={16} />
-          <span className="text-xs font-medium">Pending</span>
-        </div>
-      );
+    }
+    // Not yet processed - no signals yet
+    return (
+      <div
+        className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted text-muted-foreground"
+        title="Click to process"
+      >
+        <HugeiconsIcon icon={TimeQuarterPassIcon} size={16} />
+        <span className="text-xs font-medium">Unprocessed</span>
+      </div>
+    );
   }
+
+  // Show signal counts - the ground truth of what's available
+  const hasPending = signalCounts.pending > 0;
+
+  return (
+    <div
+      className={`flex items-center gap-1.5 px-2 py-1 rounded-md ${
+        hasPending
+          ? "bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400"
+          : "bg-muted text-muted-foreground"
+      }`}
+      title={`${signalCounts.pending} pending review, ${signalCounts.total - signalCounts.pending} actioned`}
+    >
+      <HugeiconsIcon
+        icon={hasPending ? AlertCircleIcon : TickDouble02Icon}
+        size={16}
+      />
+      <span className="text-xs font-medium">
+        {signalCounts.pending > 0 ? (
+          <>{signalCounts.pending} pending</>
+        ) : (
+          <>{signalCounts.total} done</>
+        )}
+      </span>
+    </div>
+  );
 }
 
 function EpisodeCard({
@@ -134,7 +154,10 @@ function EpisodeCard({
             <h3 className="text-sm sm:text-base font-semibold leading-tight line-clamp-2 flex-1">
               {episode.title}
             </h3>
-            <StatusIndicator status={episode.status} />
+            <SignalCountIndicator
+              signalCounts={episode.signalCounts}
+              status={episode.status}
+            />
           </div>
           <p className="text-muted-foreground text-xs sm:text-sm">
             {episode.podcast?.title}
@@ -167,7 +190,10 @@ function ArticleCard({
             <h3 className="text-sm sm:text-base font-semibold leading-tight line-clamp-2 flex-1">
               {article.title}
             </h3>
-            <StatusIndicator status={article.status} />
+            <SignalCountIndicator
+              signalCounts={article.signalCounts}
+              status={article.status}
+            />
           </div>
           <p className="text-muted-foreground text-xs sm:text-sm line-clamp-1">
             {article.feed?.title ||

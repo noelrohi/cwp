@@ -533,22 +533,28 @@ export const dailyIntelligenceGenerateSignals = inngest.createFunction(
 
     const signalsGenerated = await step.run(
       "generate-user-signals",
-      async () => await generateUserSignals(userId, episodeId, true),
+      async () => {
+        const count = await generateUserSignals(userId, episodeId, true);
+
+        // Mark episode as processed IMMEDIATELY after signals are stored
+        // This happens in the same step to prevent race conditions
+        if (episodeId) {
+          await db
+            .update(episode)
+            .set({
+              status: "processed",
+              lastProcessedAt: new Date(),
+            })
+            .where(eq(episode.id, episodeId));
+
+          logger.info(
+            `Pipeline run ${pipelineRunId}: episode ${episodeId} marked as processed after generating ${count} signals`,
+          );
+        }
+
+        return count;
+      },
     );
-
-    // Mark episode as processed only after successful signal generation
-    if (episodeId) {
-      await step.run("mark-episode-processed", async () => {
-        await db
-          .update(episode)
-          .set({ status: "processed" })
-          .where(eq(episode.id, episodeId));
-      });
-
-      logger.info(
-        `Pipeline run ${pipelineRunId}: episode ${episodeId} marked as processed after signal generation`,
-      );
-    }
 
     logger.info(
       `Pipeline run ${pipelineRunId}: generated ${signalsGenerated} signals for user ${userId}${episodeId ? ` (episode: ${episodeId})` : ""}`,
