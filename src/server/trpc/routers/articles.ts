@@ -1,9 +1,21 @@
-import { and, count, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
+import {
+  and,
+  count,
+  desc,
+  eq,
+  exists,
+  ilike,
+  inArray,
+  not,
+  or,
+  sql,
+} from "drizzle-orm";
 import { nanoid } from "nanoid";
 import Parser from "rss-parser";
 import { z } from "zod";
 import { inngest } from "@/inngest/client";
 import { article, articleFeed, transcriptChunk } from "@/server/db/schema";
+import { dailySignal } from "@/server/db/schema/podcast";
 import { createTRPCRouter, protectedProcedure } from "../init";
 
 export const articlesRouter = createTRPCRouter({
@@ -318,6 +330,10 @@ export const articlesRouter = createTRPCRouter({
     .input(
       z.object({
         feedId: z.string(),
+        filterBySignals: z
+          .enum(["all", "with-signals", "without-signals"])
+          .optional()
+          .default("all"),
         limit: z.number().min(1).max(100).default(20),
         cursor: z
           .object({
@@ -332,6 +348,31 @@ export const articlesRouter = createTRPCRouter({
       const limit = input.limit ?? 20;
 
       const orderTimestampExpr = sql`coalesce(${article.publishedAt}, ${article.createdAt})`;
+      const signalExists = exists(
+        ctx.db
+          .select({ value: sql`1` })
+          .from(dailySignal)
+          .innerJoin(
+            transcriptChunk,
+            eq(dailySignal.chunkId, transcriptChunk.id),
+          )
+          .where(
+            and(
+              eq(dailySignal.userId, ctx.user.id),
+              eq(transcriptChunk.articleId, article.id),
+            ),
+          ),
+      );
+
+      const filterCondition = (() => {
+        if (input.filterBySignals === "with-signals") {
+          return signalExists;
+        }
+        if (input.filterBySignals === "without-signals") {
+          return not(signalExists);
+        }
+        return undefined;
+      })();
 
       const cursorCondition = input.cursor
         ? (() => {
@@ -352,6 +393,7 @@ export const articlesRouter = createTRPCRouter({
         where: and(
           eq(article.userId, ctx.user.id),
           eq(article.feedId, input.feedId),
+          filterCondition,
           cursorCondition,
         ),
         orderBy: [desc(orderTimestampExpr), desc(article.id)],
