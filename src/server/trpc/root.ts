@@ -1,6 +1,7 @@
 import { createTRPCRouter } from "./init";
 import { articlesRouter } from "./routers/articles";
 import { episodesRouter } from "./routers/episodes";
+import { flashcardsRouter } from "./routers/flashcards";
 import { podcastsRouter } from "./routers/podcasts";
 import { ragRouter } from "./routers/rag";
 import { signalsRouter } from "./routers/signals";
@@ -13,6 +14,7 @@ export const appRouter = createTRPCRouter({
   signals: signalsRouter,
   rag: ragRouter,
   articles: articlesRouter,
+  flashcards: flashcardsRouter,
 });
 
 export type AppRouter = typeof appRouter;

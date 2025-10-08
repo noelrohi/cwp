@@ -10,6 +10,7 @@ import {
   FilterIcon,
   Loading03Icon,
   PodcastIcon,
+  Scissor01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -23,6 +24,7 @@ import { SignalEmptyState } from "@/blocks/signals/signal-empty-state";
 import { SignalErrorState } from "@/blocks/signals/signal-error-state";
 import { SignalSkeletonList } from "@/blocks/signals/signal-skeleton-list";
 import { useAudioPlayer } from "@/components/audio-player/audio-player-provider";
+import { SnipDialog } from "@/components/snip-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -642,6 +644,20 @@ function SavedSignalsTab() {
                 endTimeSec={signal.endTimeSec}
                 metadata={metadata}
                 audio={audioSource}
+                snipButton={
+                  signal.dailySignalId ? (
+                    <SnipDialog
+                      signalId={signal.dailySignalId}
+                      defaultBack={signal.highlightQuote || signal.content}
+                      trigger={
+                        <Button variant="outline" size="sm">
+                          <HugeiconsIcon icon={Scissor01Icon} size={16} />
+                          Snip
+                        </Button>
+                      }
+                    />
+                  ) : undefined
+                }
               >
                 <Button
                   variant="outline"

@@ -8,6 +8,7 @@ import {
   HierarchySquare01Icon,
   Idea01Icon,
   MessageMultiple01Icon,
+  Scissor01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import Link from "next/link";
@@ -66,6 +67,11 @@ const items: NavItem[] = [
     title: "Articles",
     icon: FileAttachmentIcon,
     url: "/articles",
+  },
+  {
+    title: "Snips",
+    icon: Scissor01Icon,
+    url: "/snips",
   },
   // {
   //   title: "Patterns",

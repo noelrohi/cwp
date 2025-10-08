@@ -252,7 +252,7 @@ export const savedChunk = pgTable(
       .references(() => transcriptChunk.id, { onDelete: "cascade" })
       .notNull(),
     userId: text("user_id").notNull(),
-    tags: text("tags"), // comma-separated, user-defined
+    tags: text("tags"),
     notes: text("notes"),
     highlightExtractedQuote: text("highlight_extracted_quote"),
     highlightExtractedAt: timestamp("highlight_extracted_at", {
@@ -266,6 +266,30 @@ export const savedChunk = pgTable(
     index().on(table.userId),
     index().on(table.savedAt),
     index().on(table.highlightExtractedAt),
+  ],
+);
+
+export const flashcard = pgTable(
+  "flashcard",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    signalId: text("signal_id")
+      .references(() => dailySignal.id, { onDelete: "cascade" })
+      .notNull(),
+    front: text("front").notNull(),
+    back: text("back").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index().on(table.userId),
+    index().on(table.signalId),
+    index().on(table.createdAt),
   ],
 );
 
@@ -320,6 +344,13 @@ export const savedChunkRelations = relations(savedChunk, ({ one }) => ({
   chunk: one(transcriptChunk, {
     fields: [savedChunk.chunkId],
     references: [transcriptChunk.id],
+  }),
+}));
+
+export const flashcardRelations = relations(flashcard, ({ one }) => ({
+  signal: one(dailySignal, {
+    fields: [flashcard.signalId],
+    references: [dailySignal.id],
   }),
 }));
 
