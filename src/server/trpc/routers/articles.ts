@@ -68,6 +68,9 @@ export const articlesRouter = createTRPCRouter({
       where: eq(article.userId, ctx.user.id),
       orderBy: [desc(article.createdAt)],
       limit: 50,
+      with: {
+        feed: true,
+      },
     });
 
     return articles;

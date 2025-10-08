@@ -1,6 +1,15 @@
 "use client";
 
-import { Add01Icon, AiMicIcon } from "@hugeicons/core-free-icons";
+import {
+  Add01Icon,
+  AiMicIcon,
+  AlertCircleIcon,
+  File02Icon,
+  Loading03Icon,
+  PodcastIcon,
+  TickDouble02Icon,
+  TimeQuarterPassIcon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
 import Image from "next/image";
@@ -38,10 +47,64 @@ function getDateGroup(date: string | null): string {
   }
 }
 
+function StatusIndicator({
+  status,
+}: {
+  status: "pending" | "processing" | "processed" | "failed" | "retrying";
+}) {
+  switch (status) {
+    case "processed":
+      return (
+        <div
+          className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400"
+          title="Processed"
+        >
+          <HugeiconsIcon icon={TickDouble02Icon} size={16} />
+          <span className="text-xs font-medium">Ready</span>
+        </div>
+      );
+    case "processing":
+    case "retrying":
+      return (
+        <div
+          className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400"
+          title="Processing"
+        >
+          <HugeiconsIcon
+            icon={Loading03Icon}
+            size={16}
+            className="animate-spin"
+          />
+          <span className="text-xs font-medium">Processing</span>
+        </div>
+      );
+    case "failed":
+      return (
+        <div
+          className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400"
+          title="Failed"
+        >
+          <HugeiconsIcon icon={AlertCircleIcon} size={16} />
+          <span className="text-xs font-medium">Failed</span>
+        </div>
+      );
+    default:
+      return (
+        <div
+          className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted text-muted-foreground"
+          title="Pending"
+        >
+          <HugeiconsIcon icon={TimeQuarterPassIcon} size={16} />
+          <span className="text-xs font-medium">Pending</span>
+        </div>
+      );
+  }
+}
+
 function EpisodeCard({
   episode,
 }: {
-  episode: RouterOutput["episodes"]["getUnprocessed"][number];
+  episode: RouterOutput["episodes"]["getEpisodes"][number];
 }) {
   return (
     <Link href={`/episode/${episode.id}`}>
@@ -57,15 +120,22 @@ function EpisodeCard({
             />
           ) : (
             <div className="w-full h-full bg-muted flex items-center justify-center">
-              <span className="text-xs text-muted-foreground">No Image</span>
+              <HugeiconsIcon
+                icon={PodcastIcon}
+                size={24}
+                className="text-muted-foreground"
+              />
             </div>
           )}
         </div>
 
         <div className="flex-1 min-w-0">
-          <h3 className="text-sm sm:text-base font-semibold leading-tight line-clamp-2 mb-1">
-            {episode.title}
-          </h3>
+          <div className="flex items-start justify-between gap-2 mb-1">
+            <h3 className="text-sm sm:text-base font-semibold leading-tight line-clamp-2 flex-1">
+              {episode.title}
+            </h3>
+            <StatusIndicator status={episode.status} />
+          </div>
           <p className="text-muted-foreground text-xs sm:text-sm">
             {episode.podcast?.title}
           </p>
@@ -75,29 +145,106 @@ function EpisodeCard({
   );
 }
 
+function ArticleCard({
+  article,
+}: {
+  article: RouterOutput["articles"]["list"][number];
+}) {
+  return (
+    <Link href={`/article/${article.id}`}>
+      <div className="flex gap-3 sm:gap-4 mb-3 sm:mb-4 p-3 sm:p-4 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer">
+        {/* Article Icon/Placeholder */}
+        <div className="relative h-12 w-12 sm:h-16 sm:w-16 rounded-lg bg-muted flex-shrink-0 overflow-hidden flex items-center justify-center">
+          <HugeiconsIcon
+            icon={File02Icon}
+            size={24}
+            className="text-muted-foreground"
+          />
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2 mb-1">
+            <h3 className="text-sm sm:text-base font-semibold leading-tight line-clamp-2 flex-1">
+              {article.title}
+            </h3>
+            <StatusIndicator status={article.status} />
+          </div>
+          <p className="text-muted-foreground text-xs sm:text-sm line-clamp-1">
+            {article.feed?.title ||
+              article.siteName ||
+              article.author ||
+              "Article"}
+          </p>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+type ContentItem = {
+  id: string;
+  title: string;
+  publishedAt: Date | string | null;
+  status: "pending" | "processing" | "processed" | "failed" | "retrying";
+  type: "episode" | "article";
+  episode?: RouterOutput["episodes"]["getEpisodes"][number];
+  article?: RouterOutput["articles"]["list"][number];
+};
+
 export default function Dashboard() {
   const trpc = useTRPC();
-  const { data: unprocessedEpisodes, isLoading } = useQuery(
+  const { data: episodes, isLoading: episodesLoading } = useQuery(
     trpc.episodes.getEpisodes.queryOptions({ limit: 50 }),
   );
+  const { data: articles, isLoading: articlesLoading } = useQuery(
+    trpc.articles.list.queryOptions(),
+  );
 
-  const groupedEpisodes = useMemo(() => {
-    if (!unprocessedEpisodes) return {};
+  const allContent = useMemo(() => {
+    const episodeItems: ContentItem[] =
+      episodes?.map((ep) => ({
+        id: ep.id,
+        title: ep.title,
+        publishedAt: ep.publishedAt,
+        status: ep.status,
+        type: "episode" as const,
+        episode: ep,
+      })) || [];
 
-    return unprocessedEpisodes.reduce(
-      (groups, episode) => {
-        const dateGroup = getDateGroup(episode.publishedAt);
+    const articleItems: ContentItem[] =
+      articles?.map((art) => ({
+        id: art.id,
+        title: art.title,
+        publishedAt: art.publishedAt || art.createdAt,
+        status: art.status,
+        type: "article" as const,
+        article: art,
+      })) || [];
+
+    return [...episodeItems, ...articleItems];
+  }, [episodes, articles]);
+
+  const groupedContent = useMemo(() => {
+    if (allContent.length === 0) return {};
+
+    return allContent.reduce(
+      (groups, item) => {
+        const dateGroup = getDateGroup(
+          item.publishedAt ? item.publishedAt.toString() : null,
+        );
         if (!groups[dateGroup]) {
           groups[dateGroup] = [];
         }
-        groups[dateGroup].push(episode);
+        groups[dateGroup].push(item);
         return groups;
       },
-      {} as Record<string, typeof unprocessedEpisodes>,
+      {} as Record<string, ContentItem[]>,
     );
-  }, [unprocessedEpisodes]);
+  }, [allContent]);
 
-  const totalEpisodes = unprocessedEpisodes?.length || 0;
+  const totalContent = allContent.length;
+
+  const isLoading = episodesLoading || articlesLoading;
 
   if (isLoading) {
     return (
@@ -126,9 +273,9 @@ export default function Dashboard() {
         Hi! What are we breaking down today?
       </h1>
 
-      {totalEpisodes > 0 ? (
+      {totalContent > 0 ? (
         <div className="space-y-6 sm:space-y-8">
-          {Object.entries(groupedEpisodes)
+          {Object.entries(groupedContent)
             .sort(([a], [b]) => {
               // Sort by priority: Today, Yesterday, then chronologically
               const order = { Today: 0, Yesterday: 1 };
@@ -144,15 +291,25 @@ export default function Dashboard() {
               }
               return 0;
             })
-            .map(([dateGroup, episodes]) => (
+            .map(([dateGroup, items]) => (
               <div key={dateGroup}>
                 <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">
                   {dateGroup}
                 </h3>
                 <div className="space-y-0">
-                  {episodes.map((episode) => (
-                    <EpisodeCard key={episode.id} episode={episode} />
-                  ))}
+                  {items.map((item) => {
+                    if (item.type === "episode" && item.episode) {
+                      return (
+                        <EpisodeCard key={item.id} episode={item.episode} />
+                      );
+                    }
+                    if (item.type === "article" && item.article) {
+                      return (
+                        <ArticleCard key={item.id} article={item.article} />
+                      );
+                    }
+                    return null;
+                  })}
                 </div>
               </div>
             ))}
@@ -165,10 +322,11 @@ export default function Dashboard() {
               size={64}
               className="text-muted-foreground mb-6"
             />
-            <CardTitle className="mb-2">No Episodes Yet</CardTitle>
+            <CardTitle className="mb-2">No Content Yet</CardTitle>
             <CardDescription className="text-center mb-6 max-w-md">
-              Get started by adding your first podcast. We'll automatically
-              fetch and process the latest episodes for you to explore.
+              Get started by adding your first podcast or article feed. We'll
+              automatically fetch and process the latest content for you to
+              explore.
             </CardDescription>
             <AddPodcastDialog>
               <Button size="lg" className="gap-2">

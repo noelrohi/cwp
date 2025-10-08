@@ -189,7 +189,10 @@ export function SignalCard(props: SignalCardProps) {
           {hasHighlight ? (
             <div className="space-y-2">
               {renderMarkdown ? (
-                <Response className="text-base leading-relaxed text-foreground/90">
+                <Response
+                  className="text-base leading-relaxed text-foreground/90"
+                  allowedImagePrefixes={[]}
+                >
                   {highlightContent?.trim()}
                 </Response>
               ) : (
@@ -216,7 +219,10 @@ export function SignalCard(props: SignalCardProps) {
                 </CollapsibleTrigger>
                 <CollapsibleContent className="mt-2 pt-2 border-t border-muted">
                   {renderMarkdown ? (
-                    <Response className="leading-relaxed text-muted-foreground">
+                    <Response
+                      className="leading-relaxed text-muted-foreground"
+                      allowedImagePrefixes={[]}
+                    >
                       {chunkContent.trim()}
                     </Response>
                   ) : (
@@ -228,7 +234,10 @@ export function SignalCard(props: SignalCardProps) {
               </Collapsible>
             </div>
           ) : renderMarkdown ? (
-            <Response className="text-base leading-relaxed text-foreground/90">
+            <Response
+              className="text-base leading-relaxed text-foreground/90"
+              allowedImagePrefixes={[]}
+            >
               {chunkContent.trim()}
             </Response>
           ) : (

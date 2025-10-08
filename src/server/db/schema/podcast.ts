@@ -384,8 +384,12 @@ export const articleFeed = pgTable(
   ],
 );
 
-export const articleRelations = relations(article, ({ many }) => ({
+export const articleRelations = relations(article, ({ one, many }) => ({
   transcriptChunks: many(transcriptChunk),
+  feed: one(articleFeed, {
+    fields: [article.feedId],
+    references: [articleFeed.id],
+  }),
 }));
 
 export const articleFeedRelations = relations(articleFeed, ({ many }) => ({
