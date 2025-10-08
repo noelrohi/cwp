@@ -541,13 +541,15 @@ function ArticlesTab() {
           </div>
 
           {processArticle.isSuccess && (
-            <div className="p-4 rounded-lg border bg-green-500/10 border-green-500/20">
-              <div className="font-medium text-green-700 dark:text-green-400 mb-1">
-                ✓ Article processed successfully
+            <div className="rounded-lg border border-green-500/20 bg-green-500/10 p-3">
+              <div className="text-sm font-medium text-green-600 dark:text-green-400">
+                ✓ Article processing started
               </div>
               <div className="text-sm text-muted-foreground">
-                Created {processArticle.data.chunkCount} chunks and{" "}
-                {processArticle.data.signalCount} signals
+                Article ID: {processArticle.data.articleId}
+              </div>
+              <div className="text-sm text-muted-foreground">
+                Processing in background via Inngest
               </div>
             </div>
           )}

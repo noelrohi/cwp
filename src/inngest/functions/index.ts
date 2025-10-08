@@ -6,6 +6,11 @@ export {
   userEngagementAnalyzer,
 } from "./additional-monitoring";
 export {
+  processArticle,
+  regenerateArticleSignals,
+  reprocessArticle,
+} from "./article-processing";
+export {
   handleBulkSkip,
   monthlyCleanup,
   updateUserPreferences,
