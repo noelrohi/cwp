@@ -151,7 +151,7 @@ function ArticleCard({
   article: RouterOutput["articles"]["list"][number];
 }) {
   return (
-    <Link href={`/article/${article.id}`}>
+    <Link href={`/post/${article.id}`}>
       <div className="flex gap-3 sm:gap-4 mb-3 sm:mb-4 p-3 sm:p-4 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer">
         {/* Article Icon/Placeholder */}
         <div className="relative h-12 w-12 sm:h-16 sm:w-16 rounded-lg bg-muted flex-shrink-0 overflow-hidden flex items-center justify-center">
