@@ -15,17 +15,30 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import Link from "next/link";
+import { parseAsStringLiteral, useQueryState } from "nuqs";
 import { use } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useTRPC } from "@/server/trpc/client";
 
+const signals = ["all", "with-signals", "without-signals"] as const;
 const ARTICLE_PAGE_SIZE = 20;
 
 export default function ArticleDetailPage(props: PageProps<"/article/[id]">) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const params = use(props.params);
+  const [filterBySignals, setFilterBySignals] = useQueryState(
+    "filter",
+    parseAsStringLiteral(signals).withDefault("all"),
+  );
 
   const feed = useQuery(
     trpc.articles.getFeed.queryOptions({
@@ -54,6 +67,7 @@ export default function ArticleDetailPage(props: PageProps<"/article/[id]">) {
   const articlesQuery = useInfiniteQuery({
     ...trpc.articles.articlesInfinite.infiniteQueryOptions({
       feedId: params.id,
+      filterBySignals,
       limit: ARTICLE_PAGE_SIZE,
     }),
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
@@ -218,6 +232,21 @@ export default function ArticleDetailPage(props: PageProps<"/article/[id]">) {
       <div className="space-y-4">
         <div className="flex items-center justify-between gap-4">
           <h2 className="text-base sm:text-lg font-semibold">Articles</h2>
+          <Select
+            value={filterBySignals}
+            onValueChange={(v: (typeof signals)[number]) =>
+              setFilterBySignals(v)
+            }
+          >
+            <SelectTrigger size="sm" className="w-[180px]">
+              <SelectValue placeholder="Filter articles" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Articles</SelectItem>
+              <SelectItem value="with-signals">With Signals</SelectItem>
+              <SelectItem value="without-signals">Without Signals</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         {articlesQuery.isError ? (
