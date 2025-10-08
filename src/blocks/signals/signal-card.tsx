@@ -42,6 +42,7 @@ export type SignalCardProps = {
   };
   children?: ReactNode;
   className?: string;
+  snipButton?: ReactNode;
 };
 
 export function SignalCard(props: SignalCardProps) {
@@ -55,6 +56,7 @@ export function SignalCard(props: SignalCardProps) {
     audio,
     children,
     className,
+    snipButton,
   } = props;
 
   const [isExpanded, setIsExpanded] = useState(false);
@@ -215,8 +217,11 @@ export function SignalCard(props: SignalCardProps) {
           )}
         </div>
       </div>
-      {children ? (
-        <div className="mt-3 flex gap-2 sm:mt-4">{children}</div>
+      {children || snipButton ? (
+        <div className="mt-3 flex gap-2 sm:mt-4">
+          {children}
+          {snipButton}
+        </div>
       ) : null}
     </article>
   );

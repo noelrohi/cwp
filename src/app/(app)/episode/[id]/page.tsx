@@ -13,6 +13,7 @@ import {
   File01Icon,
   FingerPrintIcon,
   Loading03Icon,
+  Scissor01Icon,
   SparklesIcon,
   Undo02Icon,
 } from "@hugeicons/core-free-icons";
@@ -30,6 +31,7 @@ import {
   SignalCard,
   type SignalCardMetadataItem,
 } from "@/blocks/signals/signal-card";
+import { SnipDialog } from "@/components/snip-dialog";
 import { TranscriptDisplay } from "@/components/transcript-display";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -1319,6 +1321,20 @@ Content: ${content}
                   endTimeSec={signal.chunk.endTimeSec ?? null}
                   metadata={metadata}
                   audio={audioSource}
+                  snipButton={
+                    signal.userAction === "saved" ? (
+                      <SnipDialog
+                        signalId={signal.id}
+                        defaultBack={highlightContent || signal.chunk.content}
+                        trigger={
+                          <Button variant="outline" size="sm">
+                            <HugeiconsIcon icon={Scissor01Icon} size={16} />
+                            Snip
+                          </Button>
+                        }
+                      />
+                    ) : undefined
+                  }
                 >
                   {isSignalPending ? (
                     <>
