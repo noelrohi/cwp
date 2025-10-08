@@ -879,18 +879,16 @@ Content: ${content}
                   metadata={metadata}
                   renderMarkdown
                   snipButton={
-                    signal.userAction === "saved" ? (
-                      <SnipDialog
-                        signalId={signal.id}
-                        defaultBack={highlightContent || signal.chunk.content}
-                        trigger={
-                          <Button variant="outline" size="sm">
-                            <HugeiconsIcon icon={Scissor01Icon} size={16} />
-                            Snip
-                          </Button>
-                        }
-                      />
-                    ) : undefined
+                    <SnipDialog
+                      signalId={signal.id}
+                      defaultBack={highlightContent || signal.chunk.content}
+                      trigger={
+                        <Button variant="outline" size="sm">
+                          <HugeiconsIcon icon={Scissor01Icon} size={16} />
+                          Snip
+                        </Button>
+                      }
+                    />
                   }
                 >
                   {isSignalPending ? (

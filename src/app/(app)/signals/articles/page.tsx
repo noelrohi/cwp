@@ -323,6 +323,18 @@ function PendingArticleSignalsTab() {
                 endTimeSec={null}
                 metadata={metadata}
                 renderMarkdown
+                snipButton={
+                  <SnipDialog
+                    signalId={signal.id}
+                    defaultBack={signal.chunk.content}
+                    trigger={
+                      <Button variant="outline" size="sm">
+                        <HugeiconsIcon icon={Scissor01Icon} size={16} />
+                        Snip
+                      </Button>
+                    }
+                  />
+                }
               >
                 <Button
                   variant="outline"

@@ -3,6 +3,7 @@
 ## Build/Lint/Test Commands
 - `pnpm lint` - Run Biome linter and checker
 - `pnpm format` - Format code with Biome
+- `pnpm tsc *` - Typecheck code
 - No test runner configured - check with user if tests needed
 
 ## Code Style Guidelines

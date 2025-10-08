@@ -2,6 +2,7 @@
 
 import {
   AiMicIcon,
+  ArrowExpand02Icon,
   Calendar03Icon,
   Delete02Icon,
   Edit02Icon,
@@ -20,6 +21,12 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { SnipDialog } from "@/components/snip-dialog";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -103,7 +110,7 @@ export default function SnipsPage() {
           </p>
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 auto-rows-max">
           {flashcards.map((flashcard) => (
             <FlashcardItem
               key={flashcard.id}
@@ -156,20 +163,33 @@ function FlashcardItem({
 }) {
   const [isFlipped, setIsFlipped] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [showExpandDialog, setShowExpandDialog] = useState(false);
   const episode = flashcard.signal.chunk.episode;
   const article = flashcard.signal.chunk.article;
   const podcast = episode?.podcast;
 
   return (
     <article className="relative group">
-      <button
-        type="button"
-        className="relative h-[280px] w-full cursor-pointer bg-transparent border-0 p-0"
-        onClick={() => setIsFlipped(!isFlipped)}
+      <div
+        className="relative w-full cursor-pointer h-[280px]"
+        onClick={(e) => {
+          if (!(e.target as HTMLElement).closest("[data-no-flip]")) {
+            setIsFlipped(!isFlipped);
+          }
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setIsFlipped(!isFlipped);
+          }
+        }}
+        role="button"
+        tabIndex={0}
         aria-label={isFlipped ? "Show front" : "Show back"}
       >
         <motion.div
-          className="absolute inset-0 w-full h-full"
+          className="w-full h-full"
           initial={false}
           animate={{ rotateY: isFlipped ? 180 : 0 }}
           transition={{ duration: 0.6, type: "spring", stiffness: 100 }}
@@ -185,6 +205,15 @@ function FlashcardItem({
               {/* biome-ignore lint/a11y/noStaticElementInteractions: Contains only interactive button children */}
               {/* biome-ignore lint/a11y/useKeyWithClickEvents: Click stops propagation to parent flip handler */}
               <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="h-8 w-8"
+                  onClick={() => setShowExpandDialog(true)}
+                >
+                  <HugeiconsIcon icon={ArrowExpand02Icon} size={16} />
+                </Button>
+
                 <Tooltip open={showInfo} onOpenChange={setShowInfo}>
                   <TooltipTrigger asChild>
                     <Button variant="ghost" size="icon-sm" className="h-8 w-8">
@@ -214,7 +243,7 @@ function FlashcardItem({
                             <div className="flex items-center gap-2">
                               <HugeiconsIcon icon={PodcastIcon} size={12} />
                               <Link
-                                href={`/podcast/${podcast.id}`}
+                                href={`/podcast/${podcast.id}?filter=actioned`}
                                 className="hover:underline truncate"
                               >
                                 {podcast.title}
@@ -237,7 +266,7 @@ function FlashcardItem({
                                 size={12}
                               />
                               <Link
-                                href={`/article/${article.id}`}
+                                href={`/post/${article.id}?filter=action`}
                                 className="hover:underline truncate"
                               >
                                 {article.title}
@@ -321,25 +350,147 @@ function FlashcardItem({
 
           <Item
             variant="muted"
-            className="absolute inset-0 flex-col justify-between h-full"
+            className="absolute inset-0 flex-col justify-between h-full overflow-hidden"
             style={{
               backfaceVisibility: "hidden",
               transform: "rotateY(180deg)",
             }}
           >
-            <div className="flex-1 flex items-center justify-center overflow-auto px-6">
-              <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-line text-center">
+            <div className="flex-1 flex items-start justify-center overflow-y-auto px-6 py-6">
+              <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-line text-left w-full">
                 {flashcard.back}
               </p>
             </div>
-            <div className="text-center">
+            <div className="text-center shrink-0 space-y-2">
+              {flashcard.back.length > 200 && (
+                <button
+                  type="button"
+                  data-no-flip
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsExpanded(!isExpanded);
+                  }}
+                  className="text-xs text-primary hover:underline"
+                >
+                  {isExpanded ? "See more" : ""}
+                </button>
+              )}
               <p className="text-xs text-muted-foreground">
                 Click to see question
               </p>
             </div>
           </Item>
         </motion.div>
-      </button>
+      </div>
+
+      {isExpanded && isFlipped && (
+        <motion.div
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: "auto", opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: 0.3 }}
+          className="overflow-hidden mt-4"
+        >
+          <Item variant="muted" className="p-6">
+            <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-line">
+              {flashcard.back}
+            </p>
+            <button
+              type="button"
+              onClick={() => setIsExpanded(false)}
+              className="text-xs text-primary hover:underline mt-4"
+            >
+              See less
+            </button>
+          </Item>
+        </motion.div>
+      )}
+
+      <Dialog open={showExpandDialog} onOpenChange={setShowExpandDialog}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="sr-only">Flashcard Details</DialogTitle>
+            <div className="space-y-2 text-sm">
+              {episode ? (
+                <>
+                  {episode.title && (
+                    <div className="flex items-center gap-2">
+                      <HugeiconsIcon icon={AiMicIcon} size={16} />
+                      <Link
+                        href={`/episode/${episode.id}`}
+                        className="hover:underline truncate"
+                      >
+                        {episode.title}
+                      </Link>
+                    </div>
+                  )}
+                  {podcast?.title && (
+                    <div className="flex items-center gap-2">
+                      <HugeiconsIcon icon={PodcastIcon} size={16} />
+                      <Link
+                        href={`/podcast/${podcast.id}?filter=actioned`}
+                        className="hover:underline truncate"
+                      >
+                        {podcast.title}
+                      </Link>
+                    </div>
+                  )}
+                  {episode.publishedAt && (
+                    <div className="flex items-center gap-2">
+                      <HugeiconsIcon icon={Calendar03Icon} size={16} />
+                      <span>{formatDate(episode.publishedAt)}</span>
+                    </div>
+                  )}
+                </>
+              ) : article ? (
+                <>
+                  {article.title && (
+                    <div className="flex items-center gap-2">
+                      <HugeiconsIcon icon={FileAttachmentIcon} size={16} />
+                      <Link
+                        href={`/post/${article.id}?filter=action`}
+                        className="hover:underline truncate"
+                      >
+                        {article.title}
+                      </Link>
+                    </div>
+                  )}
+                  {article.siteName && (
+                    <div className="flex items-center gap-2">
+                      <HugeiconsIcon icon={Globe02Icon} size={16} />
+                      <span className="truncate">{article.siteName}</span>
+                    </div>
+                  )}
+                  {article.publishedAt && (
+                    <div className="flex items-center gap-2">
+                      <HugeiconsIcon icon={Calendar03Icon} size={16} />
+                      <span>{formatDate(article.publishedAt)}</span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-muted-foreground">
+                  No source information available
+                </div>
+              )}
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-6 pt-4">
+            <div className="py-6 border-b">
+              <h3 className="font-semibold text-lg leading-tight">
+                {flashcard.front}
+              </h3>
+            </div>
+
+            <div className="py-4">
+              <p className="text-base leading-relaxed whitespace-pre-line">
+                {flashcard.back}
+              </p>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </article>
   );
 }

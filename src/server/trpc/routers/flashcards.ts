@@ -2,7 +2,8 @@ import { TRPCError } from "@trpc/server";
 import { and, desc, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
-import { dailySignal, flashcard } from "@/server/db/schema/podcast";
+import { inngest } from "@/inngest/client";
+import { dailySignal, flashcard, savedChunk } from "@/server/db/schema/podcast";
 import { createTRPCRouter, protectedProcedure } from "../init";
 
 export const flashcardsRouter = createTRPCRouter({
@@ -20,6 +21,11 @@ export const flashcardsRouter = createTRPCRouter({
           eq(dailySignal.id, input.signalId),
           eq(dailySignal.userId, ctx.user.id),
         ),
+        columns: {
+          id: true,
+          userAction: true,
+          chunkId: true,
+        },
       });
 
       if (!signal) {
@@ -40,6 +46,28 @@ export const flashcardsRouter = createTRPCRouter({
         throw new TRPCError({
           code: "CONFLICT",
           message: "Flashcard already exists for this signal",
+        });
+      }
+
+      if (!signal.userAction) {
+        await ctx.db
+          .update(dailySignal)
+          .set({ userAction: "saved", actionedAt: new Date() })
+          .where(eq(dailySignal.id, input.signalId));
+
+        await ctx.db.insert(savedChunk).values({
+          id: nanoid(),
+          userId: ctx.user.id,
+          chunkId: signal.chunkId,
+          savedAt: new Date(),
+        });
+
+        await inngest.send({
+          name: "signal/actioned",
+          data: {
+            signalId: input.signalId,
+            action: "saved",
+          },
         });
       }
 
