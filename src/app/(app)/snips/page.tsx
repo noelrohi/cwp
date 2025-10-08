@@ -5,6 +5,8 @@ import {
   Calendar03Icon,
   Delete02Icon,
   Edit02Icon,
+  FileAttachmentIcon,
+  Globe02Icon,
   InformationCircleIcon,
   Loading03Icon,
   MoreVerticalIcon,
@@ -132,6 +134,13 @@ type FlashcardWithSignal = {
           title: string;
         } | null;
       } | null;
+      article: {
+        id: string;
+        title: string;
+        url: string;
+        siteName: string | null;
+        publishedAt: string | null;
+      } | null;
     };
   };
 };
@@ -148,6 +157,7 @@ function FlashcardItem({
   const [isFlipped, setIsFlipped] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const episode = flashcard.signal.chunk.episode;
+  const article = flashcard.signal.chunk.article;
   const podcast = episode?.podcast;
 
   return (
@@ -187,7 +197,7 @@ function FlashcardItem({
                     onClick={(e) => e.stopPropagation()}
                   >
                     <div className="space-y-2 text-xs">
-                      {episode && (
+                      {episode ? (
                         <>
                           {episode.title && (
                             <div className="flex items-center gap-2">
@@ -218,6 +228,41 @@ function FlashcardItem({
                             </div>
                           )}
                         </>
+                      ) : article ? (
+                        <>
+                          {article.title && (
+                            <div className="flex items-center gap-2">
+                              <HugeiconsIcon
+                                icon={FileAttachmentIcon}
+                                size={12}
+                              />
+                              <Link
+                                href={`/article/${article.id}`}
+                                className="hover:underline truncate"
+                              >
+                                {article.title}
+                              </Link>
+                            </div>
+                          )}
+                          {article.siteName && (
+                            <div className="flex items-center gap-2">
+                              <HugeiconsIcon icon={Globe02Icon} size={12} />
+                              <span className="truncate">
+                                {article.siteName}
+                              </span>
+                            </div>
+                          )}
+                          {article.publishedAt && (
+                            <div className="flex items-center gap-2">
+                              <HugeiconsIcon icon={Calendar03Icon} size={12} />
+                              <span>{formatDate(article.publishedAt)}</span>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="text-muted-foreground">
+                          No source information available
+                        </div>
                       )}
                     </div>
                   </TooltipContent>

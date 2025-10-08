@@ -69,6 +69,7 @@ export const flashcardsRouter = createTRPCRouter({
                     podcast: true,
                   },
                 },
+                article: true,
               },
             },
           },

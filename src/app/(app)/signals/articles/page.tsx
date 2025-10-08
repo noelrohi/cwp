@@ -8,6 +8,7 @@ import {
   FileAttachmentIcon,
   Globe02Icon,
   Loading03Icon,
+  Scissor01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -20,6 +21,7 @@ import {
 import { SignalEmptyState } from "@/blocks/signals/signal-empty-state";
 import { SignalErrorState } from "@/blocks/signals/signal-error-state";
 import { SignalSkeletonList } from "@/blocks/signals/signal-skeleton-list";
+import { SnipDialog } from "@/components/snip-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -415,16 +417,16 @@ function SavedArticleSignalsTab() {
             const metadata: SignalCardMetadataItem[] = [];
             const isDeleting = deletingId === signal.id;
 
+            if (signal.article.title) {
+              metadata.push({
+                icon: <HugeiconsIcon icon={FileAttachmentIcon} size={12} />,
+                label: signal.article.title,
+              });
+            }
             if (signal.article.siteName) {
               metadata.push({
                 icon: <HugeiconsIcon icon={Globe02Icon} size={12} />,
                 label: signal.article.siteName,
-              });
-            }
-            if (signal.article.author) {
-              metadata.push({
-                icon: <HugeiconsIcon icon={FileAttachmentIcon} size={12} />,
-                label: signal.article.author,
               });
             }
             if (signal.article.publishedAt) {
@@ -444,6 +446,20 @@ function SavedArticleSignalsTab() {
                 startTimeSec={null}
                 endTimeSec={null}
                 metadata={metadata}
+                snipButton={
+                  signal.dailySignalId ? (
+                    <SnipDialog
+                      signalId={signal.dailySignalId}
+                      defaultBack={signal.highlightQuote || signal.content}
+                      trigger={
+                        <Button variant="outline" size="sm">
+                          <HugeiconsIcon icon={Scissor01Icon} size={16} />
+                          Snip
+                        </Button>
+                      }
+                    />
+                  ) : undefined
+                }
               >
                 <Button
                   variant="outline"

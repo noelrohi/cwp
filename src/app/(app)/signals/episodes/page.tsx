@@ -611,9 +611,15 @@ function SavedSignalsTab() {
             const metadata: SignalCardMetadataItem[] = [];
             const isDeleting = deletingId === signal.id;
 
-            if (signal.episode.podcast?.title) {
+            if (signal.episode.title) {
               metadata.push({
                 icon: <HugeiconsIcon icon={AiMicIcon} size={12} />,
+                label: signal.episode.title,
+              });
+            }
+            if (signal.episode.podcast?.title) {
+              metadata.push({
+                icon: <HugeiconsIcon icon={PodcastIcon} size={12} />,
                 label: signal.episode.podcast.title,
               });
             }
