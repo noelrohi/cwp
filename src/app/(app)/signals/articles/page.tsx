@@ -320,6 +320,7 @@ function PendingArticleSignalsTab() {
                 startTimeSec={null}
                 endTimeSec={null}
                 metadata={metadata}
+                renderMarkdown
               >
                 <Button
                   variant="outline"
