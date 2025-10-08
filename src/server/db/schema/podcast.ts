@@ -4,6 +4,7 @@ import {
   doublePrecision,
   index,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   text,
@@ -283,6 +284,7 @@ export const flashcard = pgTable(
       .notNull(),
     front: text("front").notNull(),
     back: text("back").notNull(),
+    tags: jsonb("tags").$type<string[]>(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

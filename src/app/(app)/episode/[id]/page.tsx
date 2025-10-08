@@ -12,6 +12,7 @@ import {
   Download01Icon,
   File01Icon,
   FingerPrintIcon,
+  FlashIcon,
   Loading03Icon,
   Scissor01Icon,
   SparklesIcon,
@@ -92,6 +93,9 @@ export default function EpisodeDetailPage(props: {
   const [showRegenerateDialog, setShowRegenerateDialog] = useState(false);
   const [pendingSignalId, setPendingSignalId] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<SignalAction | null>(null);
+  const [selectedConfidence, setSelectedConfidence] = useState<
+    "all" | "high" | "medium" | "low"
+  >("all");
 
   const episode = useQuery({
     ...trpc.episodes.get.queryOptions({
@@ -108,6 +112,8 @@ export default function EpisodeDetailPage(props: {
       episodeId: params.id,
       filter: signalFilter,
       actionFilter,
+      confidenceFilter:
+        selectedConfidence !== "all" ? selectedConfidence : undefined,
     }),
   );
 
@@ -116,6 +122,12 @@ export default function EpisodeDetailPage(props: {
       episodeId: params.id,
     }),
   );
+
+  const signalIds = (signals.data ?? []).map((s) => s.id);
+  const hasSnips = useQuery({
+    ...trpc.flashcards.hasSnips.queryOptions({ signalIds }),
+    enabled: signalIds.length > 0,
+  });
 
   const processEpisode = useMutation(
     trpc.episodes.processEpisode.mutationOptions({
@@ -324,11 +336,7 @@ Content: ${content}
   }
 
   const episodeData = episode.data;
-  const relatedSignals = (signals.data ?? []).sort((a, b) => {
-    const timeA = a.chunk.startTimeSec ?? 0;
-    const timeB = b.chunk.startTimeSec ?? 0;
-    return timeA - timeB;
-  });
+  const relatedSignals = signals.data ?? [];
   const isProcessing =
     episodeData?.status === "processing" ||
     processEpisode.isPending ||
@@ -1189,7 +1197,7 @@ Content: ${content}
               )}
             </div>
 
-            {/* Right side: Action filter and Copy button - Desktop */}
+            {/* Right side: Action filter, Copy button, and Confidence filter - Desktop */}
             <div className="flex items-center gap-2">
               {signalFilter === "actioned" && (
                 <Select
@@ -1239,6 +1247,24 @@ Content: ${content}
                   <span className="hidden sm:inline">Copy Signals</span>
                 </Button>
               )}
+              <Select
+                value={selectedConfidence}
+                onValueChange={(value) =>
+                  setSelectedConfidence(
+                    value as "all" | "high" | "medium" | "low",
+                  )
+                }
+              >
+                <SelectTrigger size="sm" className="w-[180px]">
+                  <SelectValue placeholder="Confidence" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Confidence</SelectItem>
+                  <SelectItem value="high">High (≥65%)</SelectItem>
+                  <SelectItem value="medium">Medium (40-65%)</SelectItem>
+                  <SelectItem value="low">Low (&lt;40%)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </div>
@@ -1281,6 +1307,7 @@ Content: ${content}
                   ? `Speaker ${signal.chunk.speaker}`
                   : "Unknown speaker";
               const publishedLabel = formatDate(signal.episode?.publishedAt);
+              const hasSnip = hasSnips.data?.[signal.id] ?? false;
               const metadata: SignalCardMetadataItem[] = [];
               if (publishedLabel) {
                 metadata.push({ label: publishedLabel });
@@ -1292,6 +1319,12 @@ Content: ${content}
                 metadata.push({
                   icon: <HugeiconsIcon icon={BodyPartMuscleIcon} size={12} />,
                   label: `${Math.round(signal.relevanceScore * 100)}%`,
+                });
+              }
+              if (hasSnip) {
+                metadata.push({
+                  icon: <HugeiconsIcon icon={FlashIcon} size={12} />,
+                  label: "Snipped",
                 });
               }
               const audioSource = signal.episode?.audioUrl

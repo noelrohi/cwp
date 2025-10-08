@@ -6,11 +6,11 @@
 - [x] Fix snip card display - something wrong at the card when back text value is too long that makes it unreadable
 - [x] Add snip button to saved signals (and potentially pending signals)
 - [x] When creating a snip, automatically save the signal as well (single action does both) - possible only in the pending tab - for saved we keep it that way
-- [ ] Hyperlink snips to the saved filtered view of the episode/source
-- [ ] Add expand/collapse functionality for snip cards to show full content
-- [ ] Add tagging functionality to snips (for ontology building)
-- [ ] Show saved indicator on episode signals when they have snips
-- [ ] Add saved filter to signals page
+- [x] Hyperlink snips to the saved filtered view of the episode/source
+- [x] Add expand/collapse functionality for snip cards to show full content
+- [x] Add tagging functionality to snips (for ontology building)
+- [x] Show saved indicator on episode signals when they have snips
+- [x] Add saved filter to signals page
 
 ### Future Features
 - [ ] Daily review feature (similar to Readwise daily review)
@@ -20,9 +20,9 @@
 ## Signal Display
 
 ### Sorting & Filtering
-- [ ] **Always order signals highest to lowest score by default on every page**
+- [x] **Always order signals highest to lowest score by default on every page**
 - [ ] Ensure high quality filter works correctly
-- [ ] Add saved filter to signals view
+- [x] Add saved filter to signals view
 
 ### UI Improvements
 - [ ] Fix article images being absorbed/displayed incorrectly

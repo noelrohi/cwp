@@ -1,5 +1,5 @@
 import { TRPCError } from "@trpc/server";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { inngest } from "@/inngest/client";
@@ -13,6 +13,7 @@ export const flashcardsRouter = createTRPCRouter({
         signalId: z.string(),
         front: z.string().min(1, "Front is required"),
         back: z.string().min(1, "Back is required"),
+        tags: z.array(z.string()).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -78,6 +79,7 @@ export const flashcardsRouter = createTRPCRouter({
         signalId: input.signalId,
         front: input.front,
         back: input.back,
+        tags: input.tags ?? [],
       });
 
       return { id };
@@ -121,12 +123,39 @@ export const flashcardsRouter = createTRPCRouter({
       return card ?? null;
     }),
 
+  hasSnips: protectedProcedure
+    .input(z.object({ signalIds: z.array(z.string()) }))
+    .query(async ({ ctx, input }) => {
+      if (input.signalIds.length === 0) {
+        return {};
+      }
+
+      const cards = await ctx.db
+        .select({ signalId: flashcard.signalId })
+        .from(flashcard)
+        .where(
+          and(
+            eq(flashcard.userId, ctx.user.id),
+            inArray(flashcard.signalId, input.signalIds),
+          ),
+        );
+
+      return cards.reduce(
+        (acc, card) => {
+          acc[card.signalId] = true;
+          return acc;
+        },
+        {} as Record<string, boolean>,
+      );
+    }),
+
   update: protectedProcedure
     .input(
       z.object({
         id: z.string(),
         front: z.string().min(1, "Front is required"),
         back: z.string().min(1, "Back is required"),
+        tags: z.array(z.string()).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -149,6 +178,7 @@ export const flashcardsRouter = createTRPCRouter({
         .set({
           front: input.front,
           back: input.back,
+          tags: input.tags ?? [],
           updatedAt: new Date(),
         })
         .where(eq(flashcard.id, input.id));

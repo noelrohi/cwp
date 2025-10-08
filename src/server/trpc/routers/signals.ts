@@ -85,8 +85,8 @@ export const signalsRouter = createTRPCRouter({
           )
           .where(and(...whereConditions))
           .orderBy(
-            desc(dailySignal.signalDate),
             desc(dailySignal.relevanceScore),
+            desc(dailySignal.signalDate),
           )
           .limit(limit);
 
@@ -224,7 +224,7 @@ export const signalsRouter = createTRPCRouter({
             isNull(transcriptChunk.articleId),
           ),
         )
-        .orderBy(desc(dailySignal.signalDate), desc(dailySignal.relevanceScore))
+        .orderBy(desc(dailySignal.relevanceScore), desc(dailySignal.signalDate))
         .limit(limit);
 
       const unpresentedIds = rows
@@ -371,11 +371,13 @@ export const signalsRouter = createTRPCRouter({
         episodeId: z.string().min(1),
         filter: z.enum(["all", "pending", "actioned"]).optional(),
         actionFilter: z.enum(["all", "saved", "skipped"]).optional(),
+        confidenceFilter: z.enum(["all", "high", "medium", "low"]).optional(),
       }),
     )
     .query(async ({ ctx, input }) => {
       const filter = input.filter ?? "pending";
       const actionFilter = input.actionFilter ?? "all";
+      const confidenceFilter = input.confidenceFilter ?? "all";
 
       // Build where clause based on filter
       const whereConditions = [
@@ -395,6 +397,17 @@ export const signalsRouter = createTRPCRouter({
         }
       }
       // "all" doesn't add any action filter
+
+      // Add confidence filter
+      if (confidenceFilter === "high") {
+        whereConditions.push(sql`${dailySignal.relevanceScore} >= 0.65`);
+      } else if (confidenceFilter === "medium") {
+        whereConditions.push(
+          sql`${dailySignal.relevanceScore} >= 0.4 AND ${dailySignal.relevanceScore} < 0.65`,
+        );
+      } else if (confidenceFilter === "low") {
+        whereConditions.push(sql`${dailySignal.relevanceScore} < 0.4`);
+      }
 
       const rows = await ctx.db
         .select({
@@ -427,8 +440,8 @@ export const signalsRouter = createTRPCRouter({
         .leftJoin(podcast, eq(episode.podcastId, podcast.id))
         .where(and(...whereConditions))
         .orderBy(
-          desc(dailySignal.signalDate),
           desc(dailySignal.relevanceScore),
+          desc(dailySignal.signalDate),
         );
 
       return rows.map((row) => ({
@@ -1442,11 +1455,13 @@ export const signalsRouter = createTRPCRouter({
         articleId: z.string().min(1),
         filter: z.enum(["all", "pending", "actioned"]).optional(),
         actionFilter: z.enum(["all", "saved", "skipped"]).optional(),
+        confidenceFilter: z.enum(["all", "high", "medium", "low"]).optional(),
       }),
     )
     .query(async ({ ctx, input }) => {
       const filter = input.filter ?? "pending";
       const actionFilter = input.actionFilter ?? "all";
+      const confidenceFilter = input.confidenceFilter ?? "all";
 
       const whereConditions = [
         eq(dailySignal.userId, ctx.user.id),
@@ -1462,6 +1477,17 @@ export const signalsRouter = createTRPCRouter({
         } else if (actionFilter === "skipped") {
           whereConditions.push(eq(dailySignal.userAction, "skipped"));
         }
+      }
+
+      // Add confidence filter
+      if (confidenceFilter === "high") {
+        whereConditions.push(sql`${dailySignal.relevanceScore} >= 0.65`);
+      } else if (confidenceFilter === "medium") {
+        whereConditions.push(
+          sql`${dailySignal.relevanceScore} >= 0.4 AND ${dailySignal.relevanceScore} < 0.65`,
+        );
+      } else if (confidenceFilter === "low") {
+        whereConditions.push(sql`${dailySignal.relevanceScore} < 0.4`);
       }
 
       const rows = await ctx.db

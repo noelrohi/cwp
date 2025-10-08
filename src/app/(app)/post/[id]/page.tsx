@@ -80,6 +80,9 @@ export default function PostDetailPage(props: {
   const [showRegenerateDialog, setShowRegenerateDialog] = useState(false);
   const [pendingSignalId, setPendingSignalId] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<SignalAction | null>(null);
+  const [selectedConfidence, setSelectedConfidence] = useState<
+    "all" | "high" | "medium" | "low"
+  >("all");
 
   const article = useQuery({
     ...trpc.articles.getById.queryOptions({
@@ -92,6 +95,8 @@ export default function PostDetailPage(props: {
       articleId: params.id,
       filter: signalFilter,
       actionFilter,
+      confidenceFilter:
+        selectedConfidence !== "all" ? selectedConfidence : undefined,
     }),
   );
 
@@ -427,7 +432,7 @@ Content: ${content}
             </div>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             {!isProcessed && (
               <Dialog
                 open={showProcessDialog}
@@ -815,6 +820,24 @@ Content: ${content}
                   <span className="hidden sm:inline">Copy Signals</span>
                 </Button>
               )}
+              <Select
+                value={selectedConfidence}
+                onValueChange={(value) =>
+                  setSelectedConfidence(
+                    value as "all" | "high" | "medium" | "low",
+                  )
+                }
+              >
+                <SelectTrigger size="sm" className="w-[180px]">
+                  <SelectValue placeholder="Confidence" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Confidence</SelectItem>
+                  <SelectItem value="high">High (≥65%)</SelectItem>
+                  <SelectItem value="medium">Medium (40-65%)</SelectItem>
+                  <SelectItem value="low">Low (&lt;40%)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </div>

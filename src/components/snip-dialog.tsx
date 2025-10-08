@@ -24,11 +24,19 @@ import {
   FormLabel,
   FormMessage,
 } from "./ui/form";
+import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 
 const flashcardSchema = z.object({
-  front: z.string().min(1, "Front is required"),
-  back: z.string().min(1, "Back is required"),
+  front: z
+    .string()
+    .min(1, "Front is required")
+    .max(250, "Front must be 250 characters or less"),
+  back: z
+    .string()
+    .min(1, "Back is required")
+    .max(1000, "Back must be 1000 characters or less"),
+  tags: z.string().optional(),
 });
 
 type FlashcardFormData = z.infer<typeof flashcardSchema>;
@@ -95,21 +103,31 @@ export function SnipDialog({
     defaultValues: {
       front: "",
       back: defaultBack || "",
+      tags: "",
     },
   });
 
   const onSubmit = (data: FlashcardFormData) => {
+    const tags = data.tags
+      ? data.tags
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean)
+      : [];
+
     if (existingFlashcard.data) {
       updateMutation.mutate({
         id: existingFlashcard.data.id,
         front: data.front,
         back: data.back,
+        tags,
       });
     } else {
       createMutation.mutate({
         signalId,
         front: data.front,
         back: data.back,
+        tags,
       });
     }
   };
@@ -117,14 +135,19 @@ export function SnipDialog({
   const handleOpenChange = (newOpen: boolean) => {
     setOpen(newOpen);
     if (newOpen && existingFlashcard.data) {
+      const existingTags = Array.isArray(existingFlashcard.data.tags)
+        ? existingFlashcard.data.tags.join(", ")
+        : "";
       form.reset({
         front: existingFlashcard.data.front,
         back: existingFlashcard.data.back,
+        tags: existingTags,
       });
     } else if (newOpen) {
       form.reset({
         front: "",
         back: defaultBack || "",
+        tags: "",
       });
     }
   };
@@ -156,9 +179,15 @@ export function SnipDialog({
                     <Textarea
                       placeholder="What's the key insight here?"
                       className="min-h-[100px]"
+                      maxLength={250}
                       {...field}
                     />
                   </FormControl>
+                  <div className="flex items-center justify-end">
+                    <span className="text-xs text-muted-foreground">
+                      {field.value.length}/250
+                    </span>
+                  </div>
                   <FormMessage />
                 </FormItem>
               )}
@@ -173,10 +202,35 @@ export function SnipDialog({
                     <Textarea
                       placeholder="Your snipped content or answer"
                       className="min-h-[150px]"
+                      maxLength={1000}
+                      {...field}
+                    />
+                  </FormControl>
+                  <div className="flex items-center justify-end">
+                    <span className="text-xs text-muted-foreground">
+                      {field.value.length}/1000
+                    </span>
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="tags"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Tags (optional)</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="e.g. productivity, learning, ai"
                       {...field}
                     />
                   </FormControl>
                   <FormMessage />
+                  <p className="text-xs text-muted-foreground">
+                    Separate tags with commas
+                  </p>
                 </FormItem>
               )}
             />

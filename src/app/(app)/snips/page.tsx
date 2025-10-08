@@ -20,6 +20,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 import { SnipDialog } from "@/components/snip-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -130,6 +131,7 @@ type FlashcardWithSignal = {
   signalId: string;
   front: string;
   back: string;
+  tags: string[] | null;
   signal: {
     chunk: {
       episode: {
@@ -163,7 +165,6 @@ function FlashcardItem({
 }) {
   const [isFlipped, setIsFlipped] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(false);
   const [showExpandDialog, setShowExpandDialog] = useState(false);
   const episode = flashcard.signal.chunk.episode;
   const article = flashcard.signal.chunk.article;
@@ -232,7 +233,7 @@ function FlashcardItem({
                             <div className="flex items-center gap-2">
                               <HugeiconsIcon icon={AiMicIcon} size={12} />
                               <Link
-                                href={`/episode/${episode.id}`}
+                                href={`/episode/${episode.id}?filter=actioned&action=saved`}
                                 className="hover:underline truncate"
                               >
                                 {episode.title}
@@ -243,7 +244,7 @@ function FlashcardItem({
                             <div className="flex items-center gap-2">
                               <HugeiconsIcon icon={PodcastIcon} size={12} />
                               <Link
-                                href={`/podcast/${podcast.id}?filter=actioned`}
+                                href={`/podcast/${podcast.id}?filter=actioned&action=saved`}
                                 className="hover:underline truncate"
                               >
                                 {podcast.title}
@@ -266,7 +267,7 @@ function FlashcardItem({
                                 size={12}
                               />
                               <Link
-                                href={`/post/${article.id}?filter=action`}
+                                href={`/post/${article.id}?filter=actioned&action=saved`}
                                 className="hover:underline truncate"
                               >
                                 {article.title}
@@ -335,10 +336,19 @@ function FlashcardItem({
               </div>
             </div>
 
-            <div className="flex-1 flex items-center justify-center px-6">
+            <div className="flex-1 flex flex-col items-center justify-center px-6 gap-3">
               <h3 className="font-semibold text-lg leading-tight text-center">
                 {flashcard.front}
               </h3>
+              {flashcard.tags && flashcard.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 justify-center">
+                  {flashcard.tags.map((tag, idx) => (
+                    <Badge key={idx} variant="secondary" className="text-xs">
+                      {tag}
+                    </Badge>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="text-center">
@@ -357,22 +367,22 @@ function FlashcardItem({
             }}
           >
             <div className="flex-1 flex items-start justify-center overflow-y-auto px-6 py-6">
-              <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-line text-left w-full">
+              <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-line text-left w-full line-clamp-6">
                 {flashcard.back}
               </p>
             </div>
             <div className="text-center shrink-0 space-y-2">
-              {flashcard.back.length > 200 && (
+              {flashcard.back.length > 300 && (
                 <button
                   type="button"
                   data-no-flip
                   onClick={(e) => {
                     e.stopPropagation();
-                    setIsExpanded(!isExpanded);
+                    setShowExpandDialog(true);
                   }}
                   className="text-xs text-primary hover:underline"
                 >
-                  {isExpanded ? "See more" : ""}
+                  See full content
                 </button>
               )}
               <p className="text-xs text-muted-foreground">
@@ -382,29 +392,6 @@ function FlashcardItem({
           </Item>
         </motion.div>
       </div>
-
-      {isExpanded && isFlipped && (
-        <motion.div
-          initial={{ height: 0, opacity: 0 }}
-          animate={{ height: "auto", opacity: 1 }}
-          exit={{ height: 0, opacity: 0 }}
-          transition={{ duration: 0.3 }}
-          className="overflow-hidden mt-4"
-        >
-          <Item variant="muted" className="p-6">
-            <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-line">
-              {flashcard.back}
-            </p>
-            <button
-              type="button"
-              onClick={() => setIsExpanded(false)}
-              className="text-xs text-primary hover:underline mt-4"
-            >
-              See less
-            </button>
-          </Item>
-        </motion.div>
-      )}
 
       <Dialog open={showExpandDialog} onOpenChange={setShowExpandDialog}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
@@ -417,7 +404,7 @@ function FlashcardItem({
                     <div className="flex items-center gap-2">
                       <HugeiconsIcon icon={AiMicIcon} size={16} />
                       <Link
-                        href={`/episode/${episode.id}`}
+                        href={`/episode/${episode.id}?filter=actioned&action=saved`}
                         className="hover:underline truncate"
                       >
                         {episode.title}
@@ -428,7 +415,7 @@ function FlashcardItem({
                     <div className="flex items-center gap-2">
                       <HugeiconsIcon icon={PodcastIcon} size={16} />
                       <Link
-                        href={`/podcast/${podcast.id}?filter=actioned`}
+                        href={`/podcast/${podcast.id}?filter=actioned&action=saved`}
                         className="hover:underline truncate"
                       >
                         {podcast.title}
@@ -448,7 +435,7 @@ function FlashcardItem({
                     <div className="flex items-center gap-2">
                       <HugeiconsIcon icon={FileAttachmentIcon} size={16} />
                       <Link
-                        href={`/post/${article.id}?filter=action`}
+                        href={`/post/${article.id}?filter=actioned&action=saved`}
                         className="hover:underline truncate"
                       >
                         {article.title}
