@@ -28,6 +28,7 @@ import { toast } from "sonner";
 
 type SignalAction = "saved" | "skipped";
 
+import { ChevronDown } from "lucide-react";
 import {
   SignalCard,
   type SignalCardMetadataItem,
@@ -36,6 +37,7 @@ import { SnipDialog } from "@/components/snip-dialog";
 import { TranscriptDisplay } from "@/components/transcript-display";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ButtonGroup } from "@/components/ui/button-group";
 import {
   Dialog,
   DialogContent,
@@ -761,36 +763,15 @@ Content: ${content}
                       </div>
                     </DialogContent>
                   </Dialog>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm">
-                        <HugeiconsIcon icon={Download01Icon} size={16} />
-                        Download
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem asChild>
-                        <a
-                          href={episodeData.transcriptUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          Download Transcript
-                        </a>
-                      </DropdownMenuItem>
-                      {episodeData.audioUrl && (
-                        <DropdownMenuItem asChild>
-                          <a
-                            href={episodeData.audioUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            Download Audio
-                          </a>
-                        </DropdownMenuItem>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <CopyTranscriptButton
+                    transcriptUrl={episodeData.transcriptUrl}
+                    audioUrl={episodeData.audioUrl}
+                    speakerMappings={
+                      episodeData?.speakerMapping?.speakerMappings
+                        ? JSON.parse(episodeData.speakerMapping.speakerMappings)
+                        : null
+                    }
+                  />
                 </>
               )}
             </div>
@@ -1470,4 +1451,105 @@ function formatTimestamp(seconds: number): string {
     return `${hours}:${minutes.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   }
   return `${minutes}:${secs.toString().padStart(2, "0")}`;
+}
+
+function CopyTranscriptButton({
+  transcriptUrl,
+  audioUrl,
+  speakerMappings,
+}: {
+  transcriptUrl?: string | null;
+  audioUrl?: string | null;
+  speakerMappings?: Record<string, string> | null;
+}) {
+  const transcript = useQuery({
+    queryKey: ["transcript", transcriptUrl],
+    queryFn: async () => {
+      if (!transcriptUrl) throw new Error("No transcript URL");
+      const response = await fetch(transcriptUrl);
+      if (!response.ok) throw new Error("Failed to fetch transcript");
+      const jsonData: TranscriptData = await response.json();
+      return jsonData;
+    },
+    enabled: false,
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+
+  const handleCopyTranscript = async () => {
+    if (!transcriptUrl) {
+      toast.error("Transcript not available");
+      return;
+    }
+
+    const data = transcript.data || (await transcript.refetch()).data;
+
+    if (!data) {
+      toast.error("Failed to load transcript");
+      return;
+    }
+
+    const transcriptText = data
+      .map((utterance) => {
+        const speaker = utterance.speaker
+          ? speakerMappings?.[utterance.speaker.toString()] ||
+            `Speaker ${utterance.speaker}`
+          : "";
+        const speakerLabel = speaker ? `[${speaker}]` : "";
+        const timestamp = utterance.start
+          ? `[${formatTimestamp(utterance.start)}]`
+          : "";
+        return `${timestamp}${speakerLabel ? ` ${speakerLabel}` : ""} ${utterance.transcript.trim()}`;
+      })
+      .join("\n\n");
+
+    navigator.clipboard.writeText(transcriptText);
+    toast.success("Transcript copied to clipboard");
+  };
+
+  return (
+    <ButtonGroup>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={handleCopyTranscript}
+        disabled={transcript.isFetching}
+      >
+        {transcript.isFetching ? (
+          <HugeiconsIcon
+            icon={Loading03Icon}
+            size={16}
+            className="animate-spin"
+          />
+        ) : (
+          <HugeiconsIcon icon={Copy01Icon} size={16} />
+        )}
+        Copy Transcript
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="sm">
+            <ChevronDown className="size-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {transcriptUrl && (
+            <DropdownMenuItem asChild>
+              <a href={transcriptUrl} target="_blank" rel="noopener noreferrer">
+                <HugeiconsIcon icon={Download01Icon} className="size-4" />
+                Download Transcript
+              </a>
+            </DropdownMenuItem>
+          )}
+          {audioUrl && (
+            <DropdownMenuItem asChild>
+              <a href={audioUrl} target="_blank" rel="noopener noreferrer">
+                <HugeiconsIcon icon={Download01Icon} className="size-4" />
+                Download Audio
+              </a>
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </ButtonGroup>
+  );
 }
