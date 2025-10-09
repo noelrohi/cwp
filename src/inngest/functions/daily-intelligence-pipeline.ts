@@ -11,6 +11,10 @@ import {
   transcriptChunk,
   userPreferences,
 } from "@/server/db/schema";
+import {
+  computeHybridScore,
+  learnUserQualityProfile,
+} from "@/server/lib/quality-scoring";
 import { identifyEpisodeSpeakers } from "@/server/lib/speaker-identification";
 import {
   chunkEpisodeTranscript,
@@ -531,36 +535,52 @@ export const dailyIntelligenceGenerateSignals = inngest.createFunction(
     const { pipelineRunId, userId, episodeId } =
       event.data as DailyIntelligenceGenerateSignalsEvent;
 
-    const signalsGenerated = await step.run(
-      "generate-user-signals",
-      async () => {
-        const count = await generateUserSignals(userId, episodeId, true);
+    const result = await step.run("generate-user-signals", async () => {
+      const diagnostics = await generateUserSignals(userId, episodeId, true);
 
-        // Mark episode as processed IMMEDIATELY after signals are stored
-        // This happens in the same step to prevent race conditions
-        if (episodeId) {
-          await db
-            .update(episode)
-            .set({
-              status: "processed",
-              lastProcessedAt: new Date(),
-            })
-            .where(eq(episode.id, episodeId));
+      // Mark episode as processed IMMEDIATELY after signals are stored
+      // This happens in the same step to prevent race conditions
+      if (episodeId) {
+        await db
+          .update(episode)
+          .set({
+            status: "processed",
+            lastProcessedAt: new Date(),
+          })
+          .where(eq(episode.id, episodeId));
 
-          logger.info(
-            `Pipeline run ${pipelineRunId}: episode ${episodeId} marked as processed after generating ${count} signals`,
-          );
-        }
+        logger.info(
+          `Pipeline run ${pipelineRunId}: episode ${episodeId} marked as processed after generating ${diagnostics.signalsGenerated} signals`,
+        );
+      }
 
-        return count;
-      },
+      return diagnostics;
+    });
+
+    // Log comprehensive diagnostics
+    logger.info(
+      `Pipeline run ${pipelineRunId}: Signal Generation Complete for user ${userId}${episodeId ? ` (episode: ${episodeId})` : ""}`,
     );
+    logger.info(`📊 Signals Generated: ${result.signalsGenerated}`);
+    logger.info(`🎯 Scoring Method: ${result.scoringMethod}`);
+
+    if (result.qualityProfileUsed) {
+      logger.info(
+        `✨ Quality Scoring: ENABLED (${result.qualitySnipCount} snips + ${result.qualitySavedCount} saves)`,
+      );
+    } else {
+      logger.info(`⚠️  Quality Scoring: DISABLED (insufficient training data)`);
+    }
 
     logger.info(
-      `Pipeline run ${pipelineRunId}: generated ${signalsGenerated} signals for user ${userId}${episodeId ? ` (episode: ${episodeId})` : ""}`,
+      `📈 Score Range: ${(result.minScore * 100).toFixed(1)}% - ${(result.maxScore * 100).toFixed(1)}%`,
     );
+    logger.info(
+      `📊 Score Spread: ${((result.maxScore - result.minScore) * 100).toFixed(1)}%`,
+    );
+    logger.info(`📉 Average Score: ${(result.avgScore * 100).toFixed(1)}%`);
 
-    return { signalsGenerated };
+    return result;
   },
 );
 
@@ -583,7 +603,7 @@ async function generateUserSignals(
   userId: string,
   episodeId?: string,
   forceRegenerate = false,
-): Promise<number> {
+): Promise<SignalGenerationDiagnostics> {
   const preferences = await getOrCreateUserPreferences(userId);
   const candidateChunks = await getNewChunksForUser(
     userId,
@@ -595,9 +615,20 @@ async function generateUserSignals(
     `User ${userId}: Found ${candidateChunks.length} candidate chunks${episodeId ? ` (episode: ${episodeId})` : ""}${forceRegenerate ? " [FORCE REGENERATE]" : ""}`,
   );
 
-  if (candidateChunks.length === 0) return 0;
+  if (candidateChunks.length === 0) {
+    return {
+      signalsGenerated: 0,
+      scoringMethod: "random",
+      qualityProfileUsed: false,
+      qualitySnipCount: 0,
+      qualitySavedCount: 0,
+      minScore: 0,
+      maxScore: 0,
+      avgScore: 0,
+    };
+  }
 
-  const scoredChunks = await scoreChunksForRelevance(
+  const { scoredChunks, diagnostics } = await scoreChunksForRelevance(
     candidateChunks,
     preferences,
     userId,
@@ -608,11 +639,38 @@ async function generateUserSignals(
     `User ${userId}: After filtering, ${filteredChunks.length} chunks`,
   );
 
-  if (filteredChunks.length === 0) return 0;
+  if (filteredChunks.length === 0) {
+    return {
+      signalsGenerated: 0,
+      scoringMethod: diagnostics.scoringMethod,
+      qualityProfileUsed: diagnostics.qualityProfileUsed,
+      qualitySnipCount: diagnostics.qualitySnipCount,
+      qualitySavedCount: diagnostics.qualitySavedCount,
+      minScore: 0,
+      maxScore: 0,
+      avgScore: 0,
+    };
+  }
 
   await storeDailySignals(userId, filteredChunks);
 
-  return filteredChunks.length;
+  // Calculate score statistics
+  const scores = filteredChunks.map((c) => c.relevanceScore);
+  const minScore = Math.min(...scores);
+  const maxScore = Math.max(...scores);
+  const avgScore =
+    scores.reduce((sum, score) => sum + score, 0) / scores.length;
+
+  return {
+    signalsGenerated: filteredChunks.length,
+    scoringMethod: diagnostics.scoringMethod,
+    qualityProfileUsed: diagnostics.qualityProfileUsed,
+    qualitySnipCount: diagnostics.qualitySnipCount,
+    qualitySavedCount: diagnostics.qualitySavedCount,
+    minScore,
+    maxScore,
+    avgScore,
+  };
 }
 
 type UserPreferenceRecord = typeof userPreferences.$inferSelect;
@@ -632,6 +690,32 @@ type ChunkRecord = {
 };
 
 type ScoredChunk = ChunkRecord & { relevanceScore: number };
+
+type SignalGenerationDiagnostics = {
+  signalsGenerated: number;
+  scoringMethod:
+    | "random"
+    | "positive-only"
+    | "contrastive"
+    | "contrastive-fallback";
+  qualityProfileUsed: boolean;
+  qualitySnipCount: number;
+  qualitySavedCount: number;
+  minScore: number;
+  maxScore: number;
+  avgScore: number;
+};
+
+type ScoringDiagnostics = {
+  scoringMethod:
+    | "random"
+    | "positive-only"
+    | "contrastive"
+    | "contrastive-fallback";
+  qualityProfileUsed: boolean;
+  qualitySnipCount: number;
+  qualitySavedCount: number;
+};
 
 async function getOrCreateUserPreferences(
   userId: string,
@@ -727,10 +811,19 @@ async function scoreChunksForRelevance(
   chunks: ChunkRecord[],
   preferences: UserPreferenceRecord,
   userId: string,
-): Promise<ScoredChunk[]> {
+): Promise<{ scoredChunks: ScoredChunk[]; diagnostics: ScoringDiagnostics }> {
   console.log(
     `Scoring ${chunks.length} chunks for user ${userId}. Total saved: ${preferences.totalSaved}`,
   );
+
+  // Learn quality profile from snips/saves
+  const qualityProfile = await learnUserQualityProfile(userId);
+
+  if (qualityProfile) {
+    console.log(
+      `User ${userId}: Quality profile learned from ${qualityProfile.snipCount} snips + ${qualityProfile.savedCount} saves`,
+    );
+  }
 
   // PHASE 1: Random scoring until we have 10 saves
   // This avoids cold-start bias and lets the user train the system
@@ -738,10 +831,18 @@ async function scoreChunksForRelevance(
     console.log(
       `User ${userId} has < 10 saves. Using random distribution for exploration.`,
     );
-    return chunks.map((chunk) => ({
-      ...chunk,
-      relevanceScore: Math.random(), // Pure random 0.0-1.0
-    }));
+    return {
+      scoredChunks: chunks.map((chunk) => ({
+        ...chunk,
+        relevanceScore: Math.random(), // Pure random 0.0-1.0
+      })),
+      diagnostics: {
+        scoringMethod: "random",
+        qualityProfileUsed: false,
+        qualitySnipCount: 0,
+        qualitySavedCount: 0,
+      },
+    };
   }
 
   // PHASE 2: Embedding-based similarity - NOW WITH CONTRASTIVE LEARNING
@@ -779,10 +880,18 @@ async function scoreChunksForRelevance(
     console.log(
       `User ${userId} has saves but no embeddings. Falling back to random.`,
     );
-    return chunks.map((chunk) => ({
-      ...chunk,
-      relevanceScore: Math.random(),
-    }));
+    return {
+      scoredChunks: chunks.map((chunk) => ({
+        ...chunk,
+        relevanceScore: Math.random(),
+      })),
+      diagnostics: {
+        scoringMethod: "random",
+        qualityProfileUsed: false,
+        qualitySnipCount: 0,
+        qualitySavedCount: 0,
+      },
+    };
   }
 
   // Calculate saved centroid (what user likes)
@@ -818,25 +927,39 @@ async function scoreChunksForRelevance(
           `falling back to POSITIVE-ONLY scoring to avoid clustering at 0.5`,
       );
 
-      return chunks.map((chunk) => {
-        if (!chunk.embedding) {
+      return {
+        scoredChunks: chunks.map((chunk) => {
+          if (!chunk.embedding) {
+            return {
+              ...chunk,
+              relevanceScore: 0.3,
+            };
+          }
+
+          const semanticScore = cosineSimilarity(
+            chunk.embedding,
+            savedCentroid,
+          );
+          const relevanceScore = qualityProfile
+            ? computeHybridScore(semanticScore, chunk.content, qualityProfile)
+            : Math.max(0, semanticScore);
+
           return {
             ...chunk,
-            relevanceScore: 0.3,
+            relevanceScore,
           };
-        }
-
-        const similarity = cosineSimilarity(chunk.embedding, savedCentroid);
-        const relevanceScore = Math.max(0, similarity);
-
-        return {
-          ...chunk,
-          relevanceScore,
-        };
-      });
+        }),
+        diagnostics: {
+          scoringMethod: "contrastive-fallback",
+          qualityProfileUsed: qualityProfile !== null,
+          qualitySnipCount: qualityProfile?.snipCount ?? 0,
+          qualitySavedCount: qualityProfile?.savedCount ?? 0,
+        },
+      };
     }
 
     // Contrastive scoring: positive similarity MINUS negative similarity
+    // PLUS quality boost for multiplicative enhancement
     const scoredChunks = chunks.map((chunk) => {
       if (!chunk.embedding) {
         return {
@@ -856,10 +979,12 @@ async function scoreChunksForRelevance(
       const contrastiveScore = savedSimilarity - skippedSimilarity;
 
       // Normalize to 0-1 range: map [-2, 2] to [0, 1]
-      const normalizedScore = (contrastiveScore + 2) / 4;
+      const semanticScore = (contrastiveScore + 2) / 4;
 
-      // Clamp to ensure we stay in [0, 1]
-      const relevanceScore = Math.max(0, Math.min(1, normalizedScore));
+      // Apply quality boost for better differentiation
+      const relevanceScore = qualityProfile
+        ? computeHybridScore(semanticScore, chunk.content, qualityProfile)
+        : Math.max(0, Math.min(1, semanticScore));
 
       return {
         ...chunk,
@@ -908,31 +1033,49 @@ async function scoreChunksForRelevance(
       );
     }
 
-    return scoredChunks;
+    return {
+      scoredChunks,
+      diagnostics: {
+        scoringMethod: "contrastive",
+        qualityProfileUsed: qualityProfile !== null,
+        qualitySnipCount: qualityProfile?.snipCount ?? 0,
+        qualitySavedCount: qualityProfile?.savedCount ?? 0,
+      },
+    };
   }
 
-  // Fallback: Positive-only scoring (original behavior)
+  // Fallback: Positive-only scoring with quality boost
   console.log(
     `User ${userId}: Using POSITIVE-ONLY scoring against ${savedChunks.length} saved chunks ` +
       `(need ${5 - skippedChunks.length} more skips for contrastive learning)`,
   );
 
-  return chunks.map((chunk) => {
-    if (!chunk.embedding) {
+  return {
+    scoredChunks: chunks.map((chunk) => {
+      if (!chunk.embedding) {
+        return {
+          ...chunk,
+          relevanceScore: 0.3,
+        };
+      }
+
+      const semanticScore = cosineSimilarity(chunk.embedding, savedCentroid);
+      const relevanceScore = qualityProfile
+        ? computeHybridScore(semanticScore, chunk.content, qualityProfile)
+        : Math.max(0, semanticScore);
+
       return {
         ...chunk,
-        relevanceScore: 0.3,
+        relevanceScore,
       };
-    }
-
-    const similarity = cosineSimilarity(chunk.embedding, savedCentroid);
-    const relevanceScore = Math.max(0, similarity);
-
-    return {
-      ...chunk,
-      relevanceScore,
-    };
-  });
+    }),
+    diagnostics: {
+      scoringMethod: "positive-only",
+      qualityProfileUsed: qualityProfile !== null,
+      qualitySnipCount: qualityProfile?.snipCount ?? 0,
+      qualitySavedCount: qualityProfile?.savedCount ?? 0,
+    },
+  };
 }
 
 function filterRankedChunks(
