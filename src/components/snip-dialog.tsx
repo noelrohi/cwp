@@ -81,6 +81,9 @@ export function SnipDialog({
           queryKey: trpc.signals.articlesWithSignals.queryKey(),
         });
         queryClient.invalidateQueries({
+          queryKey: trpc.signals.episodesWithSignals.queryKey(),
+        });
+        queryClient.invalidateQueries({
           queryKey: trpc.flashcards.getBySignal.queryKey(),
         });
         setOpen(false);
@@ -107,6 +110,15 @@ export function SnipDialog({
         });
         queryClient.invalidateQueries({
           queryKey: trpc.signals.metrics.queryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: trpc.signals.listArticleSignals.queryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: trpc.signals.articlesWithSignals.queryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: trpc.signals.episodesWithSignals.queryKey(),
         });
         setOpen(false);
       },
