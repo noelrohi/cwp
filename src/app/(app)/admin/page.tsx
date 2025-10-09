@@ -1,6 +1,8 @@
 "use client";
 
+import { InngestTriggers } from "@/components/admin/inngest-triggers";
 import { UsersTable } from "@/components/admin/users-table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSession } from "@/lib/auth-client";
 
 export default function AdminPage() {
@@ -26,14 +28,24 @@ export default function AdminPage() {
       <div>
         <h1 className="text-3xl font-bold">Admin Panel</h1>
         <p className="text-muted-foreground">
-          Manage users and system settings
+          Manage users and trigger system functions
         </p>
       </div>
 
-      <div>
-        <h2 className="text-2xl font-semibold mb-4">Users</h2>
-        <UsersTable />
-      </div>
+      <Tabs defaultValue="users" className="w-full">
+        <TabsList>
+          <TabsTrigger value="users">Users</TabsTrigger>
+          <TabsTrigger value="functions">Background Functions</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="users" className="mt-6">
+          <UsersTable />
+        </TabsContent>
+
+        <TabsContent value="functions" className="mt-6">
+          <InngestTriggers />
+        </TabsContent>
+      </Tabs>
     </main>
   );
 }

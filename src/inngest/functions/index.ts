@@ -17,11 +17,10 @@ export {
 } from "./continuous-learning";
 export {
   dailyIntelligenceGenerateSignals,
-  dailyIntelligencePipeline,
   dailyIntelligenceProcessEpisode,
   dailyIntelligenceProcessUser,
   dailyIntelligenceReprocessEpisode,
 } from "./daily-intelligence-pipeline";
-export { feedParserPipeline } from "./feed-parser";
+export { bulkRefreshFeeds, refreshPodcastFeed } from "./feed-parser";
 export { healthCheck } from "./health-monitoring";
 export { helloWorld } from "./hello";

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { generateText } from "ai";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, lt, sql } from "drizzle-orm";
 import { db } from "@/server/db";
 import {
   dailySignal,
@@ -343,14 +343,14 @@ Return ONLY the extracted quote, nothing else.`;
 
 /**
  * Clean up old signals to keep the database lean
- * Runs monthly on the 1st at 4:00 AM
+ * Trigger manually via "app/cleanup.monthly" event
  */
 export const monthlyCleanup = inngest.createFunction(
   {
     id: "monthly-signal-cleanup",
     concurrency: 1,
   },
-  { cron: "0 4 1 * *" },
+  { event: "app/cleanup.monthly" },
   async ({ step }) => {
     const cutoffDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
 
@@ -359,8 +359,8 @@ export const monthlyCleanup = inngest.createFunction(
         .delete(dailySignal)
         .where(
           and(
-            sql`${dailySignal.signalDate} < ${cutoffDate}`,
-            sql`${dailySignal.userAction} IS NULL`,
+            lt(dailySignal.signalDate, cutoffDate),
+            isNull(dailySignal.userAction),
           ),
         );
 

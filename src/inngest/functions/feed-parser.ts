@@ -11,24 +11,132 @@ const FEED_FAILURE_THRESHOLD = 3;
 const FEED_COOLDOWN_HOURS = 24;
 const failedFeeds = new Map<string, { count: number; lastFailed: Date }>();
 
+// Event types
+const REFRESH_PODCAST_FEED_EVENT = "app/feed-parser.podcast.refresh" as const;
+const BULK_REFRESH_FEEDS_EVENT = "app/feed-parser.bulk.refresh" as const;
+
+type RefreshPodcastFeedEvent = {
+  podcastId: string;
+};
+
+type BulkRefreshFeedsEvent = {
+  userId?: string; // Optional: refresh only feeds for a specific user
+};
+
 /**
- * Feed Parser Pipeline - 1:00 AM (1 hour before daily intelligence)
- * Fetches and parses all podcast feeds, upserting new episodes
+ * Refresh a single podcast feed
+ * Triggered when: user adds podcast, manual refresh, or as part of bulk refresh
  */
-export const feedParserPipeline = inngest.createFunction(
+export const refreshPodcastFeed = inngest.createFunction(
   {
-    id: "feed-parser-pipeline",
+    id: "refresh-podcast-feed",
     retries: 3,
+  },
+  { event: REFRESH_PODCAST_FEED_EVENT },
+  async ({ event, step, logger }) => {
+    const { podcastId } = event.data as RefreshPodcastFeedEvent;
+
+    logger.info(`Refreshing feed for podcast ${podcastId}`);
+
+    const podcastRecord = await step.run("fetch-podcast", async () => {
+      return await db.query.podcast.findFirst({
+        where: eq(podcast.id, podcastId),
+        columns: {
+          id: true,
+          userId: true,
+          feedUrl: true,
+          title: true,
+        },
+      });
+    });
+
+    if (!podcastRecord) {
+      logger.error(`Podcast ${podcastId} not found`);
+      return { status: "missing" } as const;
+    }
+
+    if (!podcastRecord.feedUrl) {
+      logger.error(`Podcast ${podcastId} has no feed URL`);
+      return { status: "no-feed-url" } as const;
+    }
+
+    // Check circuit breaker
+    const failureInfo = failedFeeds.get(podcastRecord.feedUrl);
+    if (failureInfo && failureInfo.count >= FEED_FAILURE_THRESHOLD) {
+      const hoursSinceLastFailure =
+        (Date.now() - failureInfo.lastFailed.getTime()) / (1000 * 60 * 60);
+      if (hoursSinceLastFailure < FEED_COOLDOWN_HOURS) {
+        logger.info(
+          `Podcast ${podcastId} feed in cooldown for ${FEED_COOLDOWN_HOURS - hoursSinceLastFailure} more hours`,
+        );
+        return {
+          status: "cooldown",
+          remainingHours: FEED_COOLDOWN_HOURS - hoursSinceLastFailure,
+        } as const;
+      } else {
+        // Reset failure count after cooldown
+        failedFeeds.delete(podcastRecord.feedUrl);
+      }
+    }
+
+    try {
+      const episodesUpserted = await step.run("parse-feed", async () => {
+        return await parseFeedAndUpsertEpisodes(podcastRecord);
+      });
+
+      // Reset failure count on success
+      failedFeeds.delete(podcastRecord.feedUrl);
+
+      logger.info(
+        `Successfully refreshed podcast ${podcastRecord.title}: ${episodesUpserted} episodes upserted`,
+      );
+
+      return {
+        status: "success",
+        episodesUpserted,
+      } as const;
+    } catch (error) {
+      // Track feed failure for circuit breaker
+      const current = failedFeeds.get(podcastRecord.feedUrl) || {
+        count: 0,
+        lastFailed: new Date(),
+      };
+      failedFeeds.set(podcastRecord.feedUrl, {
+        count: current.count + 1,
+        lastFailed: new Date(),
+      });
+
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error(`Failed to refresh podcast ${podcastRecord.title}`, {
+        error: err.message,
+        podcastId: podcastRecord.id,
+        feedUrl: podcastRecord.feedUrl,
+        failureCount: failedFeeds.get(podcastRecord.feedUrl)?.count || 1,
+      });
+
+      throw err;
+    }
+  },
+);
+
+/**
+ * Bulk refresh all podcast feeds (or feeds for a specific user)
+ * Triggered manually via event (no cron)
+ */
+export const bulkRefreshFeeds = inngest.createFunction(
+  {
+    id: "bulk-refresh-feeds",
     concurrency: 5, // Process 5 feeds simultaneously
   },
-  { cron: "0 1 * * *" }, // Run at 1:00 AM daily
-  async ({ step, logger }) => {
-    const now = new Date();
+  { event: BULK_REFRESH_FEEDS_EVENT },
+  async ({ event, step, logger }) => {
+    const { userId } = (event.data || {}) as BulkRefreshFeedsEvent;
     const pipelineRunId = randomUUID();
 
-    logger.info(`Running feed parser pipeline (run=${pipelineRunId})`);
+    logger.info(
+      `Bulk refreshing feeds${userId ? ` for user ${userId}` : " for all users"} (run=${pipelineRunId})`,
+    );
 
-    // Get all podcasts with feed URLs, filtering out recently failed ones
     const podcasts = await step.run("fetch-podcasts", async () => {
       return await db
         .select({
@@ -39,115 +147,38 @@ export const feedParserPipeline = inngest.createFunction(
         })
         .from(podcast)
         .where(
-          sql`${podcast.feedUrl} IS NOT NULL AND ${podcast.feedUrl} != ''`,
+          userId
+            ? sql`${podcast.userId} = ${userId} AND ${podcast.feedUrl} IS NOT NULL AND ${podcast.feedUrl} != ''`
+            : sql`${podcast.feedUrl} IS NOT NULL AND ${podcast.feedUrl} != ''`,
         );
     });
 
-    // Filter out feeds that are in cooldown due to repeated failures
-    const activePodcasts = podcasts.filter((p) => {
-      if (!p.feedUrl) return false;
-
-      const failureInfo = failedFeeds.get(p.feedUrl);
-      if (!failureInfo) return true;
-
-      if (failureInfo.count >= FEED_FAILURE_THRESHOLD) {
-        const hoursSinceLastFailure =
-          (now.getTime() - failureInfo.lastFailed.getTime()) / (1000 * 60 * 60);
-        if (hoursSinceLastFailure < FEED_COOLDOWN_HOURS) {
-          logger.info(
-            `Skipping feed ${p.feedUrl} - in cooldown for ${FEED_COOLDOWN_HOURS - hoursSinceLastFailure} more hours`,
-          );
-          return false;
-        } else {
-          // Reset failure count after cooldown
-          failedFeeds.delete(p.feedUrl);
-          return true;
-        }
-      }
-
-      return true;
-    });
-
-    if (activePodcasts.length === 0) {
-      logger.info("No active podcasts with feed URLs found");
+    if (podcasts.length === 0) {
+      logger.info("No podcasts with feed URLs found");
       return {
-        date: now.toISOString().split("T")[0],
         pipelineRunId,
-        podcastsProcessed: 0,
-        episodesUpserted: 0,
-        skippedFeeds: podcasts.length - activePodcasts.length,
+        podcastsDispatched: 0,
       };
     }
 
-    let totalEpisodesUpserted = 0;
-    let successfulFeeds = 0;
-    let failedFeedsCount = 0;
-
-    // Process each podcast feed
-    for (const podcastRecord of activePodcasts) {
-      if (!podcastRecord.feedUrl) continue;
-
-      try {
-        const episodesUpserted = await step.run(
-          `parse-feed-${podcastRecord.id}`,
-          async () => {
-            return await parseFeedAndUpsertEpisodes(podcastRecord);
-          },
-        );
-
-        totalEpisodesUpserted += episodesUpserted;
-        successfulFeeds++;
-
-        // Reset failure count on success
-        if (podcastRecord.feedUrl) {
-          failedFeeds.delete(podcastRecord.feedUrl);
-        }
-
-        logger.info(
-          `Pipeline run ${pipelineRunId}: processed ${episodesUpserted} episodes for podcast ${podcastRecord.title}`,
-        );
-      } catch (error) {
-        failedFeedsCount++;
-
-        // Track feed failure for circuit breaker
-        if (podcastRecord.feedUrl) {
-          const current = failedFeeds.get(podcastRecord.feedUrl) || {
-            count: 0,
-            lastFailed: new Date(),
-          };
-          failedFeeds.set(podcastRecord.feedUrl, {
-            count: current.count + 1,
-            lastFailed: now,
-          });
-        }
-
-        logger.error(
-          `Pipeline run ${pipelineRunId}: failed to process podcast ${podcastRecord.title}`,
-          {
-            error: error instanceof Error ? error.message : String(error),
-            podcastId: podcastRecord.id,
-            feedUrl: podcastRecord.feedUrl,
-            failureCount: podcastRecord.feedUrl
-              ? failedFeeds.get(podcastRecord.feedUrl)?.count || 1
-              : 1,
-          },
-        );
-        // Continue processing other podcasts even if one fails
-      }
-    }
+    // Dispatch individual refresh events for each podcast
+    await step.sendEvent(
+      "dispatch-feed-refreshes",
+      podcasts.map((p) => ({
+        name: REFRESH_PODCAST_FEED_EVENT,
+        data: {
+          podcastId: p.id,
+        } satisfies RefreshPodcastFeedEvent,
+      })),
+    );
 
     logger.info(
-      `Pipeline run ${pipelineRunId}: processed ${activePodcasts.length} podcasts (${successfulFeeds} successful, ${failedFeedsCount} failed), upserted ${totalEpisodesUpserted} episodes`,
+      `Pipeline run ${pipelineRunId}: dispatched ${podcasts.length} podcast feeds for refresh`,
     );
 
     return {
-      date: now.toISOString().split("T")[0],
       pipelineRunId,
-      podcastsProcessed: activePodcasts.length,
-      episodesUpserted: totalEpisodesUpserted,
-      successfulFeeds,
-      failedFeeds: failedFeedsCount,
-      skippedFeeds: podcasts.length - activePodcasts.length,
+      podcastsDispatched: podcasts.length,
     };
   },
 );

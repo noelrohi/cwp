@@ -47,8 +47,9 @@ const PIPELINE_LOOKBACK_HOURS =
   process.env.NODE_ENV === "development" ? 72 : 24;
 
 /**
- * Daily Intelligence Pipeline - 2:00 AM
+ * Daily Intelligence Pipeline - Event-driven processing
  * Simple sequence: users -> podcasts -> episodes -> transcripts -> signals
+ * Trigger manually via DAILY_INTELLIGENCE_USER_EVENT
  */
 type DailyIntelligenceUserEvent = {
   pipelineRunId: string;
@@ -67,57 +68,6 @@ type DailyIntelligenceGenerateSignalsEvent = {
   userId: string;
   episodeId?: string;
 };
-
-export const dailyIntelligencePipeline = inngest.createFunction(
-  { id: "daily-intelligence-pipeline" },
-  { cron: "0 2 * * *" },
-  async ({ step, logger }) => {
-    const now = new Date();
-    const pipelineRunId = randomUUID();
-    const lookbackWindowMs = PIPELINE_LOOKBACK_HOURS * 60 * 60 * 1000;
-    const lookbackStart = new Date(now.getTime() - lookbackWindowMs);
-
-    logger.info(
-      `Running daily intelligence pipeline (lookback=${PIPELINE_LOOKBACK_HOURS}h, run=${pipelineRunId})`,
-    );
-
-    const users = await step.run("get-all-users", async () => {
-      return await db
-        .select({ userId: podcast.userId })
-        .from(podcast)
-        .groupBy(podcast.userId);
-    });
-
-    if (users.length === 0) {
-      logger.info("No users with podcasts found for pipeline run");
-      return {
-        date: now.toISOString().split("T")[0],
-        pipelineRunId,
-        usersDispatched: 0,
-      };
-    }
-
-    await step.sendEvent(
-      "dispatch-user-processing",
-      users.map((user) => ({
-        name: DAILY_INTELLIGENCE_USER_EVENT,
-        data: {
-          pipelineRunId,
-          userId: user.userId,
-          lookbackStart: lookbackStart.toISOString(),
-        } satisfies DailyIntelligenceUserEvent,
-      })),
-    );
-
-    logger.info(`Dispatched ${users.length} users for daily intelligence run`);
-
-    return {
-      date: now.toISOString().split("T")[0],
-      pipelineRunId,
-      usersDispatched: users.length,
-    };
-  },
-);
 
 export const dailyIntelligenceProcessUser = inngest.createFunction(
   { id: "daily-intelligence-process-user" },
@@ -1251,7 +1201,9 @@ async function storeDailySignals(
           THEN excluded.speaker_name 
           ELSE ${dailySignal.speakerName} 
         END`,
-        signalDate: sql`excluded.signal_date`,
+        // CRITICAL FIX: Don't update signalDate on regeneration
+        // Keep original date so cleanup can delete old pending signals
+        // signalDate should only be set on first insert, not on upsert
       },
     });
 }

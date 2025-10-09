@@ -1,18 +1,21 @@
 import { serve } from "inngest/next";
 import { inngest } from "@/inngest/client";
 import {
+  bulkRefreshFeeds,
   dailyIntelligenceGenerateSignals,
-  dailyIntelligencePipeline,
   dailyIntelligenceProcessEpisode,
   dailyIntelligenceProcessUser,
   dailyIntelligenceReprocessEpisode,
-  feedParserPipeline,
+  episodeStatusMonitor,
+  feedHealthChecker,
   handleBulkSkip,
   monthlyCleanup,
   processArticle,
+  refreshPodcastFeed,
   regenerateArticleSignals,
   reprocessArticle,
   updateUserPreferences,
+  userEngagementAnalyzer,
 } from "@/inngest/functions/index";
 
 export const { GET, POST, PUT } = serve({
@@ -23,8 +26,8 @@ export const { GET, POST, PUT } = serve({
     reprocessArticle,
     regenerateArticleSignals,
     // Podcast/Episode processing
-    feedParserPipeline,
-    dailyIntelligencePipeline,
+    refreshPodcastFeed,
+    bulkRefreshFeeds,
     dailyIntelligenceProcessUser,
     dailyIntelligenceProcessEpisode,
     dailyIntelligenceReprocessEpisode,
@@ -33,5 +36,9 @@ export const { GET, POST, PUT } = serve({
     updateUserPreferences,
     monthlyCleanup,
     handleBulkSkip,
+    // Monitoring
+    episodeStatusMonitor,
+    userEngagementAnalyzer,
+    feedHealthChecker,
   ],
 });

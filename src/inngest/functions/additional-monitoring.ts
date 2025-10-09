@@ -5,12 +5,13 @@ import { dailySignal, episode, podcast } from "@/server/db/schema";
 import { inngest } from "../client";
 
 /**
- * Episode Status Monitor - Daily at 3:00 AM
+ * Episode Status Monitor
  * Monitors episode processing status and identifies bottlenecks
+ * Trigger manually via "app/monitor.episode-status" event
  */
 export const episodeStatusMonitor = inngest.createFunction(
   { id: "episode-status-monitor" },
-  { cron: "0 3 * * *" }, // Daily at 3:00 AM
+  { event: "app/monitor.episode-status" },
   async ({ step, logger }) => {
     const now = new Date();
     const monitorId = randomUUID();
@@ -92,12 +93,13 @@ export const episodeStatusMonitor = inngest.createFunction(
 );
 
 /**
- * User Engagement Analyzer - Weekly on Sundays at 4:00 AM
+ * User Engagement Analyzer
  * Analyzes user interaction patterns and engagement metrics
+ * Trigger manually via "app/monitor.user-engagement" event
  */
 export const userEngagementAnalyzer = inngest.createFunction(
   { id: "user-engagement-analyzer" },
-  { cron: "0 4 * * 0" }, // Weekly on Sundays at 4:00 AM
+  { event: "app/monitor.user-engagement" },
   async ({ step, logger }) => {
     const now = new Date();
     const analysisId = randomUUID();
@@ -190,12 +192,13 @@ export const userEngagementAnalyzer = inngest.createFunction(
 );
 
 /**
- * Feed Health Checker - Daily at 5:00 AM
+ * Feed Health Checker
  * Validates feed URLs and checks for feed health issues
+ * Trigger manually via "app/monitor.feed-health" event
  */
 export const feedHealthChecker = inngest.createFunction(
   { id: "feed-health-checker" },
-  { cron: "0 5 * * *" }, // Daily at 5:00 AM
+  { event: "app/monitor.feed-health" },
   async ({ step, logger }) => {
     const now = new Date();
     const checkId = randomUUID();
