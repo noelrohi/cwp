@@ -69,6 +69,18 @@ export function SnipDialog({
           queryKey: trpc.flashcards.list.queryKey(),
         });
         queryClient.invalidateQueries({
+          queryKey: trpc.signals.list.queryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: trpc.signals.metrics.queryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: trpc.signals.listArticleSignals.queryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: trpc.signals.articlesWithSignals.queryKey(),
+        });
+        queryClient.invalidateQueries({
           queryKey: trpc.flashcards.getBySignal.queryKey(),
         });
         setOpen(false);
@@ -90,6 +102,12 @@ export function SnipDialog({
         queryClient.invalidateQueries({
           queryKey: trpc.flashcards.getBySignal.queryKey(),
         });
+        queryClient.invalidateQueries({
+          queryKey: trpc.signals.list.queryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: trpc.signals.metrics.queryKey(),
+        });
         setOpen(false);
       },
       onError: (error) => {
@@ -101,9 +119,11 @@ export function SnipDialog({
   const form = useForm<FlashcardFormData>({
     resolver: zodResolver(flashcardSchema),
     defaultValues: {
-      front: "",
-      back: defaultBack || "",
-      tags: "",
+      front: existingFlashcard.data?.front || "",
+      back: existingFlashcard.data?.back || defaultBack || "",
+      tags: existingFlashcard.data?.tags
+        ? existingFlashcard.data.tags.join(",")
+        : "",
     },
   });
 
@@ -134,22 +154,6 @@ export function SnipDialog({
 
   const handleOpenChange = (newOpen: boolean) => {
     setOpen(newOpen);
-    if (newOpen && existingFlashcard.data) {
-      const existingTags = Array.isArray(existingFlashcard.data.tags)
-        ? existingFlashcard.data.tags.join(", ")
-        : "";
-      form.reset({
-        front: existingFlashcard.data.front,
-        back: existingFlashcard.data.back,
-        tags: existingTags,
-      });
-    } else if (newOpen) {
-      form.reset({
-        front: "",
-        back: defaultBack || "",
-        tags: "",
-      });
-    }
   };
 
   const isLoading = createMutation.isPending || updateMutation.isPending;
