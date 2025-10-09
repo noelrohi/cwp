@@ -11,8 +11,14 @@ export const flashcardsRouter = createTRPCRouter({
     .input(
       z.object({
         signalId: z.string(),
-        front: z.string().min(1, "Front is required"),
-        back: z.string().min(1, "Back is required"),
+        front: z
+          .string()
+          .min(1, "Front is required")
+          .max(500, "Front must be 500 characters or less"),
+        back: z
+          .string()
+          .min(1, "Back is required")
+          .max(5000, "Back must be 5000 characters or less"),
         tags: z.array(z.string()).optional(),
       }),
     )
@@ -153,8 +159,14 @@ export const flashcardsRouter = createTRPCRouter({
     .input(
       z.object({
         id: z.string(),
-        front: z.string().min(1, "Front is required"),
-        back: z.string().min(1, "Back is required"),
+        front: z
+          .string()
+          .min(1, "Front is required")
+          .max(500, "Front must be 500 characters or less"),
+        back: z
+          .string()
+          .min(1, "Back is required")
+          .max(5000, "Back must be 5000 characters or less"),
         tags: z.array(z.string()).optional(),
       }),
     )

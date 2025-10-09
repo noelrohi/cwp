@@ -2,20 +2,21 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 import { useTRPC } from "@/server/trpc/client";
 import { Button } from "./ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "./ui/dialog";
+  Credenza,
+  CredenzaBody,
+  CredenzaContent,
+  CredenzaFooter,
+  CredenzaHeader,
+  CredenzaTitle,
+  CredenzaTrigger,
+} from "./ui/credenza";
 import {
   Form,
   FormControl,
@@ -31,11 +32,11 @@ const flashcardSchema = z.object({
   front: z
     .string()
     .min(1, "Front is required")
-    .max(250, "Front must be 250 characters or less"),
+    .max(500, "Front must be 500 characters or less"),
   back: z
     .string()
     .min(1, "Back is required")
-    .max(1000, "Back must be 1000 characters or less"),
+    .max(5000, "Back must be 5000 characters or less"),
   tags: z.string().optional(),
 });
 
@@ -131,13 +132,31 @@ export function SnipDialog({
   const form = useForm<FlashcardFormData>({
     resolver: zodResolver(flashcardSchema),
     defaultValues: {
-      front: existingFlashcard.data?.front || "",
-      back: existingFlashcard.data?.back || defaultBack || "",
-      tags: existingFlashcard.data?.tags
-        ? existingFlashcard.data.tags.join(",")
-        : "",
+      front: "",
+      back: defaultBack || "",
+      tags: "",
     },
   });
+
+  // Reset form when existing flashcard data loads
+  useEffect(() => {
+    if (existingFlashcard.data) {
+      form.reset({
+        front: existingFlashcard.data.front,
+        back: existingFlashcard.data.back,
+        tags: existingFlashcard.data.tags
+          ? existingFlashcard.data.tags.join(",")
+          : "",
+      });
+    } else if (open) {
+      // Reset to default values when creating new flashcard
+      form.reset({
+        front: "",
+        back: defaultBack || "",
+        tags: "",
+      });
+    }
+  }, [existingFlashcard.data, open, defaultBack, form]);
 
   const onSubmit = (data: FlashcardFormData) => {
     const tags = data.tags
@@ -171,105 +190,170 @@ export function SnipDialog({
   const isLoading = createMutation.isPending || updateMutation.isPending;
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>
+    <Credenza open={open} onOpenChange={handleOpenChange}>
+      <CredenzaTrigger asChild>{trigger}</CredenzaTrigger>
+      <CredenzaContent className="max-w-6xl">
+        <CredenzaHeader className="text-left">
+          <CredenzaTitle className="text-left text-2xl">
             {existingFlashcard.data ? "Edit Flashcard" : "Create Flashcard"}
-          </DialogTitle>
-          <DialogDescription>
-            Create a flashcard to remember this insight. The front can be a
-            question or blog post title, and the back is your snipped content.
-          </DialogDescription>
-        </DialogHeader>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="front"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Front (Question/Title)</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      placeholder="What's the key insight here?"
-                      className="min-h-[100px]"
-                      maxLength={250}
-                      {...field}
-                    />
-                  </FormControl>
-                  <div className="flex items-center justify-end">
-                    <span className="text-xs text-muted-foreground">
-                      {field.value.length}/250
-                    </span>
-                  </div>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="back"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Back (Answer/Content)</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      placeholder="Your snipped content or answer"
-                      className="min-h-[150px]"
-                      maxLength={1000}
-                      {...field}
-                    />
-                  </FormControl>
-                  <div className="flex items-center justify-end">
-                    <span className="text-xs text-muted-foreground">
-                      {field.value.length}/1000
-                    </span>
-                  </div>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="tags"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Tags (optional)</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="e.g. productivity, learning, ai"
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                  <p className="text-xs text-muted-foreground">
-                    Separate tags with commas
-                  </p>
-                </FormItem>
-              )}
-            />
-            <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setOpen(false)}
-                disabled={isLoading}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isLoading}>
-                {isLoading
-                  ? "Saving..."
-                  : existingFlashcard.data
-                    ? "Update"
-                    : "Create"}
-              </Button>
-            </div>
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
+          </CredenzaTitle>
+        </CredenzaHeader>
+        <CredenzaBody className="overflow-y-auto">
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+              {/* Mobile: Vertical (Front → Back → Tags), Desktop: Horizontal (Back left, Front+Tags right) */}
+
+              {/* Front field - always first on mobile, right side on desktop */}
+              <div className="md:hidden">
+                <FormField
+                  control={form.control}
+                  name="front"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Front (Question/Title)</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder="What's the key insight here?"
+                          className="min-h-[120px]"
+                          maxLength={500}
+                          {...field}
+                        />
+                      </FormControl>
+                      <div className="flex items-center justify-end">
+                        <span className="text-xs text-muted-foreground">
+                          {field.value.length}/500
+                        </span>
+                      </div>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="flex flex-col md:flex-row gap-6">
+                {/* Back field - second on mobile, left side on desktop */}
+                <div className="flex-1 md:order-1">
+                  <FormField
+                    control={form.control}
+                    name="back"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Back (Answer/Content)</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            placeholder="Your snipped content or answer"
+                            className="min-h-[300px] md:min-h-[400px]"
+                            maxLength={5000}
+                            {...field}
+                          />
+                        </FormControl>
+                        <div className="flex items-center justify-end">
+                          <span className="text-xs text-muted-foreground">
+                            {field.value.length}/5000
+                          </span>
+                        </div>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                {/* Front & Tags - right side on desktop only */}
+                <div className="hidden md:flex md:flex-col md:flex-1 md:order-2 md:space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="front"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Front (Question/Title)</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            placeholder="What's the key insight here?"
+                            className="min-h-[120px]"
+                            maxLength={500}
+                            {...field}
+                          />
+                        </FormControl>
+                        <div className="flex items-center justify-end">
+                          <span className="text-xs text-muted-foreground">
+                            {field.value.length}/500
+                          </span>
+                        </div>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="tags"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Tags (optional)</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="e.g. productivity, learning, ai"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                        <p className="text-xs text-muted-foreground">
+                          Separate tags with commas
+                        </p>
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
+
+              {/* Tags - third on mobile only */}
+              <div className="md:hidden">
+                <FormField
+                  control={form.control}
+                  name="tags"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Tags (optional)</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="e.g. productivity, learning, ai"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                      <p className="text-xs text-muted-foreground">
+                        Separate tags with commas
+                      </p>
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </form>
+          </Form>
+        </CredenzaBody>
+        <CredenzaFooter>
+          <div className="flex justify-end gap-2 w-full">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setOpen(false)}
+              disabled={isLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={isLoading}
+              onClick={form.handleSubmit(onSubmit)}
+            >
+              {isLoading
+                ? "Saving..."
+                : existingFlashcard.data
+                  ? "Update"
+                  : "Create"}
+            </Button>
+          </div>
+        </CredenzaFooter>
+      </CredenzaContent>
+    </Credenza>
   );
 }
