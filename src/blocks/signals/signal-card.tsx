@@ -110,22 +110,20 @@ export function SignalCard(props: SignalCardProps) {
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         {metadata.length > 0 ? (
-          <div className="grid grid-cols-[1fr,auto] gap-x-3 gap-y-1.5 items-start text-sm font-medium text-muted-foreground sm:flex sm:flex-wrap sm:items-center sm:gap-2 min-w-0 flex-1">
+          <div className="grid grid-cols-[1fr,auto] gap-x-3 gap-y-1.5 items-start text-sm font-medium text-muted-foreground sm:flex sm:flex-wrap sm:items-center sm:gap-2 min-w-0">
             {/* Mobile: Two-column layout with podcast name full width */}
             {/* Desktop: Horizontal flex layout */}
             {metadata[0] && (
               <span
                 className={cn(
-                  "inline-flex items-center gap-1 rounded-full bg-muted/60 px-2.5 py-1 sm:px-3",
+                  "inline-flex items-center gap-1 rounded-full bg-muted/60 px-2.5 py-1 sm:px-3 min-w-0 max-w-full sm:max-w-md",
                   metadata[0].icon ? "pl-2" : "",
                 )}
               >
                 {metadata[0].icon && (
                   <span className="shrink-0">{metadata[0].icon}</span>
                 )}
-                <span className="break-words line-clamp-2 sm:truncate">
-                  {metadata[0].label}
-                </span>
+                <span className="truncate min-w-0">{metadata[0].label}</span>
               </span>
             )}
             {/* Date and confidence badges - stacked on mobile, inline on desktop */}
