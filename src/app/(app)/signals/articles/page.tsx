@@ -38,12 +38,15 @@ type SignalAction = "saved" | "skipped";
 
 export default function ArticleSignalsPage() {
   const trpc = useTRPC();
-  const savedQuery = useQuery(trpc.signals.savedArticles.queryOptions());
+  const queryClient = useQueryClient();
   const articlesWithSignalsQuery = useQuery(
     trpc.signals.articlesWithSignals.queryOptions(),
   );
 
-  const savedCount = savedQuery.data?.length ?? 0;
+  // Get saved count from cache if available, otherwise will show 0 until Saved tab is opened
+  const savedCount =
+    queryClient.getQueryData(trpc.signals.savedArticles.queryKey())?.length ??
+    0;
   const pendingCount = useMemo(() => {
     return (articlesWithSignalsQuery.data ?? []).reduce(
       (sum, article) => sum + article.signalCount,

@@ -41,10 +41,11 @@ type SignalAction = "saved" | "skipped";
 
 export default function EpisodeSignalsPage() {
   const trpc = useTRPC();
-  const savedQuery = useQuery(trpc.signals.saved.queryOptions());
+
+  // Only fetch metrics for the header counts
   const metricsQuery = useQuery(trpc.signals.metrics.queryOptions());
 
-  const savedCount = savedQuery.data?.length ?? 0;
+  const savedCount = metricsQuery.data?.totalSaved ?? 0;
   const skippedCount = metricsQuery.data?.totalSkipped ?? 0;
 
   return (

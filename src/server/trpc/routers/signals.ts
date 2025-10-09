@@ -514,14 +514,25 @@ export const signalsRouter = createTRPCRouter({
         .set({ userAction: input.action, actionedAt: new Date() })
         .where(eq(dailySignal.id, input.signalId));
 
-      // If saving, also add to savedChunk table
+      // If saving, also add to savedChunk table (only if not already saved)
       if (input.action === "saved") {
-        await ctx.db.insert(savedChunk).values({
-          id: nanoid(),
-          userId: ctx.user.id,
-          chunkId: signal.chunkId,
-          savedAt: new Date(),
+        // Check if this chunk is already saved by this user
+        const existingSave = await ctx.db.query.savedChunk.findFirst({
+          where: and(
+            eq(savedChunk.userId, ctx.user.id),
+            eq(savedChunk.chunkId, signal.chunkId),
+          ),
         });
+
+        // Only insert if not already saved
+        if (!existingSave) {
+          await ctx.db.insert(savedChunk).values({
+            id: nanoid(),
+            userId: ctx.user.id,
+            chunkId: signal.chunkId,
+            savedAt: new Date(),
+          });
+        }
       }
 
       await inngest.send({
@@ -681,6 +692,7 @@ export const signalsRouter = createTRPCRouter({
   }),
 
   saved: protectedProcedure.query(async ({ ctx }) => {
+    // First, get all saved chunks without the problematic dailySignal join
     const savedChunksWithSignals = await ctx.db
       .select({
         savedChunkId: savedChunk.id,
@@ -699,21 +711,11 @@ export const signalsRouter = createTRPCRouter({
         podcastId: podcast.id,
         podcastTitle: podcast.title,
         podcastImageUrl: podcast.imageUrl,
-        speakerName: dailySignal.speakerName,
-        relevanceScore: dailySignal.relevanceScore,
-        dailySignalId: dailySignal.id,
       })
       .from(savedChunk)
       .innerJoin(transcriptChunk, eq(savedChunk.chunkId, transcriptChunk.id))
       .innerJoin(episode, eq(transcriptChunk.episodeId, episode.id))
       .innerJoin(podcast, eq(episode.podcastId, podcast.id))
-      .leftJoin(
-        dailySignal,
-        and(
-          eq(dailySignal.chunkId, savedChunk.chunkId),
-          eq(dailySignal.userId, ctx.user.id),
-        ),
-      )
       .where(
         and(
           eq(savedChunk.userId, ctx.user.id),
@@ -722,8 +724,48 @@ export const signalsRouter = createTRPCRouter({
       )
       .orderBy(desc(savedChunk.savedAt));
 
+    // Get the most recent saved dailySignal for each chunk (if it exists)
+    const chunkIds = savedChunksWithSignals.map((row) => row.chunkId);
+    const signalsMap = new Map<
+      string,
+      { speakerName: string | null; relevanceScore: number | null; id: string }
+    >();
+
+    if (chunkIds.length > 0) {
+      const signals = await ctx.db
+        .select({
+          chunkId: dailySignal.chunkId,
+          speakerName: dailySignal.speakerName,
+          relevanceScore: dailySignal.relevanceScore,
+          id: dailySignal.id,
+          actionedAt: dailySignal.actionedAt,
+        })
+        .from(dailySignal)
+        .where(
+          and(
+            inArray(dailySignal.chunkId, chunkIds),
+            eq(dailySignal.userId, ctx.user.id),
+            eq(dailySignal.userAction, "saved"),
+          ),
+        )
+        .orderBy(desc(dailySignal.actionedAt));
+
+      // Keep only the most recent signal per chunk
+      for (const signal of signals) {
+        if (!signalsMap.has(signal.chunkId)) {
+          signalsMap.set(signal.chunkId, {
+            speakerName: signal.speakerName,
+            relevanceScore: signal.relevanceScore,
+            id: signal.id,
+          });
+        }
+      }
+    }
+
     return savedChunksWithSignals.map((row) => {
-      const inferredSpeakerName = row.speakerName?.trim();
+      // Get the associated signal data from the map (if it exists)
+      const signalData = signalsMap.get(row.chunkId);
+      const inferredSpeakerName = signalData?.speakerName?.trim();
       const speakerLabel = row.speaker?.trim();
 
       const getSpeakerDisplay = () => {
@@ -759,8 +801,8 @@ export const signalsRouter = createTRPCRouter({
         highlightQuote: row.highlightExtractedQuote,
         highlightExtractedAt: row.highlightExtractedAt,
         savedAt: row.savedAt,
-        relevanceScore: row.relevanceScore,
-        dailySignalId: row.dailySignalId,
+        relevanceScore: signalData?.relevanceScore ?? null,
+        dailySignalId: signalData?.id ?? null,
         episode: {
           id: row.episodeId,
           title: row.episodeTitle,

@@ -67,21 +67,25 @@ export const updateUserPreferences = inngest.createFunction(
         .where(eq(dailySignal.id, signalId));
     });
 
-    // Step 3: If saved, create a saved chunk record and extract highlight
+    // Step 3: If saved, extract highlight (savedChunk already created by TRPC router)
     if (action === "saved") {
-      const savedChunkId = await step.run("create-saved-chunk", async () => {
-        const chunkId = randomUUID();
-        await db.insert(savedChunk).values({
-          id: chunkId,
-          chunkId: signalData.chunkId,
-          userId: signalData.userId,
-          tags: null,
-          notes: null,
+      const savedChunkId = await step.run("find-saved-chunk", async () => {
+        // The TRPC router already inserted the savedChunk, just find it
+        const existing = await db.query.savedChunk.findFirst({
+          where: and(
+            eq(savedChunk.userId, signalData.userId),
+            eq(savedChunk.chunkId, signalData.chunkId),
+          ),
         });
-        return chunkId;
+        return existing?.id || null;
       });
 
       await step.run("extract-highlight", async () => {
+        if (!savedChunkId) {
+          console.error("SavedChunk not found for highlight extraction");
+          return;
+        }
+
         const existingChunk = await db.query.savedChunk.findFirst({
           where: eq(savedChunk.id, savedChunkId),
           columns: {

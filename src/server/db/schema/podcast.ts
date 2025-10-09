@@ -271,6 +271,8 @@ export const savedChunk = pgTable(
     index().on(table.userId),
     index().on(table.savedAt),
     index().on(table.highlightExtractedAt),
+    // Ensure a user cannot save the same chunk multiple times
+    unique().on(table.userId, table.chunkId),
   ],
 );
 
