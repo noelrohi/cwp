@@ -64,29 +64,31 @@ export function SnipDialog({
 
   const createMutation = useMutation(
     trpc.flashcards.create.mutationOptions({
-      onSuccess: () => {
+      onSuccess: async () => {
         toast.success("Flashcard created");
-        queryClient.invalidateQueries({
-          queryKey: trpc.flashcards.list.queryKey(),
-        });
-        queryClient.invalidateQueries({
-          queryKey: trpc.signals.list.queryKey(),
-        });
-        queryClient.invalidateQueries({
-          queryKey: trpc.signals.metrics.queryKey(),
-        });
-        queryClient.invalidateQueries({
-          queryKey: trpc.signals.listArticleSignals.queryKey(),
-        });
-        queryClient.invalidateQueries({
-          queryKey: trpc.signals.articlesWithSignals.queryKey(),
-        });
-        queryClient.invalidateQueries({
-          queryKey: trpc.signals.episodesWithSignals.queryKey(),
-        });
-        queryClient.invalidateQueries({
-          queryKey: trpc.flashcards.getBySignal.queryKey(),
-        });
+        await Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: trpc.flashcards.list.queryKey(),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: trpc.signals.list.queryKey(),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: trpc.signals.metrics.queryKey(),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: trpc.signals.listArticleSignals.queryKey(),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: trpc.signals.articlesWithSignals.queryKey(),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: trpc.signals.episodesWithSignals.queryKey(),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: trpc.flashcards.getBySignal.queryKey(),
+          }),
+        ]);
         setOpen(false);
         form.reset();
       },
@@ -98,29 +100,31 @@ export function SnipDialog({
 
   const updateMutation = useMutation(
     trpc.flashcards.update.mutationOptions({
-      onSuccess: () => {
+      onSuccess: async () => {
         toast.success("Flashcard updated");
-        queryClient.invalidateQueries({
-          queryKey: trpc.flashcards.list.queryKey(),
-        });
-        queryClient.invalidateQueries({
-          queryKey: trpc.flashcards.getBySignal.queryKey(),
-        });
-        queryClient.invalidateQueries({
-          queryKey: trpc.signals.list.queryKey(),
-        });
-        queryClient.invalidateQueries({
-          queryKey: trpc.signals.metrics.queryKey(),
-        });
-        queryClient.invalidateQueries({
-          queryKey: trpc.signals.listArticleSignals.queryKey(),
-        });
-        queryClient.invalidateQueries({
-          queryKey: trpc.signals.articlesWithSignals.queryKey(),
-        });
-        queryClient.invalidateQueries({
-          queryKey: trpc.signals.episodesWithSignals.queryKey(),
-        });
+        await Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: trpc.flashcards.list.queryKey(),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: trpc.flashcards.getBySignal.queryKey(),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: trpc.signals.list.queryKey(),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: trpc.signals.metrics.queryKey(),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: trpc.signals.listArticleSignals.queryKey(),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: trpc.signals.articlesWithSignals.queryKey(),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: trpc.signals.episodesWithSignals.queryKey(),
+          }),
+        ]);
         setOpen(false);
       },
       onError: (error) => {
@@ -192,7 +196,7 @@ export function SnipDialog({
   return (
     <Credenza open={open} onOpenChange={handleOpenChange}>
       <CredenzaTrigger asChild>{trigger}</CredenzaTrigger>
-      <CredenzaContent className="max-w-6xl">
+      <CredenzaContent className="sm:max-w-5xl">
         <CredenzaHeader className="text-left">
           <CredenzaTitle className="text-left text-2xl">
             {existingFlashcard.data ? "Edit Flashcard" : "Create Flashcard"}

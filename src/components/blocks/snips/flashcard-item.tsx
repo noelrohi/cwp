@@ -283,7 +283,7 @@ export function FlashcardItem({
       </div>
 
       <Credenza open={showExpandDialog} onOpenChange={setShowExpandDialog}>
-        <CredenzaContent className="max-w-2xl flex flex-col max-h-[80vh]">
+        <CredenzaContent className="sm:max-w-5xl flex flex-col max-h-[80vh]">
           <CredenzaHeader className="shrink-0">
             <CredenzaTitle className="sr-only">Flashcard Details</CredenzaTitle>
             <div className="space-y-2 text-sm">
