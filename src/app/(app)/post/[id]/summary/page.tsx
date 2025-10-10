@@ -26,15 +26,6 @@ export default function ArticleSummaryPage(props: {
     trpc.articles.getById.queryOptions({ id: params.id }),
   );
 
-  const summary = useQuery({
-    ...trpc.articles.getSummary.queryOptions({ articleId: params.id }),
-    refetchInterval: (query) => {
-      const hasSummary =
-        query.state.data !== null && query.state.data !== undefined;
-      return !hasSummary && generateSummary.isPending ? 3000 : false;
-    },
-  });
-
   const generateSummary = useMutation(
     trpc.articles.generateSummary.mutationOptions({
       onSuccess: () => {
@@ -47,6 +38,15 @@ export default function ArticleSummaryPage(props: {
       },
     }),
   );
+
+  const summary = useQuery({
+    ...trpc.articles.getSummary.queryOptions({ articleId: params.id }),
+    refetchInterval: (query) => {
+      const hasSummary =
+        query.state.data !== null && query.state.data !== undefined;
+      return !hasSummary && generateSummary.isPending ? 3000 : false;
+    },
+  });
 
   if (article.isLoading || summary.isLoading) {
     return <LoadingState />;
