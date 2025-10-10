@@ -441,7 +441,11 @@ Content: ${content}
                     signalId={signal.id}
                     defaultBack={signal.chunk.content}
                     trigger={
-                      <Button variant="outline" size="sm">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 sm:flex-none"
+                      >
                         <HugeiconsIcon icon={Scissor01Icon} size={16} />
                         Snip
                       </Button>
@@ -675,7 +679,11 @@ function SavedSignalsTab() {
                       signalId={signal.dailySignalId}
                       defaultBack={signal.highlightQuote || signal.content}
                       trigger={
-                        <Button variant="outline" size="sm">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 sm:flex-none"
+                        >
                           <HugeiconsIcon icon={Scissor01Icon} size={16} />
                           Snip
                         </Button>
