@@ -121,10 +121,6 @@ export default function EpisodeDetailPage(props: {
     ...trpc.episodes.get.queryOptions({
       episodeId: params.id,
     }),
-    refetchInterval: (query) => {
-      const status = query.state.data?.status;
-      return status === "processing" ? 5000 : false;
-    },
   });
 
   const signals = useQuery(
@@ -149,6 +145,9 @@ export default function EpisodeDetailPage(props: {
         toast.success(
           "Summary generation started! This usually takes 10-30 seconds.",
         );
+        queryClient.invalidateQueries({
+          queryKey: trpc.episodes.getSummary.queryKey({ episodeId: params.id }),
+        });
       },
       onError: (error) => {
         toast.error(`Failed to generate summary: ${error.message}`);
@@ -159,12 +158,6 @@ export default function EpisodeDetailPage(props: {
   const summary = useQuery({
     ...trpc.episodes.getSummary.queryOptions({ episodeId: params.id }),
     enabled: activeTab === "summary",
-    refetchInterval: (query) => {
-      const hasSummary = query.state.data?.summaryGeneratedAt;
-      const isGenerating =
-        generateSummary.isPending || episode.data?.status === "processing";
-      return !hasSummary && isGenerating ? 3000 : false;
-    },
   });
 
   const signalIds = (signals.data ?? []).map((s) => s.id);
@@ -381,7 +374,7 @@ Content: ${content}
     );
   };
 
-  if (episode.isLoading) {
+  if (episode.isPending) {
     return (
       <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
         <div className="animate-pulse">
@@ -998,7 +991,7 @@ Content: ${content}
 
       {activeTab === "summary" && (
         <section className="space-y-4">
-          {summary.isLoading ? (
+          {summary.isPending ? (
             <LoadingState />
           ) : summary.data ? (
             <Item className="space-y-6" variant="muted">
@@ -1209,7 +1202,7 @@ Content: ${content}
             </div>
           </div>
 
-          {signals.isLoading ? (
+          {signals.isPending ? (
             <div className="grid gap-3 sm:grid-cols-2">
               {Array.from({ length: 4 }).map((_, index) => (
                 <div

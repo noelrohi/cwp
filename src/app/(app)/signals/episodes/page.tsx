@@ -431,6 +431,11 @@ Content: ${content}
                 endTimeSec={signal.chunk.endTimeSec ?? null}
                 metadata={metadata}
                 audio={audioSource}
+                sourceLink={
+                  signal.episode
+                    ? { type: "episode", id: signal.episode.id }
+                    : undefined
+                }
                 snipButton={
                   <SnipDialog
                     signalId={signal.id}
@@ -663,6 +668,7 @@ function SavedSignalsTab() {
                 endTimeSec={signal.endTimeSec}
                 metadata={metadata}
                 audio={audioSource}
+                sourceLink={{ type: "episode", id: signal.episode.id }}
                 snipButton={
                   signal.dailySignalId ? (
                     <SnipDialog

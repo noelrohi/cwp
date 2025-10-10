@@ -7,6 +7,7 @@ import {
   PlayCircleIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { Response } from "@/components/ai-elements/response";
@@ -45,6 +46,10 @@ export type SignalCardProps = {
   className?: string;
   snipButton?: ReactNode;
   renderMarkdown?: boolean;
+  sourceLink?: {
+    type: "episode" | "article";
+    id: string;
+  };
 };
 
 export function SignalCard(props: SignalCardProps) {
@@ -60,6 +65,7 @@ export function SignalCard(props: SignalCardProps) {
     className,
     snipButton,
     renderMarkdown = false,
+    sourceLink,
   } = props;
 
   const [isExpanded, setIsExpanded] = useState(false);
@@ -113,19 +119,37 @@ export function SignalCard(props: SignalCardProps) {
           <div className="grid grid-cols-[1fr,auto] gap-x-3 gap-y-1.5 items-start text-sm font-medium text-muted-foreground sm:flex sm:flex-wrap sm:items-center sm:gap-2 min-w-0">
             {/* Mobile: Two-column layout with podcast name full width */}
             {/* Desktop: Horizontal flex layout */}
-            {metadata[0] && (
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1 rounded-full bg-muted/60 px-2.5 py-1 sm:px-3 min-w-0 max-w-full sm:max-w-md",
-                  metadata[0].icon ? "pl-2" : "",
-                )}
-              >
-                {metadata[0].icon && (
-                  <span className="shrink-0">{metadata[0].icon}</span>
-                )}
-                <span className="truncate min-w-0">{metadata[0].label}</span>
-              </span>
-            )}
+            {metadata[0] &&
+              (sourceLink ? (
+                <Link
+                  href={
+                    sourceLink.type === "episode"
+                      ? `/episode/${sourceLink.id}`
+                      : `/post/${sourceLink.id}`
+                  }
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full bg-muted/60 px-2.5 py-1 sm:px-3 min-w-0 max-w-full sm:max-w-md hover:bg-muted transition-colors",
+                    metadata[0].icon ? "pl-2" : "",
+                  )}
+                >
+                  {metadata[0].icon && (
+                    <span className="shrink-0">{metadata[0].icon}</span>
+                  )}
+                  <span className="truncate min-w-0">{metadata[0].label}</span>
+                </Link>
+              ) : (
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full bg-muted/60 px-2.5 py-1 sm:px-3 min-w-0 max-w-full sm:max-w-md",
+                    metadata[0].icon ? "pl-2" : "",
+                  )}
+                >
+                  {metadata[0].icon && (
+                    <span className="shrink-0">{metadata[0].icon}</span>
+                  )}
+                  <span className="truncate min-w-0">{metadata[0].label}</span>
+                </span>
+              ))}
             {/* Date and confidence badges - stacked on mobile, inline on desktop */}
             {metadata.length > 1 && (
               <div className="flex flex-col gap-1.5 sm:contents">

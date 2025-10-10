@@ -20,7 +20,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { parseAsStringEnum, useQueryState } from "nuqs";
-import { use, useEffect, useRef, useState } from "react";
+import { use, useState } from "react";
 import { toast } from "sonner";
 import { Streamdown } from "streamdown";
 
@@ -137,6 +137,9 @@ export default function PostDetailPage(props: {
         toast.success(
           "Summary generation started! This usually takes 10-30 seconds.",
         );
+        queryClient.invalidateQueries({
+          queryKey: trpc.articles.getSummary.queryKey({ articleId: params.id }),
+        });
       },
       onError: (error) => {
         toast.error(`Failed to generate summary: ${error.message}`);
@@ -147,71 +150,7 @@ export default function PostDetailPage(props: {
   const summary = useQuery({
     ...trpc.articles.getSummary.queryOptions({ articleId: params.id }),
     enabled: activeTab === "summary",
-    refetchInterval: (query) => {
-      const hasSummary = query.state.data?.summaryGeneratedAt;
-      const isGenerating =
-        generateSummary.isPending || article.data?.status === "processing";
-      return !hasSummary && isGenerating ? 3000 : false;
-    },
   });
-
-  // Track previous status to detect when processing completes
-  const prevStatusRef = useRef<string | undefined>(undefined);
-
-  // Lightweight polling for status updates during processing
-  const articleStatus = useQuery({
-    ...trpc.articles.getStatus.queryOptions({
-      id: params.id,
-    }),
-    refetchInterval: (query) => {
-      const status = query.state.data?.status;
-      // Poll every 2s while processing, stop otherwise
-      return status === "processing" ? 2000 : false;
-    },
-    enabled: article.data?.status === "processing",
-  });
-
-  // Refetch full data when processing completes
-  useEffect(() => {
-    const currentStatus = articleStatus.data?.status || article.data?.status;
-    const previousStatus = prevStatusRef.current;
-
-    if (
-      previousStatus === "processing" &&
-      currentStatus &&
-      currentStatus !== "processing"
-    ) {
-      // Processing completed, invalidate queries
-      queryClient.invalidateQueries({
-        queryKey: trpc.articles.getById.queryKey({ id: params.id }),
-      });
-      queryClient.invalidateQueries({
-        queryKey: trpc.signals.byArticle.queryKey(),
-      });
-      queryClient.invalidateQueries({
-        queryKey: trpc.signals.articleStats.queryKey(),
-      });
-
-      if (currentStatus === "processed") {
-        toast.success("Article processing completed");
-      } else if (currentStatus === "failed") {
-        toast.error(
-          articleStatus.data?.errorMessage || "Article processing failed",
-        );
-      }
-    }
-
-    prevStatusRef.current = currentStatus;
-  }, [
-    articleStatus.data?.status,
-    articleStatus.data?.errorMessage,
-    article.data?.status,
-    params.id,
-    queryClient,
-    trpc.articles.getById,
-    trpc.signals.byArticle,
-    trpc.signals.articleStats,
-  ]);
 
   const processArticle = useMutation(
     trpc.articles.processArticle.mutationOptions({
@@ -375,7 +314,7 @@ Content: ${content}
     toast.success("Article ID copied to clipboard");
   };
 
-  if (article.isLoading) {
+  if (article.isPending) {
     return (
       <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
         <div className="animate-pulse">
@@ -413,10 +352,8 @@ Content: ${content}
   }
 
   const articleData = article.data;
-  // Use real-time status from polling when available
-  const currentStatus = articleStatus.data?.status || articleData?.status;
-  const currentErrorMessage =
-    articleStatus.data?.errorMessage || articleData?.errorMessage;
+  const currentStatus = articleData?.status;
+  const currentErrorMessage = articleData?.errorMessage;
 
   const relatedSignals = (signals.data ?? []).sort((a, b) => {
     const timeA = a.chunk.startTimeSec ?? 0;
@@ -812,7 +749,7 @@ Content: ${content}
 
       {activeTab === "summary" && (
         <section className="space-y-4">
-          {summary.isLoading ? (
+          {summary.isPending ? (
             <LoadingState />
           ) : summary.data ? (
             <Item className="space-y-6" variant="muted">
@@ -1020,7 +957,7 @@ Content: ${content}
             </div>
           </div>
 
-          {signals.isLoading ? (
+          {signals.isPending ? (
             <div className="grid gap-3 sm:grid-cols-2">
               {Array.from({ length: 4 }).map((_, index) => (
                 <div

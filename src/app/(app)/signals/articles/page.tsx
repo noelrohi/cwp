@@ -326,6 +326,11 @@ function PendingArticleSignalsTab() {
                 endTimeSec={null}
                 metadata={metadata}
                 renderMarkdown
+                sourceLink={
+                  signal.article
+                    ? { type: "article", id: signal.article.id }
+                    : undefined
+                }
                 snipButton={
                   <SnipDialog
                     signalId={signal.id}
@@ -461,6 +466,7 @@ function SavedArticleSignalsTab() {
                 startTimeSec={null}
                 endTimeSec={null}
                 metadata={metadata}
+                sourceLink={{ type: "article", id: signal.article.id }}
                 snipButton={
                   signal.dailySignalId ? (
                     <SnipDialog
