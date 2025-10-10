@@ -310,6 +310,16 @@ export const dailyIntelligenceProcessEpisode = inngest.createFunction(
         });
         return { embeddingsGenerated };
       });
+
+      await step.run("mark-processed", async () => {
+        await db
+          .update(episode)
+          .set({
+            status: "processed",
+            lastProcessedAt: new Date(),
+          })
+          .where(eq(episode.id, episodeId));
+      });
     } catch (error) {
       const err =
         error instanceof Error
@@ -333,8 +343,6 @@ export const dailyIntelligenceProcessEpisode = inngest.createFunction(
       throw err;
     }
 
-    // Signal generation is now manual - users must click "Generate Signals" button
-    // This prevents overwhelming users with 30 signals per episode automatically
     logger.info(
       `Pipeline run ${pipelineRunId}: episode ${episodeId} processed and ready for manual signal generation by user ${userId}`,
     );
@@ -525,6 +533,16 @@ export const dailyIntelligenceReprocessEpisode = inngest.createFunction(
         });
         return { embeddingsGenerated };
       });
+
+      await step.run("mark-processed", async () => {
+        await db
+          .update(episode)
+          .set({
+            status: "processed",
+            lastProcessedAt: new Date(),
+          })
+          .where(eq(episode.id, episodeId));
+      });
     } catch (error) {
       const err =
         error instanceof Error
@@ -548,7 +566,6 @@ export const dailyIntelligenceReprocessEpisode = inngest.createFunction(
       throw err;
     }
 
-    // Signal generation is now manual - users must click "Generate Signals" button
     logger.info(
       `Pipeline run ${pipelineRunId}: episode ${episodeId} FULLY REPROCESSED and ready for manual signal generation`,
     );

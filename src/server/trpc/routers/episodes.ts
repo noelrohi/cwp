@@ -10,8 +10,6 @@ import {
   episodeSummary,
   transcriptChunk,
 } from "@/server/db/schema/podcast";
-import { generateEpisodeSummary } from "@/server/lib/episode-summary";
-import type { TranscriptData } from "@/types/transcript";
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "../init";
 
 export const episodesRouter = createTRPCRouter({
@@ -417,7 +415,7 @@ export const episodesRouter = createTRPCRouter({
     }),
 
   generateSummary: protectedProcedure
-    .input(z.object({ episodeId: z.string() }))
+    .input(z.object({ episodeId: z.string(), force: z.boolean().optional() }))
     .mutation(async ({ ctx, input }) => {
       const rateLimitResult = await checkRateLimit(
         `episode-summary:${ctx.user.id}`,
@@ -449,10 +447,6 @@ export const episodesRouter = createTRPCRouter({
         });
       }
 
-      if (episodeRecord.summary) {
-        return episodeRecord.summary;
-      }
-
       if (!episodeRecord.transcriptUrl) {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -460,31 +454,21 @@ export const episodesRouter = createTRPCRouter({
         });
       }
 
-      const transcriptResponse = await fetch(episodeRecord.transcriptUrl);
-      if (!transcriptResponse.ok) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to fetch transcript",
-        });
-      }
+      const pipelineRunId = randomUUID();
 
-      const transcript: TranscriptData = await transcriptResponse.json();
-
-      const markdownContent = await generateEpisodeSummary(
-        transcript,
-        episodeRecord.title,
-      );
-
-      const summaryId = randomUUID();
-      const [summaryRecord] = await ctx.db
-        .insert(episodeSummary)
-        .values({
-          id: summaryId,
+      await inngest.send({
+        name: "app/summary.episode.generate",
+        data: {
+          pipelineRunId,
+          userId: ctx.user.id,
           episodeId: input.episodeId,
-          markdownContent,
-        })
-        .returning();
+          force: input.force ?? true,
+        },
+      });
 
-      return summaryRecord;
+      return {
+        status: "dispatched" as const,
+        pipelineRunId,
+      };
     }),
 });

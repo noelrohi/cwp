@@ -26,15 +26,21 @@ export default function ArticleSummaryPage(props: {
     trpc.articles.getById.queryOptions({ id: params.id }),
   );
 
-  const summary = useQuery(
-    trpc.articles.getSummary.queryOptions({ articleId: params.id }),
-  );
+  const summary = useQuery({
+    ...trpc.articles.getSummary.queryOptions({ articleId: params.id }),
+    refetchInterval: (query) => {
+      const hasSummary =
+        query.state.data !== null && query.state.data !== undefined;
+      return !hasSummary && generateSummary.isPending ? 3000 : false;
+    },
+  });
 
   const generateSummary = useMutation(
     trpc.articles.generateSummary.mutationOptions({
       onSuccess: () => {
-        toast.success("Summary generated!");
-        summary.refetch();
+        toast.success(
+          "Summary generation started! This usually takes 10-30 seconds.",
+        );
       },
       onError: (error) => {
         toast.error(`Failed to generate summary: ${error.message}`);
@@ -106,13 +112,6 @@ export default function ArticleSummaryPage(props: {
         <Item className="space-y-6" variant="muted">
           <Streamdown>{summaryData.markdownContent}</Streamdown>
           <ItemFooter className="pt-6 border-t flex gap-3 justify-start">
-            <Link href={`/post/${params.id}`}>
-              <Button>
-                <HugeiconsIcon icon={SparklesIcon} size={16} />
-                Process Full Article
-              </Button>
-            </Link>
-
             <Button
               variant="outline"
               onClick={() => generateSummary.mutate({ articleId: params.id })}

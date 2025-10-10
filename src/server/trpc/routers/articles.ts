@@ -24,7 +24,6 @@ import {
   transcriptChunk,
 } from "@/server/db/schema";
 import { dailySignal } from "@/server/db/schema/podcast";
-import { generateArticleSummary } from "@/server/lib/episode-summary";
 import { createTRPCRouter, protectedProcedure } from "../init";
 
 export const articlesRouter = createTRPCRouter({
@@ -685,7 +684,7 @@ export const articlesRouter = createTRPCRouter({
     }),
 
   generateSummary: protectedProcedure
-    .input(z.object({ articleId: z.string() }))
+    .input(z.object({ articleId: z.string(), force: z.boolean().optional() }))
     .mutation(async ({ ctx, input }) => {
       const rateLimitResult = await checkRateLimit(
         `article-summary:${ctx.user.id}`,
@@ -717,10 +716,6 @@ export const articlesRouter = createTRPCRouter({
         });
       }
 
-      if (articleRecord.summary) {
-        return articleRecord.summary;
-      }
-
       if (
         !articleRecord.transcriptChunks ||
         articleRecord.transcriptChunks.length === 0
@@ -732,25 +727,21 @@ export const articlesRouter = createTRPCRouter({
         });
       }
 
-      const content = articleRecord.transcriptChunks
-        .map((chunk) => chunk.content)
-        .join("\n\n");
+      const pipelineRunId = randomUUID();
 
-      const markdownContent = await generateArticleSummary(
-        content,
-        articleRecord.title,
-      );
-
-      const summaryId = randomUUID();
-      const [summaryRecord] = await ctx.db
-        .insert(episodeSummary)
-        .values({
-          id: summaryId,
+      await inngest.send({
+        name: "app/summary.article.generate",
+        data: {
+          pipelineRunId,
+          userId: ctx.user.id,
           articleId: input.articleId,
-          markdownContent,
-        })
-        .returning();
+          force: input.force ?? true,
+        },
+      });
 
-      return summaryRecord;
+      return {
+        status: "dispatched" as const,
+        pipelineRunId,
+      };
     }),
 });

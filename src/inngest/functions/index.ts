@@ -25,3 +25,7 @@ export {
 export { bulkRefreshFeeds, refreshPodcastFeed } from "./feed-parser";
 export { healthCheck } from "./health-monitoring";
 export { helloWorld } from "./hello";
+export {
+  generateArticleSummaryFunction,
+  generateEpisodeSummaryFunction,
+} from "./summary-generation";

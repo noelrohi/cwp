@@ -424,12 +424,6 @@ Content: ${content}
                   </div>
                 )}
               </dl>
-
-              {articleData?.excerpt && (
-                <p className="text-sm text-muted-foreground mt-3 line-clamp-3">
-                  {articleData.excerpt}
-                </p>
-              )}
             </div>
           </div>
 
