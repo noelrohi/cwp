@@ -7,8 +7,11 @@ import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import {
   dailySignal,
   episode,
+  episodeSummary,
   transcriptChunk,
 } from "@/server/db/schema/podcast";
+import { generateEpisodeSummary } from "@/server/lib/episode-summary";
+import type { TranscriptData } from "@/types/transcript";
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "../init";
 
 export const episodesRouter = createTRPCRouter({
@@ -216,6 +219,73 @@ export const episodesRouter = createTRPCRouter({
       } as const;
     }),
 
+  generateSignals: protectedProcedure
+    .input(
+      z.object({
+        episodeId: z.string(),
+        maxSignals: z.number().min(5).max(30).optional().default(30),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const rateLimitResult = await checkRateLimit(
+        `signal-generate:${ctx.user.id}`,
+        RATE_LIMITS.SIGNAL_REGENERATION,
+      );
+
+      if (!rateLimitResult.success) {
+        const resetIn = Math.ceil(
+          (rateLimitResult.resetAt - Date.now()) / 1000 / 60,
+        );
+        throw new TRPCError({
+          code: "TOO_MANY_REQUESTS",
+          message: `Rate limit exceeded. Try again in ${resetIn} minutes.`,
+        });
+      }
+
+      const episodeRecord = await ctx.db.query.episode.findFirst({
+        where: and(
+          eq(episode.id, input.episodeId),
+          eq(episode.userId, ctx.user.id),
+        ),
+        columns: {
+          id: true,
+          status: true,
+          signalsGeneratedAt: true,
+        },
+      });
+
+      if (!episodeRecord) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Episode not found",
+        });
+      }
+
+      if (episodeRecord.status !== "processed") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Episode must be processed before generating signals",
+        });
+      }
+
+      const pipelineRunId = randomUUID();
+
+      await inngest.send({
+        name: "app/daily-intelligence.user.generate-signals",
+        data: {
+          pipelineRunId,
+          userId: ctx.user.id,
+          episodeId: input.episodeId,
+          maxSignals: input.maxSignals,
+        },
+      });
+
+      return {
+        status: "dispatched" as const,
+        pipelineRunId,
+      };
+    }),
+
   regenerateSignals: protectedProcedure
     .input(
       z.object({
@@ -334,5 +404,87 @@ export const episodesRouter = createTRPCRouter({
         status: "dispatched" as const,
         pipelineRunId,
       };
+    }),
+
+  getSummary: protectedProcedure
+    .input(z.object({ episodeId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const summaryRecord = await ctx.db.query.episodeSummary.findFirst({
+        where: eq(episodeSummary.episodeId, input.episodeId),
+      });
+
+      return summaryRecord;
+    }),
+
+  generateSummary: protectedProcedure
+    .input(z.object({ episodeId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const rateLimitResult = await checkRateLimit(
+        `episode-summary:${ctx.user.id}`,
+        { limit: 10, windowMs: 60 * 60 * 1000 },
+      );
+
+      if (!rateLimitResult.success) {
+        const resetIn = Math.ceil(
+          (rateLimitResult.resetAt - Date.now()) / 1000 / 60,
+        );
+        throw new TRPCError({
+          code: "TOO_MANY_REQUESTS",
+          message: `Rate limit exceeded. Try again in ${resetIn} minutes.`,
+        });
+      }
+
+      const episodeRecord = await ctx.db.query.episode.findFirst({
+        where: and(
+          eq(episode.id, input.episodeId),
+          eq(episode.userId, ctx.user.id),
+        ),
+        with: { summary: true },
+      });
+
+      if (!episodeRecord) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Episode not found",
+        });
+      }
+
+      if (episodeRecord.summary) {
+        return episodeRecord.summary;
+      }
+
+      if (!episodeRecord.transcriptUrl) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Episode has no transcript",
+        });
+      }
+
+      const transcriptResponse = await fetch(episodeRecord.transcriptUrl);
+      if (!transcriptResponse.ok) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to fetch transcript",
+        });
+      }
+
+      const transcript: TranscriptData = await transcriptResponse.json();
+
+      const markdownContent = await generateEpisodeSummary(
+        transcript,
+        episodeRecord.title,
+      );
+
+      const summaryId = randomUUID();
+      const [summaryRecord] = await ctx.db
+        .insert(episodeSummary)
+        .values({
+          id: summaryId,
+          episodeId: input.episodeId,
+          markdownContent,
+        })
+        .returning();
+
+      return summaryRecord;
     }),
 });

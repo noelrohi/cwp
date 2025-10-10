@@ -6,11 +6,13 @@ import {
   dailySignal,
   episode,
   episodeSpeakerMapping,
+  episodeSummary,
   podcast,
   savedChunk,
   transcriptChunk,
   userPreferences,
 } from "@/server/db/schema";
+import { generateEpisodeSummary } from "@/server/lib/episode-summary";
 import {
   computeHybridScore,
   learnUserQualityProfile,
@@ -21,6 +23,7 @@ import {
   ensureEpisodeTranscript,
   generateMissingEmbeddings,
 } from "@/server/lib/transcript-processing";
+import type { TranscriptData } from "@/types/transcript";
 import { inngest } from "../client";
 
 const DAILY_INTELLIGENCE_USER_EVENT =
@@ -42,9 +45,6 @@ const PIPELINE_SETTINGS = {
   maxDailySignals: 30,
   minConfidenceScore: 0.3,
 } as const;
-
-const PIPELINE_LOOKBACK_HOURS =
-  process.env.NODE_ENV === "development" ? 72 : 24;
 
 /**
  * Daily Intelligence Pipeline - Event-driven processing
@@ -199,6 +199,9 @@ export const dailyIntelligenceProcessEpisode = inngest.createFunction(
         processingStartedAt: episodeData.processingStartedAt
           ? new Date(episodeData.processingStartedAt)
           : null,
+        signalsGeneratedAt: episodeData.signalsGeneratedAt
+          ? new Date(episodeData.signalsGeneratedAt)
+          : null,
       };
 
       const transcriptResult = await step.run("ensure-transcript", async () => {
@@ -210,6 +213,56 @@ export const dailyIntelligenceProcessEpisode = inngest.createFunction(
       });
 
       normalisedEpisode.transcriptUrl = transcriptResult.transcriptUrl;
+
+      // Generate episode summary (if not already exists)
+      await step.run("generate-summary", async () => {
+        // Check if summary already exists
+        const existingSummary = await db.query.episodeSummary.findFirst({
+          where: eq(episodeSummary.episodeId, episodeId),
+        });
+
+        if (existingSummary) {
+          logger.info(
+            `Pipeline run ${pipelineRunId}: episode ${episodeId} already has summary, skipping generation`,
+          );
+          return { summaryGenerated: false };
+        }
+
+        // Ensure transcript URL exists
+        if (!normalisedEpisode.transcriptUrl) {
+          logger.warn(
+            `Pipeline run ${pipelineRunId}: episode ${episodeId} has no transcript URL, skipping summary generation`,
+          );
+          return { summaryGenerated: false };
+        }
+
+        // Fetch transcript to generate summary
+        const transcriptResponse = await fetch(normalisedEpisode.transcriptUrl);
+        if (!transcriptResponse.ok) {
+          logger.warn(
+            `Pipeline run ${pipelineRunId}: failed to fetch transcript for summary generation`,
+          );
+          return { summaryGenerated: false };
+        }
+
+        const transcript: TranscriptData = await transcriptResponse.json();
+        const markdownContent = await generateEpisodeSummary(
+          transcript,
+          episodeData.title,
+        );
+
+        // Store summary
+        await db.insert(episodeSummary).values({
+          id: randomUUID(),
+          episodeId,
+          markdownContent,
+        });
+
+        logger.info(
+          `Pipeline run ${pipelineRunId}: episode ${episodeId} summary generated`,
+        );
+        return { summaryGenerated: true };
+      });
 
       await step.run("chunk-transcript", async () => {
         const { chunkCount } = await chunkEpisodeTranscript({
@@ -280,19 +333,10 @@ export const dailyIntelligenceProcessEpisode = inngest.createFunction(
       throw err;
     }
 
-    await step.sendEvent("signal-generation", [
-      {
-        name: DAILY_INTELLIGENCE_GENERATE_SIGNALS_EVENT,
-        data: {
-          pipelineRunId,
-          userId,
-          episodeId,
-        } satisfies DailyIntelligenceGenerateSignalsEvent,
-      },
-    ]);
-
+    // Signal generation is now manual - users must click "Generate Signals" button
+    // This prevents overwhelming users with 30 signals per episode automatically
     logger.info(
-      `Pipeline run ${pipelineRunId}: episode ${episodeId} transcript processed and signal generation dispatched for user ${userId}`,
+      `Pipeline run ${pipelineRunId}: episode ${episodeId} processed and ready for manual signal generation by user ${userId}`,
     );
 
     return { status: "transcript-processed" } as const;
@@ -344,8 +388,13 @@ export const dailyIntelligenceReprocessEpisode = inngest.createFunction(
           .delete(episodeSpeakerMapping)
           .where(eq(episodeSpeakerMapping.episodeId, episodeId));
 
+        // Delete episode summary
+        await db
+          .delete(episodeSummary)
+          .where(eq(episodeSummary.episodeId, episodeId));
+
         logger.info(
-          `Deleted all chunks, signals, and speaker mappings for episode ${episodeId}`,
+          `Deleted all chunks, signals, speaker mappings, and summary for episode ${episodeId}`,
         );
       });
 
@@ -372,6 +421,9 @@ export const dailyIntelligenceReprocessEpisode = inngest.createFunction(
         processingStartedAt: episodeData.processingStartedAt
           ? new Date(episodeData.processingStartedAt)
           : null,
+        signalsGeneratedAt: episodeData.signalsGeneratedAt
+          ? new Date(episodeData.signalsGeneratedAt)
+          : null,
       };
 
       // Re-fetch transcript with force=true
@@ -387,6 +439,44 @@ export const dailyIntelligenceReprocessEpisode = inngest.createFunction(
       );
 
       normalisedEpisode.transcriptUrl = transcriptResult.transcriptUrl;
+
+      // Regenerate episode summary
+      await step.run("regenerate-summary", async () => {
+        // Ensure transcript URL exists
+        if (!normalisedEpisode.transcriptUrl) {
+          logger.warn(
+            `Pipeline run ${pipelineRunId}: episode ${episodeId} has no transcript URL, skipping summary generation`,
+          );
+          return { summaryGenerated: false };
+        }
+
+        // Fetch transcript to generate summary
+        const transcriptResponse = await fetch(normalisedEpisode.transcriptUrl);
+        if (!transcriptResponse.ok) {
+          logger.warn(
+            `Pipeline run ${pipelineRunId}: failed to fetch transcript for summary generation`,
+          );
+          return { summaryGenerated: false };
+        }
+
+        const transcript: TranscriptData = await transcriptResponse.json();
+        const markdownContent = await generateEpisodeSummary(
+          transcript,
+          episodeData.title,
+        );
+
+        // Store summary
+        await db.insert(episodeSummary).values({
+          id: randomUUID(),
+          episodeId,
+          markdownContent,
+        });
+
+        logger.info(
+          `Pipeline run ${pipelineRunId}: episode ${episodeId} summary regenerated`,
+        );
+        return { summaryGenerated: true };
+      });
 
       // Re-chunk transcript
       await step.run("rechunk-transcript", async () => {
@@ -458,20 +548,9 @@ export const dailyIntelligenceReprocessEpisode = inngest.createFunction(
       throw err;
     }
 
-    // Generate new signals
-    await step.sendEvent("signal-generation", [
-      {
-        name: DAILY_INTELLIGENCE_GENERATE_SIGNALS_EVENT,
-        data: {
-          pipelineRunId,
-          userId,
-          episodeId,
-        } satisfies DailyIntelligenceGenerateSignalsEvent,
-      },
-    ]);
-
+    // Signal generation is now manual - users must click "Generate Signals" button
     logger.info(
-      `Pipeline run ${pipelineRunId}: episode ${episodeId} FULLY REPROCESSED, signal generation dispatched`,
+      `Pipeline run ${pipelineRunId}: episode ${episodeId} FULLY REPROCESSED and ready for manual signal generation`,
     );
 
     return { status: "reprocessed" } as const;
@@ -488,7 +567,7 @@ export const dailyIntelligenceGenerateSignals = inngest.createFunction(
     const result = await step.run("generate-user-signals", async () => {
       const diagnostics = await generateUserSignals(userId, episodeId, true);
 
-      // Mark episode as processed IMMEDIATELY after signals are stored
+      // Mark episode signals as generated IMMEDIATELY after signals are stored
       // This happens in the same step to prevent race conditions
       if (episodeId) {
         await db
@@ -496,11 +575,12 @@ export const dailyIntelligenceGenerateSignals = inngest.createFunction(
           .set({
             status: "processed",
             lastProcessedAt: new Date(),
+            signalsGeneratedAt: new Date(),
           })
           .where(eq(episode.id, episodeId));
 
         logger.info(
-          `Pipeline run ${pipelineRunId}: episode ${episodeId} marked as processed after generating ${diagnostics.signalsGenerated} signals`,
+          `Pipeline run ${pipelineRunId}: episode ${episodeId} signals generated (${diagnostics.signalsGenerated} signals)`,
         );
       }
 

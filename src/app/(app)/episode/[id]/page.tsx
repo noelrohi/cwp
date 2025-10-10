@@ -92,6 +92,7 @@ export default function EpisodeDetailPage(props: {
   );
   const [showProcessDialog, setShowProcessDialog] = useState(false);
   const [showReprocessDialog, setShowReprocessDialog] = useState(false);
+  const [showGenerateDialog, setShowGenerateDialog] = useState(false);
   const [showRegenerateDialog, setShowRegenerateDialog] = useState(false);
   const [pendingSignalId, setPendingSignalId] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<SignalAction | null>(null);
@@ -143,6 +144,22 @@ export default function EpisodeDetailPage(props: {
       onError: (error) => {
         toast.error(`Failed to process episode: ${error.message}`);
         setShowProcessDialog(false);
+      },
+    }),
+  );
+
+  const generateSignals = useMutation(
+    trpc.episodes.generateSignals.mutationOptions({
+      onSuccess: () => {
+        toast.success("Signal generation started");
+        episode.refetch();
+        signals.refetch();
+        episodeStats.refetch();
+        setShowGenerateDialog(false);
+      },
+      onError: (error) => {
+        toast.error(`Failed to generate signals: ${error.message}`);
+        setShowGenerateDialog(false);
       },
     }),
   );
@@ -343,8 +360,10 @@ Content: ${content}
     episodeData?.status === "processing" ||
     processEpisode.isPending ||
     reprocessEpisode.isPending;
+  const isGenerating = generateSignals.isPending;
   const isRegenerating = regenerateSignals.isPending;
   const isProcessed = episodeData?.status === "processed";
+  const hasSignalsGenerated = !!episodeData?.signalsGeneratedAt;
   const processButtonLabel = (() => {
     if (isProcessing) return "Processing...";
     return "Process Episode";
@@ -481,17 +500,29 @@ Content: ${content}
                     <div className="space-y-4">
                       <div className="space-y-2 text-sm text-muted-foreground">
                         <p className="font-medium text-foreground">
-                          This will process the episode and create signals:
+                          This will process the episode:
                         </p>
                         <ul className="list-disc list-inside space-y-1 ml-2">
                           <li>Fetch transcript from audio</li>
+                          <li>Generate AI summary (key takeaways & lessons)</li>
                           <li>Split into semantic chunks (~100-800 words)</li>
                           <li>Identify speakers using AI</li>
-                          <li>Generate embeddings and relevance scores</li>
-                          <li>Create up to 30 signals for review</li>
+                          <li>Generate embeddings for search</li>
                         </ul>
+                        <p className="mt-3 p-3 bg-muted rounded-lg">
+                          <strong className="text-foreground">
+                            📝 Summary:
+                          </strong>{" "}
+                          Auto-generated for quick triage
+                          <br />
+                          <strong className="text-foreground">
+                            🔔 Signals:
+                          </strong>{" "}
+                          Click "Generate Signals" button after processing
+                          (optional)
+                        </p>
                         <p className="mt-3">
-                          <strong>Duration:</strong> Usually 2-5 minutes
+                          <strong>Duration:</strong> Usually 2.5-5.5 minutes
                           depending on episode length
                         </p>
                       </div>
@@ -516,7 +547,70 @@ Content: ${content}
                 </Dialog>
               )}
 
-              {isProcessed && (
+              {isProcessed && !hasSignalsGenerated && (
+                <Dialog
+                  open={showGenerateDialog}
+                  onOpenChange={setShowGenerateDialog}
+                >
+                  <DialogTrigger asChild>
+                    <Button disabled={isGenerating} size="sm">
+                      {isGenerating ? (
+                        <HugeiconsIcon
+                          icon={Loading03Icon}
+                          size={16}
+                          className="animate-spin"
+                        />
+                      ) : (
+                        <HugeiconsIcon icon={SparklesIcon} size={16} />
+                      )}
+                      Generate Signals
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>
+                        Generate Signals for This Episode
+                      </DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div className="space-y-2 text-sm text-muted-foreground">
+                        <p className="font-medium text-foreground">
+                          This will analyze the episode transcript and create
+                          personalized signals:
+                        </p>
+                        <ul className="list-disc list-inside space-y-1 ml-2">
+                          <li>Score all chunks using your preferences</li>
+                          <li>Generate up to 30 signals for review</li>
+                          <li>
+                            Apply stratified sampling across 0-100% distribution
+                          </li>
+                        </ul>
+                        <p className="mt-3">
+                          <strong>Duration:</strong> Usually 30-60 seconds
+                        </p>
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => setShowGenerateDialog(false)}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          onClick={() =>
+                            generateSignals.mutate({ episodeId: params.id })
+                          }
+                          disabled={isGenerating}
+                        >
+                          {isGenerating ? "Generating..." : "Generate Signals"}
+                        </Button>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              )}
+
+              {isProcessed && hasSignalsGenerated && (
                 <>
                   <Dialog
                     open={showRegenerateDialog}
@@ -664,11 +758,12 @@ Content: ${content}
                             <li>Delete all transcript chunks</li>
                             <li>Delete all signals (saved and skipped)</li>
                             <li>Delete speaker identification mappings</li>
+                            <li>Delete episode summary</li>
                             <li>Re-fetch transcript from audio</li>
+                            <li>Regenerate AI summary</li>
                             <li>Re-chunk with current settings</li>
                             <li>Re-identify speakers using AI</li>
                             <li>Generate new embeddings</li>
-                            <li>Create new signals</li>
                           </ul>
 
                           {episodeStats.data && episodeStats.data.saved > 0 && (
@@ -730,6 +825,13 @@ Content: ${content}
 
               {episodeData?.transcriptUrl && (
                 <>
+                  <Button variant="outline" size="sm" asChild>
+                    <Link href={`/episode/${params.id}/summary`}>
+                      <HugeiconsIcon icon={File01Icon} size={16} />
+                      View Summary
+                    </Link>
+                  </Button>
+
                   <Dialog>
                     <DialogTrigger asChild>
                       <Button
@@ -808,18 +910,26 @@ Content: ${content}
                   <div className="space-y-4">
                     <div className="space-y-2 text-sm text-muted-foreground">
                       <p className="font-medium text-foreground">
-                        This will process the episode and create signals:
+                        This will process the episode:
                       </p>
                       <ul className="list-disc list-inside space-y-1 ml-2">
                         <li>Fetch transcript from audio</li>
+                        <li>Generate AI summary (key takeaways & lessons)</li>
                         <li>Split into semantic chunks (~100-800 words)</li>
                         <li>Identify speakers using AI</li>
-                        <li>Generate embeddings and relevance scores</li>
-                        <li>Create up to 30 signals for review</li>
+                        <li>Generate embeddings for search</li>
                       </ul>
+                      <p className="mt-3 p-3 bg-muted rounded-lg">
+                        <strong className="text-foreground">📝 Summary:</strong>{" "}
+                        Auto-generated for quick triage
+                        <br />
+                        <strong className="text-foreground">🔔 Signals:</strong>{" "}
+                        Click "Generate Signals" button after processing
+                        (optional)
+                      </p>
                       <p className="mt-3">
-                        <strong>Duration:</strong> Usually 2-5 minutes depending
-                        on episode length
+                        <strong>Duration:</strong> Usually 2.5-5.5 minutes
+                        depending on episode length
                       </p>
                     </div>
                     <div className="flex justify-end gap-2">
@@ -843,7 +953,68 @@ Content: ${content}
               </Dialog>
             )}
 
-            {isProcessed && (
+            {isProcessed && !hasSignalsGenerated && (
+              <Dialog
+                open={showGenerateDialog}
+                onOpenChange={setShowGenerateDialog}
+              >
+                <DialogTrigger asChild>
+                  <Button disabled={isGenerating} size="sm">
+                    {isGenerating ? (
+                      <HugeiconsIcon
+                        icon={Loading03Icon}
+                        size={16}
+                        className="animate-spin"
+                      />
+                    ) : (
+                      <HugeiconsIcon icon={SparklesIcon} size={16} />
+                    )}
+                    Generate Signals
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Generate Signals for This Episode</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div className="space-y-2 text-sm text-muted-foreground">
+                      <p className="font-medium text-foreground">
+                        This will analyze the episode transcript and create
+                        personalized signals:
+                      </p>
+                      <ul className="list-disc list-inside space-y-1 ml-2">
+                        <li>Score all chunks using your preferences</li>
+                        <li>Generate up to 30 signals for review</li>
+                        <li>
+                          Apply stratified sampling across 0-100% distribution
+                        </li>
+                      </ul>
+                      <p className="mt-3">
+                        <strong>Duration:</strong> Usually 30-60 seconds
+                      </p>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowGenerateDialog(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={() =>
+                          generateSignals.mutate({ episodeId: params.id })
+                        }
+                        disabled={isGenerating}
+                      >
+                        {isGenerating ? "Generating..." : "Generate Signals"}
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            )}
+
+            {isProcessed && hasSignalsGenerated && (
               <>
                 <Dialog
                   open={showRegenerateDialog}
@@ -992,11 +1163,12 @@ Content: ${content}
                           <li>Delete all transcript chunks</li>
                           <li>Delete all signals (saved and skipped)</li>
                           <li>Delete speaker identification mappings</li>
+                          <li>Delete episode summary</li>
                           <li>Re-fetch transcript from audio</li>
+                          <li>Regenerate AI summary</li>
                           <li>Re-chunk with current settings</li>
                           <li>Re-identify speakers using AI</li>
                           <li>Generate new embeddings</li>
-                          <li>Create new signals</li>
                         </ul>
 
                         {episodeStats.data && episodeStats.data.saved > 0 && (
@@ -1057,6 +1229,18 @@ Content: ${content}
           {/* Secondary Actions - Icon Buttons */}
           {episodeData?.transcriptUrl && (
             <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="icon-sm"
+                className="flex-1"
+                asChild
+              >
+                <Link href={`/episode/${params.id}/summary`}>
+                  <HugeiconsIcon icon={File01Icon} size={16} />
+                  <span className="sr-only">View Summary</span>
+                </Link>
+              </Button>
+
               <Dialog>
                 <DialogTrigger asChild>
                   <Button

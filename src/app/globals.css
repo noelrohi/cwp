@@ -210,6 +210,10 @@ h6 {
     @apply bg-background text-foreground;
     letter-spacing: var(--tracking-normal);
   }
+
+  .list-outside {
+    @apply ml-4;
+  }
 }
 
 @layer utilities {

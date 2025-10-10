@@ -6,6 +6,7 @@ export {
   userEngagementAnalyzer,
 } from "./additional-monitoring";
 export {
+  generateArticleSignalsFunction,
   processArticle,
   regenerateArticleSignals,
   reprocessArticle,

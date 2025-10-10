@@ -4,6 +4,7 @@ import {
   Add01Icon,
   AiMicIcon,
   AlertCircleIcon,
+  File01Icon,
   File02Icon,
   Loading03Icon,
   PodcastIcon,
@@ -127,9 +128,12 @@ function EpisodeCard({
   episode: RouterOutput["episodes"]["getEpisodes"][number];
 }) {
   return (
-    <Link href={`/episode/${episode.id}`}>
-      <div className="flex gap-3 sm:gap-4 mb-3 sm:mb-4 p-3 sm:p-4 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer">
-        {/* Podcast Image */}
+    <div className="flex gap-3 sm:gap-4 mb-3 sm:mb-4 p-3 sm:p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+      {/* Podcast Image */}
+      <Link
+        href={`/episode/${episode.id}`}
+        className="flex gap-3 sm:gap-4 flex-1 min-w-0"
+      >
         <div className="relative h-12 w-12 sm:h-16 sm:w-16 rounded-lg bg-muted flex-shrink-0 overflow-hidden">
           {episode.podcast?.imageUrl ? (
             <Image
@@ -154,17 +158,27 @@ function EpisodeCard({
             <h3 className="text-sm sm:text-base font-semibold leading-tight line-clamp-2 flex-1">
               {episode.title}
             </h3>
-            <SignalCountIndicator
-              signalCounts={episode.signalCounts}
-              status={episode.status}
-            />
           </div>
           <p className="text-muted-foreground text-xs sm:text-sm">
             {episode.podcast?.title}
           </p>
         </div>
+      </Link>
+
+      <div className="flex flex-col gap-2 items-end justify-between">
+        <SignalCountIndicator
+          signalCounts={episode.signalCounts}
+          status={episode.status}
+        />
+
+        <Link href={`/episode/${episode.id}/summary`}>
+          <Button variant="ghost" size="icon-sm">
+            <HugeiconsIcon icon={File01Icon} size={14} />
+            <span className="sr-only">View Summary</span>
+          </Button>
+        </Link>
       </div>
-    </Link>
+    </div>
   );
 }
 
@@ -174,9 +188,11 @@ function ArticleCard({
   article: RouterOutput["articles"]["list"][number];
 }) {
   return (
-    <Link href={`/post/${article.id}`}>
-      <div className="flex gap-3 sm:gap-4 mb-3 sm:mb-4 p-3 sm:p-4 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer">
-        {/* Article Icon/Placeholder */}
+    <div className="flex gap-3 sm:gap-4 mb-3 sm:mb-4 p-3 sm:p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+      <Link
+        href={`/post/${article.id}`}
+        className="flex gap-3 sm:gap-4 flex-1 min-w-0"
+      >
         <div className="relative h-12 w-12 sm:h-16 sm:w-16 rounded-lg bg-muted flex-shrink-0 overflow-hidden flex items-center justify-center">
           <HugeiconsIcon
             icon={File02Icon}
@@ -190,10 +206,6 @@ function ArticleCard({
             <h3 className="text-sm sm:text-base font-semibold leading-tight line-clamp-2 flex-1">
               {article.title}
             </h3>
-            <SignalCountIndicator
-              signalCounts={article.signalCounts}
-              status={article.status}
-            />
           </div>
           <p className="text-muted-foreground text-xs sm:text-sm line-clamp-1">
             {article.feed?.title ||
@@ -202,8 +214,22 @@ function ArticleCard({
               "Article"}
           </p>
         </div>
+      </Link>
+
+      <div className="flex flex-col gap-2 items-end justify-between">
+        <SignalCountIndicator
+          signalCounts={article.signalCounts}
+          status={article.status}
+        />
+
+        <Link href={`/post/${article.id}/summary`}>
+          <Button variant="ghost" size="icon-sm">
+            <HugeiconsIcon icon={File01Icon} size={14} />
+            <span className="sr-only">View Summary</span>
+          </Button>
+        </Link>
       </div>
-    </Link>
+    </div>
   );
 }
 

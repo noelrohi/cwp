@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { TRPCError } from "@trpc/server";
 import {
   and,
   count,
@@ -14,8 +16,15 @@ import { nanoid } from "nanoid";
 import Parser from "rss-parser";
 import { z } from "zod";
 import { inngest } from "@/inngest/client";
-import { article, articleFeed, transcriptChunk } from "@/server/db/schema";
+import { checkRateLimit } from "@/lib/rate-limit";
+import {
+  article,
+  articleFeed,
+  episodeSummary,
+  transcriptChunk,
+} from "@/server/db/schema";
 import { dailySignal } from "@/server/db/schema/podcast";
+import { generateArticleSummary } from "@/server/lib/episode-summary";
 import { createTRPCRouter, protectedProcedure } from "../init";
 
 export const articlesRouter = createTRPCRouter({
@@ -536,6 +545,55 @@ export const articlesRouter = createTRPCRouter({
       return { success: true, status: "processing" };
     }),
 
+  generateSignals: protectedProcedure
+    .input(
+      z.object({
+        articleId: z.string(),
+        maxSignals: z.number().min(5).max(30).optional().default(30),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const articleRecord = await ctx.db.query.article.findFirst({
+        where: and(
+          eq(article.id, input.articleId),
+          eq(article.userId, ctx.user.id),
+        ),
+        columns: {
+          id: true,
+          status: true,
+          signalsGeneratedAt: true,
+        },
+      });
+
+      if (!articleRecord) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Article not found",
+        });
+      }
+
+      if (articleRecord.status !== "processed") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Article must be processed before generating signals",
+        });
+      }
+
+      // Trigger Inngest function for signal generation
+      await inngest.send({
+        name: "article/signals.generate",
+        data: {
+          articleId: input.articleId,
+          userId: ctx.user.id,
+          maxSignals: input.maxSignals,
+        },
+      });
+
+      return {
+        success: true,
+      };
+    }),
+
   regenerateSignals: protectedProcedure
     .input(
       z.object({
@@ -578,5 +636,121 @@ export const articlesRouter = createTRPCRouter({
       return {
         success: true,
       };
+    }),
+
+  getSummary: protectedProcedure
+    .input(z.object({ articleId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const summaryRecord = await ctx.db.query.episodeSummary.findFirst({
+        where: eq(episodeSummary.articleId, input.articleId),
+      });
+
+      return summaryRecord;
+    }),
+
+  getContent: protectedProcedure
+    .input(z.object({ articleId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const articleRecord = await ctx.db.query.article.findFirst({
+        where: and(
+          eq(article.id, input.articleId),
+          eq(article.userId, ctx.user.id),
+        ),
+        with: {
+          transcriptChunks: {
+            orderBy: (chunks, { asc }) => [asc(chunks.createdAt)],
+          },
+        },
+      });
+
+      if (!articleRecord) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Article not found",
+        });
+      }
+
+      if (
+        !articleRecord.transcriptChunks ||
+        articleRecord.transcriptChunks.length === 0
+      ) {
+        return { content: "" };
+      }
+
+      const content = articleRecord.transcriptChunks
+        .map((chunk) => chunk.content)
+        .join("\n\n");
+
+      return { content };
+    }),
+
+  generateSummary: protectedProcedure
+    .input(z.object({ articleId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const rateLimitResult = await checkRateLimit(
+        `article-summary:${ctx.user.id}`,
+        { limit: 10, windowMs: 60 * 60 * 1000 },
+      );
+
+      if (!rateLimitResult.success) {
+        const resetIn = Math.ceil(
+          (rateLimitResult.resetAt - Date.now()) / 1000 / 60,
+        );
+        throw new TRPCError({
+          code: "TOO_MANY_REQUESTS",
+          message: `Rate limit exceeded. Try again in ${resetIn} minutes.`,
+        });
+      }
+
+      const articleRecord = await ctx.db.query.article.findFirst({
+        where: and(
+          eq(article.id, input.articleId),
+          eq(article.userId, ctx.user.id),
+        ),
+        with: { summary: true, transcriptChunks: true },
+      });
+
+      if (!articleRecord) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Article not found",
+        });
+      }
+
+      if (articleRecord.summary) {
+        return articleRecord.summary;
+      }
+
+      if (
+        !articleRecord.transcriptChunks ||
+        articleRecord.transcriptChunks.length === 0
+      ) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Article has no processed content. Process the article first.",
+        });
+      }
+
+      const content = articleRecord.transcriptChunks
+        .map((chunk) => chunk.content)
+        .join("\n\n");
+
+      const markdownContent = await generateArticleSummary(
+        content,
+        articleRecord.title,
+      );
+
+      const summaryId = randomUUID();
+      const [summaryRecord] = await ctx.db
+        .insert(episodeSummary)
+        .values({
+          id: summaryId,
+          articleId: input.articleId,
+          markdownContent,
+        })
+        .returning();
+
+      return summaryRecord;
     }),
 });

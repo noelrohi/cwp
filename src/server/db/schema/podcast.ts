@@ -82,6 +82,9 @@ export const episode = pgTable(
     processingStartedAt: timestamp("processing_started_at", {
       withTimezone: true,
     }),
+    signalsGeneratedAt: timestamp("signals_generated_at", {
+      withTimezone: true,
+    }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -114,6 +117,9 @@ export const article = pgTable(
     excerpt: text("excerpt"),
     status: episodeStatusEnum("status").default("pending").notNull(),
     errorMessage: text("error_message"),
+    signalsGeneratedAt: timestamp("signals_generated_at", {
+      withTimezone: true,
+    }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -248,6 +254,36 @@ export const episodeSpeakerMapping = pgTable(
   (table) => [index().on(table.episodeId)],
 );
 
+export const episodeSummary = pgTable(
+  "episode_summary",
+  {
+    id: text("id").primaryKey(),
+    episodeId: text("episode_id")
+      .references(() => episode.id, { onDelete: "cascade" })
+      .unique(),
+    articleId: text("article_id")
+      .references(() => article.id, { onDelete: "cascade" })
+      .unique(),
+    markdownContent: text("markdown_content").notNull(),
+    summaryGeneratedAt: timestamp("summary_generated_at", {
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index().on(table.episodeId),
+    index().on(table.articleId),
+    check(
+      "summary_source_check",
+      sql`(
+        (episode_id IS NOT NULL AND article_id IS NULL) OR
+        (episode_id IS NULL AND article_id IS NOT NULL)
+      )`,
+    ),
+  ],
+);
+
 // Optional: for saved items you want to reference later
 export const savedChunk = pgTable(
   "saved_chunk",
@@ -271,8 +307,6 @@ export const savedChunk = pgTable(
     index().on(table.userId),
     index().on(table.savedAt),
     index().on(table.highlightExtractedAt),
-    // Ensure a user cannot save the same chunk multiple times
-    unique().on(table.userId, table.chunkId),
   ],
 );
 
@@ -313,6 +347,7 @@ export const episodeRelations = relations(episode, ({ one, many }) => ({
   }),
   transcriptChunks: many(transcriptChunk),
   speakerMapping: one(episodeSpeakerMapping),
+  summary: one(episodeSummary),
 }));
 
 export const transcriptChunkRelations = relations(
@@ -347,6 +382,17 @@ export const episodeSpeakerMappingRelations = relations(
     }),
   }),
 );
+
+export const episodeSummaryRelations = relations(episodeSummary, ({ one }) => ({
+  episode: one(episode, {
+    fields: [episodeSummary.episodeId],
+    references: [episode.id],
+  }),
+  article: one(article, {
+    fields: [episodeSummary.articleId],
+    references: [article.id],
+  }),
+}));
 
 export const savedChunkRelations = relations(savedChunk, ({ one }) => ({
   chunk: one(transcriptChunk, {
@@ -392,6 +438,7 @@ export const articleRelations = relations(article, ({ one, many }) => ({
     fields: [article.feedId],
     references: [articleFeed.id],
   }),
+  summary: one(episodeSummary),
 }));
 
 export const articleFeedRelations = relations(articleFeed, ({ many }) => ({

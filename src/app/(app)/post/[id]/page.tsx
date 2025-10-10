@@ -31,6 +31,7 @@ import {
 import { SnipDialog } from "@/components/snip-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ButtonGroup } from "@/components/ui/button-group";
 import {
   Dialog,
   DialogContent,
@@ -433,6 +434,18 @@ Content: ${content}
           </div>
 
           <div className="flex gap-2 flex-wrap">
+            <Button variant="outline" size="sm" asChild>
+              <Link href={`/post/${params.id}/summary`}>
+                <HugeiconsIcon icon={SparklesIcon} size={16} />
+                View Summary
+              </Link>
+            </Button>
+
+            <CopyArticleContentButton
+              articleId={params.id}
+              articleUrl={articleData?.url}
+            />
+
             {!isProcessed && (
               <Dialog
                 open={showProcessDialog}
@@ -459,17 +472,25 @@ Content: ${content}
                   <div className="space-y-4">
                     <div className="space-y-2 text-sm text-muted-foreground">
                       <p className="font-medium text-foreground">
-                        This will process the article and create signals:
+                        This will process the article:
                       </p>
                       <ul className="list-disc list-inside space-y-1 ml-2">
                         <li>Fetch article content from URL</li>
+                        <li>Generate AI summary (key takeaways & lessons)</li>
                         <li>Split into semantic chunks (~100-800 words)</li>
-                        <li>Generate embeddings and relevance scores</li>
-                        <li>Create up to 30 signals for review</li>
+                        <li>Generate embeddings for search</li>
                       </ul>
+                      <p className="mt-3 p-3 bg-muted rounded-lg">
+                        <strong className="text-foreground">📝 Summary:</strong>{" "}
+                        Auto-generated for quick triage
+                        <br />
+                        <strong className="text-foreground">🔔 Signals:</strong>{" "}
+                        Click "Generate Signals" button after processing
+                        (optional)
+                      </p>
                       <p className="mt-3">
-                        <strong>Duration:</strong> Usually 1-3 minutes depending
-                        on article length
+                        <strong>Duration:</strong> Usually 1-2.5 minutes
+                        depending on article length
                       </p>
                     </div>
                     <div className="flex justify-end gap-2">
@@ -625,10 +646,11 @@ Content: ${content}
                         <ul className="list-disc list-inside space-y-1 ml-2">
                           <li>Delete all content chunks</li>
                           <li>Delete all signals (saved and skipped)</li>
+                          <li>Delete article summary</li>
                           <li>Re-fetch content from URL</li>
+                          <li>Regenerate AI summary</li>
                           <li>Re-chunk with current settings</li>
                           <li>Generate new embeddings</li>
-                          <li>Create new signals</li>
                         </ul>
 
                         {articleStats.data && articleStats.data.saved > 0 && (
@@ -666,19 +688,6 @@ Content: ${content}
                   </DialogContent>
                 </Dialog>
               </>
-            )}
-
-            {articleData?.url && (
-              <Button variant="outline" size="sm" asChild>
-                <a
-                  href={articleData.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <HugeiconsIcon icon={Link01Icon} size={16} />
-                  Read Article
-                </a>
-              </Button>
             )}
           </div>
         </div>
@@ -1006,4 +1015,53 @@ function formatDate(value: Date | string | null | undefined): string | null {
     day: "numeric",
     year: "numeric",
   });
+}
+
+function CopyArticleContentButton({
+  articleId,
+  articleUrl,
+}: {
+  articleId: string;
+  articleUrl?: string;
+}) {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+
+  const handleCopyContent = async () => {
+    try {
+      const { content } = await queryClient.fetchQuery(
+        trpc.articles.getContent.queryOptions({
+          articleId,
+        }),
+      );
+
+      if (!content || content.trim().length === 0) {
+        toast.error("No content available to copy");
+        return;
+      }
+
+      await navigator.clipboard.writeText(content);
+      toast.success("Article content copied to clipboard");
+    } catch (error) {
+      toast.error("Failed to copy content");
+      console.error(error);
+    }
+  };
+
+  return (
+    <ButtonGroup>
+      {articleUrl && (
+        <Button size="sm" variant="outline" asChild>
+          <Link href={articleUrl} target="_blank" rel="noopener noreferrer">
+            <HugeiconsIcon icon={Link01Icon} size={16} />
+            Read Article
+          </Link>
+        </Button>
+      )}
+      <Button size="sm" variant="outline" onClick={handleCopyContent}>
+        <HugeiconsIcon icon={Copy01Icon} size={16} />
+        Copy Content
+      </Button>
+    </ButtonGroup>
+  );
 }

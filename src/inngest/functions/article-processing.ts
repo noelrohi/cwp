@@ -1,12 +1,14 @@
+import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { NonRetriableError } from "inngest";
 import { db } from "@/server/db";
-import { article as articleSchema } from "@/server/db/schema";
+import { article as articleSchema, episodeSummary } from "@/server/db/schema";
 import {
   chunkArticleContent,
   extractArticleContent,
   generateArticleSignals,
 } from "@/server/lib/article-processing";
+import { generateArticleSummary } from "@/server/lib/episode-summary";
 import { inngest } from "../client";
 
 /**
@@ -74,7 +76,30 @@ export const processArticle = inngest.createFunction(
       }
     });
 
-    // Step 3: Chunk and embed content
+    // Step 3: Generate article summary
+    await step.run("generate-summary", async () => {
+      try {
+        const markdownContent = await generateArticleSummary(
+          extractedContent.content,
+          extractedContent.title,
+        );
+
+        // Store summary
+        await db.insert(episodeSummary).values({
+          id: randomUUID(),
+          articleId,
+          markdownContent,
+        });
+
+        return { summaryGenerated: true };
+      } catch (error) {
+        // Log but don't fail - summary is nice-to-have
+        console.error("Failed to generate article summary:", error);
+        return { summaryGenerated: false };
+      }
+    });
+
+    // Step 4: Chunk and embed content
     const chunkResult = await step.run("chunk-and-embed", async () => {
       try {
         const result = await chunkArticleContent({
@@ -102,33 +127,8 @@ export const processArticle = inngest.createFunction(
       }
     });
 
-    // Step 4: Generate signals
-    const signalResult = await step.run("generate-signals", async () => {
-      try {
-        const result = await generateArticleSignals({
-          db,
-          articleId,
-          userId,
-        });
-
-        return {
-          signalCount: result.signalCount,
-        };
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : "Failed to generate signals";
-
-        await db
-          .update(articleSchema)
-          .set({
-            status: "failed",
-            errorMessage,
-          })
-          .where(eq(articleSchema.id, articleId));
-
-        throw error;
-      }
-    });
+    // Signal generation is now manual - users must click "Generate Signals" button
+    // This prevents overwhelming users with auto-generated signals
 
     // Step 5: Mark as processed
     await step.run("mark-processed", async () => {
@@ -141,7 +141,6 @@ export const processArticle = inngest.createFunction(
         articleId,
         status: "processed",
         chunkCount: chunkResult.chunkCount,
-        signalCount: signalResult.signalCount,
       };
     });
 
@@ -150,7 +149,6 @@ export const processArticle = inngest.createFunction(
       title: extractedContent.title,
       wordCount: extractedContent.wordCount,
       chunkCount: chunkResult.chunkCount,
-      signalCount: signalResult.signalCount,
     };
   },
 );
@@ -175,7 +173,7 @@ export const reprocessArticle = inngest.createFunction(
         "@/server/db/schema"
       );
 
-      // Delete all existing chunks and signals in transaction
+      // Delete all existing chunks, signals, and summary in transaction
       await db.transaction(async (tx) => {
         const chunks = await tx.query.transcriptChunk.findMany({
           where: eq(transcriptChunk.articleId, articleId),
@@ -199,6 +197,11 @@ export const reprocessArticle = inngest.createFunction(
             .delete(transcriptChunk)
             .where(eq(transcriptChunk.articleId, articleId));
         }
+
+        // Delete article summary
+        await tx
+          .delete(episodeSummary)
+          .where(eq(episodeSummary.articleId, articleId));
       });
 
       return { deletedChunks: true };
@@ -288,6 +291,62 @@ export const regenerateArticleSignals = inngest.createFunction(
       });
 
       return { signalCount: 0 };
+    });
+
+    return result;
+  },
+);
+
+/**
+ * Generate signals for an article (initial generation, not regeneration)
+ */
+export const generateArticleSignalsFunction = inngest.createFunction(
+  {
+    id: "article-signal-generation",
+    name: "Generate Article Signals",
+    retries: 2,
+  },
+  { event: "article/signals.generate" },
+  async ({ event, step }) => {
+    const { articleId, userId, maxSignals = 30 } = event.data;
+
+    // Step 1: Verify article has chunks
+    await step.run("verify-chunks", async () => {
+      const { transcriptChunk } = await import("@/server/db/schema");
+
+      const chunks = await db.query.transcriptChunk.findMany({
+        where: eq(transcriptChunk.articleId, articleId),
+        limit: 1,
+      });
+
+      if (chunks.length === 0) {
+        throw new NonRetriableError(
+          "No chunks found. Process the article first.",
+        );
+      }
+
+      return { hasChunks: true };
+    });
+
+    // Step 2: Generate signals
+    const result = await step.run("generate-signals", async () => {
+      const signalResult = await generateArticleSignals({
+        db,
+        articleId,
+        userId,
+      });
+
+      // Mark article signals as generated
+      await db
+        .update(articleSchema)
+        .set({
+          signalsGeneratedAt: new Date(),
+        })
+        .where(eq(articleSchema.id, articleId));
+
+      return {
+        signalCount: signalResult.signalCount,
+      };
     });
 
     return result;
