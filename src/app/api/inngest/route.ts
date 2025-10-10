@@ -8,6 +8,8 @@ import {
   dailyIntelligenceReprocessEpisode,
   episodeStatusMonitor,
   feedHealthChecker,
+  generateArticleSummaryFunction,
+  generateEpisodeSummaryFunction,
   handleBulkSkip,
   monthlyCleanup,
   processArticle,
@@ -32,6 +34,9 @@ export const { GET, POST, PUT } = serve({
     dailyIntelligenceProcessEpisode,
     dailyIntelligenceReprocessEpisode,
     dailyIntelligenceGenerateSignals,
+    // Summary generation
+    generateArticleSummaryFunction,
+    generateEpisodeSummaryFunction,
     // User preferences & cleanup
     updateUserPreferences,
     monthlyCleanup,

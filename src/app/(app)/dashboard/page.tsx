@@ -171,7 +171,7 @@ function EpisodeCard({
           status={episode.status}
         />
 
-        <Link href={`/episode/${episode.id}/summary`}>
+        <Link href={`/episode/${episode.id}?tab=summary`}>
           <Button variant="ghost" size="icon-sm">
             <HugeiconsIcon icon={File01Icon} size={14} />
             <span className="sr-only">View Summary</span>
@@ -222,7 +222,7 @@ function ArticleCard({
           status={article.status}
         />
 
-        <Link href={`/post/${article.id}/summary`}>
+        <Link href={`/post/${article.id}?tab=summary`}>
           <Button variant="ghost" size="icon-sm">
             <HugeiconsIcon icon={File01Icon} size={14} />
             <span className="sr-only">View Summary</span>

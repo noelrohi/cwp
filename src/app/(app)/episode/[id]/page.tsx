@@ -29,6 +29,7 @@ import { toast } from "sonner";
 type SignalAction = "saved" | "skipped";
 
 import { ChevronDown } from "lucide-react";
+import { Streamdown } from "streamdown";
 import {
   SignalCard,
   type SignalCardMetadataItem,
@@ -52,6 +53,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import { Item, ItemFooter } from "@/components/ui/item";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -74,6 +84,13 @@ export default function EpisodeDetailPage(props: {
   const queryClient = useQueryClient();
   const params = use(props.params);
   const [transcript, setTranscript] = useState<TranscriptData | null>(null);
+  const [activeTab, setActiveTab] = useQueryState(
+    "tab",
+    parseAsStringEnum<"summary" | "signals">([
+      "summary",
+      "signals",
+    ]).withDefault("summary"),
+  );
   const [signalFilter, setSignalFilter] = useQueryState(
     "filter",
     parseAsStringEnum<"all" | "pending" | "actioned">([
@@ -123,6 +140,31 @@ export default function EpisodeDetailPage(props: {
   const episodeStats = useQuery(
     trpc.signals.episodeStats.queryOptions({
       episodeId: params.id,
+    }),
+  );
+
+  const summary = useQuery({
+    ...trpc.episodes.getSummary.queryOptions({ episodeId: params.id }),
+    enabled: activeTab === "summary",
+    refetchInterval: (query) => {
+      const hasSummary = query.state.data?.summaryGeneratedAt;
+      const isGenerating =
+        generateSummary.isPending || episode.data?.status === "processing";
+      return !hasSummary && isGenerating ? 3000 : false;
+    },
+  });
+
+  const generateSummary = useMutation(
+    trpc.episodes.generateSummary.mutationOptions({
+      onSuccess: () => {
+        toast.success(
+          "Summary generation started! This usually takes 10-30 seconds.",
+        );
+        summary.refetch();
+      },
+      onError: (error) => {
+        toast.error(`Failed to generate summary: ${error.message}`);
+      },
     }),
   );
 
@@ -272,6 +314,7 @@ export default function EpisodeDetailPage(props: {
       }
       const jsonData = await response.json();
       setTranscript(jsonData);
+      document.getElementById("transcript-dialog-trigger")?.click();
     } catch (_error) {
       toast.error("Failed to load transcript");
     }
@@ -824,47 +867,7 @@ Content: ${content}
               )}
 
               {episodeData?.transcriptUrl && (
-                <>
-                  <Button variant="outline" size="sm" asChild>
-                    <Link href={`/episode/${params.id}/summary`}>
-                      <HugeiconsIcon icon={File01Icon} size={16} />
-                      View Summary
-                    </Link>
-                  </Button>
-
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          fetchTranscript(episodeData.transcriptUrl as string)
-                        }
-                      >
-                        <HugeiconsIcon icon={File01Icon} size={16} />
-                        View Transcript
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden">
-                      <DialogHeader>
-                        <DialogTitle>Episode Transcript</DialogTitle>
-                      </DialogHeader>
-                      <div className="overflow-auto">
-                        {transcript && (
-                          <TranscriptDisplay
-                            transcript={transcript}
-                            speakerMappings={
-                              episodeData?.speakerMapping?.speakerMappings
-                                ? JSON.parse(
-                                    episodeData.speakerMapping.speakerMappings,
-                                  )
-                                : null
-                            }
-                          />
-                        )}
-                      </div>
-                    </DialogContent>
-                  </Dialog>
+                <ButtonGroup>
                   <CopyTranscriptButton
                     transcriptUrl={episodeData.transcriptUrl}
                     audioUrl={episodeData.audioUrl}
@@ -874,8 +877,82 @@ Content: ${content}
                         : null
                     }
                   />
-                </>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="sm" variant="outline">
+                        <ChevronDown className="size-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem asChild>
+                        <button
+                          type="button"
+                          className="w-full"
+                          onClick={() =>
+                            fetchTranscript(episodeData.transcriptUrl as string)
+                          }
+                        >
+                          <HugeiconsIcon icon={File01Icon} size={16} />
+                          View Transcript
+                        </button>
+                      </DropdownMenuItem>
+                      {episodeData.transcriptUrl && (
+                        <DropdownMenuItem asChild>
+                          <a
+                            href={episodeData.transcriptUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <HugeiconsIcon icon={Download01Icon} size={16} />
+                            Download Transcript
+                          </a>
+                        </DropdownMenuItem>
+                      )}
+                      {episodeData.audioUrl && (
+                        <DropdownMenuItem asChild>
+                          <a
+                            href={episodeData.audioUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <HugeiconsIcon icon={Download01Icon} size={16} />
+                            Download Audio
+                          </a>
+                        </DropdownMenuItem>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </ButtonGroup>
               )}
+
+              <Dialog>
+                <DialogTrigger asChild>
+                  <button
+                    type="button"
+                    className="hidden"
+                    id="transcript-dialog-trigger"
+                  />
+                </DialogTrigger>
+                <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden">
+                  <DialogHeader>
+                    <DialogTitle>Episode Transcript</DialogTitle>
+                  </DialogHeader>
+                  <div className="overflow-auto">
+                    {transcript && episodeData && (
+                      <TranscriptDisplay
+                        transcript={transcript}
+                        speakerMappings={
+                          episodeData?.speakerMapping?.speakerMappings
+                            ? JSON.parse(
+                                episodeData.speakerMapping.speakerMappings,
+                              )
+                            : null
+                        }
+                      />
+                    )}
+                  </div>
+                </DialogContent>
+              </Dialog>
             </div>
           </div>
         </div>
@@ -1233,12 +1310,10 @@ Content: ${content}
                 variant="outline"
                 size="icon-sm"
                 className="flex-1"
-                asChild
+                onClick={() => setActiveTab("summary")}
               >
-                <Link href={`/episode/${params.id}/summary`}>
-                  <HugeiconsIcon icon={File01Icon} size={16} />
-                  <span className="sr-only">View Summary</span>
-                </Link>
+                <HugeiconsIcon icon={File01Icon} size={16} />
+                <span className="sr-only">View Summary</span>
               </Button>
 
               <Dialog>
@@ -1310,308 +1385,430 @@ Content: ${content}
         </div>
       </div>
 
-      {/* Related Signals */}
-      <section className="space-y-3 sm:space-y-4">
-        <div className="flex flex-col gap-3">
-          <h2 className="text-base sm:text-lg font-semibold font-serif">
-            Signals of this Episode
-          </h2>
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => setActiveTab(v as typeof activeTab)}
+        className="pt-6"
+      >
+        <TabsList className="w-full">
+          <TabsTrigger value="summary" className="flex-1">
+            Summary
+          </TabsTrigger>
+          <TabsTrigger value="signals" className="flex-1">
+            Signals{" "}
+            <Badge variant="outline" className="ml-1.5">
+              {episodeStats.data?.total ?? 0}
+            </Badge>
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
 
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            {/* Left side: Tabs */}
-            <div className="flex items-center justify-between gap-2">
-              <Tabs
-                value={signalFilter}
-                onValueChange={(v) => setSignalFilter(v as typeof signalFilter)}
-              >
-                <TabsList>
-                  <TabsTrigger value="pending">
-                    Pending{" "}
-                    <span className="ml-1 text-muted-foreground">
-                      {episodeStats.data?.pending ?? 0}
-                    </span>
-                  </TabsTrigger>
-                  <TabsTrigger value="actioned">
-                    Processed{" "}
-                    <span className="ml-1 text-muted-foreground">
-                      {episodeStats.data
-                        ? episodeStats.data.saved + episodeStats.data.skipped
-                        : 0}
-                    </span>
-                  </TabsTrigger>
-                  <TabsTrigger value="all">
-                    All{" "}
-                    <span className="ml-1 text-muted-foreground">
-                      {episodeStats.data?.total ?? 0}
-                    </span>
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
-
-              {/* Copy button - Mobile only */}
-              {relatedSignals.length > 0 && (
+      {activeTab === "summary" && (
+        <section className="space-y-4">
+          {summary.isLoading ? (
+            <LoadingState />
+          ) : summary.data ? (
+            <Item className="space-y-6" variant="muted">
+              <Streamdown className="text-base">
+                {summary.data.markdownContent}
+              </Streamdown>
+              <ItemFooter className="pt-6 border-t flex gap-3 justify-start">
                 <Button
                   variant="outline"
-                  size="icon-sm"
-                  onClick={handleCopySignals}
-                  className="sm:hidden"
-                >
-                  <HugeiconsIcon icon={Copy01Icon} size={16} />
-                  <span className="sr-only">Copy Signals</span>
-                </Button>
-              )}
-            </div>
-
-            {/* Right side: Action filter, Copy button, and Confidence filter - Desktop */}
-            <div className="flex items-center gap-2">
-              {signalFilter === "actioned" && (
-                <Select
-                  value={actionFilter}
-                  onValueChange={(v) =>
-                    setActionFilter(v as "all" | "saved" | "skipped")
+                  onClick={() =>
+                    generateSummary.mutate({ episodeId: params.id })
                   }
+                  disabled={generateSummary.isPending}
                 >
-                  <SelectTrigger size="sm" className="w-[140px]">
-                    <SelectValue placeholder="Filter" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">
-                      All{" "}
-                      <span className="text-xs font-mono text-muted-foreground">
-                        (
-                        {episodeStats.data &&
-                        episodeStats.data.saved + episodeStats.data.skipped > 0
-                          ? episodeStats.data.saved + episodeStats.data.skipped
-                          : 0}
-                        )
-                      </span>
-                    </SelectItem>
-                    <SelectItem value="saved">
-                      Saved{" "}
-                      <span className="text-xs font-mono text-muted-foreground">
-                        ({episodeStats.data?.saved ?? 0})
-                      </span>
-                    </SelectItem>
-                    <SelectItem value="skipped">
-                      Skipped{" "}
-                      <span className="text-xs font-mono text-muted-foreground">
-                        ({episodeStats.data?.skipped ?? 0})
-                      </span>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
-              {relatedSignals.length > 0 && (
-                <Button
-                  variant="outline"
-                  size="icon-sm"
-                  onClick={handleCopySignals}
-                  className="hidden sm:flex sm:size-auto sm:h-8 sm:px-3"
-                >
-                  <HugeiconsIcon icon={Copy01Icon} size={16} />
-                  <span className="hidden sm:inline">Copy Signals</span>
-                </Button>
-              )}
-              <Select
-                value={selectedConfidence}
-                onValueChange={(value) =>
-                  setSelectedConfidence(
-                    value as "all" | "high" | "medium" | "low",
-                  )
-                }
-              >
-                <SelectTrigger size="sm" className="w-[180px]">
-                  <SelectValue placeholder="Confidence" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Confidence</SelectItem>
-                  <SelectItem value="high">High (≥65%)</SelectItem>
-                  <SelectItem value="medium">Medium (40-65%)</SelectItem>
-                  <SelectItem value="low">Low (&lt;40%)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </div>
-
-        {signals.isLoading ? (
-          <div className="grid gap-3 sm:grid-cols-2">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <div
-                key={index}
-                className="animate-pulse rounded-xl border border-border/60 bg-muted/40 p-4"
-              >
-                <div className="h-4 w-1/2 rounded bg-muted-foreground/30" />
-                <div className="mt-3 h-3 w-full rounded bg-muted-foreground/20" />
-                <div className="mt-2 h-3 w-3/4 rounded bg-muted-foreground/20" />
-              </div>
-            ))}
-          </div>
-        ) : signals.error ? (
-          <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-base text-destructive">
-            Unable to load related signals.
-          </div>
-        ) : relatedSignals.length === 0 ? (
-          <div className="rounded-xl border border-border/50 bg-muted/30 p-6 text-base text-muted-foreground">
-            {signalFilter === "pending" && episodeStats.data?.total === 0
-              ? "No signals yet. Start processing above and check back after the pipeline finishes."
-              : signalFilter === "pending"
-                ? "No pending signals. All signals have been processed."
-                : signalFilter === "actioned"
-                  ? "No processed signals yet. Start reviewing signals to see them here."
-                  : "No signals found for this episode."}
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {relatedSignals.map((signal) => {
-              const isPending = pendingSignalId === signal.id;
-              const isSignalPending = !signal.userAction;
-              const speakerDisplay = signal.speakerName?.trim()
-                ? signal.speakerName
-                : signal.chunk.speaker?.trim()
-                  ? `Speaker ${signal.chunk.speaker}`
-                  : "Unknown speaker";
-              const publishedLabel = formatDate(signal.episode?.publishedAt);
-              const hasSnip = hasSnips.data?.[signal.id] ?? false;
-              const metadata: SignalCardMetadataItem[] = [];
-              if (publishedLabel) {
-                metadata.push({ label: publishedLabel });
-              }
-              if (
-                signal.relevanceScore !== null &&
-                signal.relevanceScore !== undefined
-              ) {
-                metadata.push({
-                  icon: <HugeiconsIcon icon={BodyPartMuscleIcon} size={12} />,
-                  label: `${Math.round(signal.relevanceScore * 100)}%`,
-                });
-              }
-              if (hasSnip) {
-                metadata.push({
-                  icon: <HugeiconsIcon icon={FlashIcon} size={12} />,
-                  label: "Snipped",
-                });
-              }
-              const audioSource = signal.episode?.audioUrl
-                ? {
-                    id: `${signal.id}-${signal.chunk.id}`,
-                    title: signal.episode?.title ?? signal.title ?? "Episode",
-                    subtitle: speakerDisplay,
-                    audioUrl: signal.episode.audioUrl,
-                    startTimeSec: signal.chunk.startTimeSec ?? undefined,
-                    endTimeSec: signal.chunk.endTimeSec ?? undefined,
-                    durationSec: signal.episode.durationSec ?? undefined,
-                  }
-                : undefined;
-              const highlightContent =
-                signal.excerpt &&
-                signal.excerpt.trim() !== signal.chunk.content.trim()
-                  ? signal.excerpt
-                  : null;
-              return (
-                <SignalCard
-                  key={signal.id}
-                  className="rounded-2xl"
-                  chunkContent={signal.chunk.content}
-                  highlightContent={highlightContent}
-                  speakerLabel={speakerDisplay}
-                  startTimeSec={signal.chunk.startTimeSec ?? null}
-                  endTimeSec={signal.chunk.endTimeSec ?? null}
-                  metadata={metadata}
-                  audio={audioSource}
-                  snipButton={
-                    <SnipDialog
-                      signalId={signal.id}
-                      defaultBack={highlightContent || signal.chunk.content}
-                      trigger={
-                        <Button variant="outline" size="sm">
-                          <HugeiconsIcon icon={Scissor01Icon} size={16} />
-                          Snip
-                        </Button>
-                      }
+                  {generateSummary.isPending ? (
+                    <HugeiconsIcon
+                      icon={Loading03Icon}
+                      size={16}
+                      className="animate-spin"
                     />
+                  ) : (
+                    <HugeiconsIcon icon={SparklesIcon} size={16} />
+                  )}
+                  Regenerate
+                </Button>
+              </ItemFooter>
+            </Item>
+          ) : (
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <HugeiconsIcon icon={SparklesIcon} size={20} />
+                </EmptyMedia>
+                <EmptyTitle>Quick Overview Summary</EmptyTitle>
+                <EmptyDescription>
+                  {!episodeData?.transcriptUrl
+                    ? "Process this episode first to generate a bite-sized summary with key takeaways, examples, lessons, and impactful quotes."
+                    : "Generate a bite-sized summary with key takeaways, examples, lessons, and impactful quotes from this episode."}
+                </EmptyDescription>
+              </EmptyHeader>
+
+              <EmptyContent>
+                <Button
+                  size="lg"
+                  onClick={() =>
+                    !episodeData?.transcriptUrl
+                      ? processEpisode.mutate({ episodeId: params.id })
+                      : generateSummary.mutate({ episodeId: params.id })
                   }
+                  disabled={generateSummary.isPending || isProcessing}
                 >
-                  {isSignalPending ? (
+                  {generateSummary.isPending || isProcessing ? (
                     <>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex-1 sm:flex-none"
-                        onClick={() => handleAction(signal.id, "skipped")}
-                        disabled={isPending}
-                      >
-                        {isPending && pendingAction === "skipped" ? (
-                          <HugeiconsIcon
-                            icon={Loading03Icon}
-                            size={16}
-                            className="animate-spin"
-                          />
-                        ) : (
-                          <HugeiconsIcon
-                            icon={BookmarkRemove01Icon}
-                            size={16}
-                          />
-                        )}
-                        Skip
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="flex-1 sm:flex-none"
-                        onClick={() => handleAction(signal.id, "saved")}
-                        disabled={isPending}
-                      >
-                        {isPending && pendingAction === "saved" ? (
-                          <HugeiconsIcon
-                            icon={Loading03Icon}
-                            size={16}
-                            className="animate-spin"
-                          />
-                        ) : (
-                          <HugeiconsIcon icon={BookmarkCheck01Icon} size={16} />
-                        )}
-                        Save
-                      </Button>
+                      <HugeiconsIcon
+                        icon={Loading03Icon}
+                        size={16}
+                        className="animate-spin"
+                      />
+                      {!episodeData?.transcriptUrl
+                        ? "Processing & Generating..."
+                        : "Generating Summary..."}
                     </>
                   ) : (
                     <>
-                      <Badge
-                        variant={
-                          signal.userAction === "saved"
-                            ? "default"
-                            : "secondary"
-                        }
-                        className="text-xs"
-                      >
-                        {signal.userAction === "saved" ? "Saved" : "Skipped"}
-                      </Badge>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex-1 sm:flex-none"
-                        onClick={() => handleUndo(signal.id)}
-                        disabled={isPending}
-                      >
-                        {isPending ? (
-                          <HugeiconsIcon
-                            icon={Loading03Icon}
-                            size={16}
-                            className="animate-spin"
-                          />
-                        ) : (
-                          <HugeiconsIcon icon={Undo02Icon} size={16} />
-                        )}
-                        Undo
-                      </Button>
+                      <HugeiconsIcon icon={SparklesIcon} size={16} />
+                      {!episodeData?.transcriptUrl
+                        ? "Process & Generate Summary"
+                        : "Generate Summary"}
                     </>
                   )}
-                </SignalCard>
-              );
-            })}
+                </Button>
+
+                {(generateSummary.isPending || isProcessing) && (
+                  <p className="text-sm text-muted-foreground">
+                    This usually takes{" "}
+                    {!episodeData?.transcriptUrl
+                      ? "2.5-5.5 minutes"
+                      : "10-30 seconds"}
+                  </p>
+                )}
+              </EmptyContent>
+            </Empty>
+          )}
+        </section>
+      )}
+
+      {activeTab === "signals" && (
+        <section className="space-y-3 sm:space-y-4">
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              {/* Left side: Tabs */}
+              <div className="flex items-center justify-between gap-2">
+                <Tabs
+                  value={signalFilter}
+                  onValueChange={(v) =>
+                    setSignalFilter(v as typeof signalFilter)
+                  }
+                >
+                  <TabsList>
+                    <TabsTrigger value="pending">
+                      Pending{" "}
+                      <span className="ml-1 text-muted-foreground">
+                        {episodeStats.data?.pending ?? 0}
+                      </span>
+                    </TabsTrigger>
+                    <TabsTrigger value="actioned">
+                      Processed{" "}
+                      <span className="ml-1 text-muted-foreground">
+                        {episodeStats.data
+                          ? episodeStats.data.saved + episodeStats.data.skipped
+                          : 0}
+                      </span>
+                    </TabsTrigger>
+                    <TabsTrigger value="all">
+                      All{" "}
+                      <span className="ml-1 text-muted-foreground">
+                        {episodeStats.data?.total ?? 0}
+                      </span>
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+
+                {/* Copy button - Mobile only */}
+                {relatedSignals.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    onClick={handleCopySignals}
+                    className="sm:hidden"
+                  >
+                    <HugeiconsIcon icon={Copy01Icon} size={16} />
+                    <span className="sr-only">Copy Signals</span>
+                  </Button>
+                )}
+              </div>
+
+              {/* Right side: Action filter, Copy button, and Confidence filter - Desktop */}
+              <div className="flex items-center gap-2">
+                {signalFilter === "actioned" && (
+                  <Select
+                    value={actionFilter}
+                    onValueChange={(v) =>
+                      setActionFilter(v as "all" | "saved" | "skipped")
+                    }
+                  >
+                    <SelectTrigger size="sm" className="w-[140px]">
+                      <SelectValue placeholder="Filter" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">
+                        All{" "}
+                        <span className="text-xs font-mono text-muted-foreground">
+                          (
+                          {episodeStats.data &&
+                          episodeStats.data.saved + episodeStats.data.skipped >
+                            0
+                            ? episodeStats.data.saved +
+                              episodeStats.data.skipped
+                            : 0}
+                          )
+                        </span>
+                      </SelectItem>
+                      <SelectItem value="saved">
+                        Saved{" "}
+                        <span className="text-xs font-mono text-muted-foreground">
+                          ({episodeStats.data?.saved ?? 0})
+                        </span>
+                      </SelectItem>
+                      <SelectItem value="skipped">
+                        Skipped{" "}
+                        <span className="text-xs font-mono text-muted-foreground">
+                          ({episodeStats.data?.skipped ?? 0})
+                        </span>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+                {relatedSignals.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    onClick={handleCopySignals}
+                    className="hidden sm:flex sm:size-auto sm:h-8 sm:px-3"
+                  >
+                    <HugeiconsIcon icon={Copy01Icon} size={16} />
+                    <span className="hidden sm:inline">Copy Signals</span>
+                  </Button>
+                )}
+                <Select
+                  value={selectedConfidence}
+                  onValueChange={(value) =>
+                    setSelectedConfidence(
+                      value as "all" | "high" | "medium" | "low",
+                    )
+                  }
+                >
+                  <SelectTrigger size="sm" className="w-[180px]">
+                    <SelectValue placeholder="Confidence" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Confidence</SelectItem>
+                    <SelectItem value="high">High (≥65%)</SelectItem>
+                    <SelectItem value="medium">Medium (40-65%)</SelectItem>
+                    <SelectItem value="low">Low (&lt;40%)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </div>
-        )}
-      </section>
+
+          {signals.isLoading ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div
+                  key={index}
+                  className="animate-pulse rounded-xl border border-border/60 bg-muted/40 p-4"
+                >
+                  <div className="h-4 w-1/2 rounded bg-muted-foreground/30" />
+                  <div className="mt-3 h-3 w-full rounded bg-muted-foreground/20" />
+                  <div className="mt-2 h-3 w-3/4 rounded bg-muted-foreground/20" />
+                </div>
+              ))}
+            </div>
+          ) : signals.error ? (
+            <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-base text-destructive">
+              Unable to load related signals.
+            </div>
+          ) : relatedSignals.length === 0 ? (
+            <div className="rounded-xl border border-border/50 bg-muted/30 p-6 text-base text-muted-foreground">
+              {signalFilter === "pending" && episodeStats.data?.total === 0
+                ? "No signals yet. Start processing above and check back after the pipeline finishes."
+                : signalFilter === "pending"
+                  ? "No pending signals. All signals have been processed."
+                  : signalFilter === "actioned"
+                    ? "No processed signals yet. Start reviewing signals to see them here."
+                    : "No signals found for this episode."}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {relatedSignals.map((signal) => {
+                const isPending = pendingSignalId === signal.id;
+                const isSignalPending = !signal.userAction;
+                const speakerDisplay = signal.speakerName?.trim()
+                  ? signal.speakerName
+                  : signal.chunk.speaker?.trim()
+                    ? `Speaker ${signal.chunk.speaker}`
+                    : "Unknown speaker";
+                const publishedLabel = formatDate(signal.episode?.publishedAt);
+                const hasSnip = hasSnips.data?.[signal.id] ?? false;
+                const metadata: SignalCardMetadataItem[] = [];
+                if (publishedLabel) {
+                  metadata.push({ label: publishedLabel });
+                }
+                if (
+                  signal.relevanceScore !== null &&
+                  signal.relevanceScore !== undefined
+                ) {
+                  metadata.push({
+                    icon: <HugeiconsIcon icon={BodyPartMuscleIcon} size={12} />,
+                    label: `${Math.round(signal.relevanceScore * 100)}%`,
+                  });
+                }
+                if (hasSnip) {
+                  metadata.push({
+                    icon: <HugeiconsIcon icon={FlashIcon} size={12} />,
+                    label: "Snipped",
+                  });
+                }
+                const audioSource = signal.episode?.audioUrl
+                  ? {
+                      id: `${signal.id}-${signal.chunk.id}`,
+                      title: signal.episode?.title ?? signal.title ?? "Episode",
+                      subtitle: speakerDisplay,
+                      audioUrl: signal.episode.audioUrl,
+                      startTimeSec: signal.chunk.startTimeSec ?? undefined,
+                      endTimeSec: signal.chunk.endTimeSec ?? undefined,
+                      durationSec: signal.episode.durationSec ?? undefined,
+                    }
+                  : undefined;
+                const highlightContent =
+                  signal.excerpt &&
+                  signal.excerpt.trim() !== signal.chunk.content.trim()
+                    ? signal.excerpt
+                    : null;
+                return (
+                  <SignalCard
+                    key={signal.id}
+                    className="rounded-2xl"
+                    chunkContent={signal.chunk.content}
+                    highlightContent={highlightContent}
+                    speakerLabel={speakerDisplay}
+                    startTimeSec={signal.chunk.startTimeSec ?? null}
+                    endTimeSec={signal.chunk.endTimeSec ?? null}
+                    metadata={metadata}
+                    audio={audioSource}
+                    snipButton={
+                      <SnipDialog
+                        signalId={signal.id}
+                        defaultBack={highlightContent || signal.chunk.content}
+                        trigger={
+                          <Button variant="outline" size="sm">
+                            <HugeiconsIcon icon={Scissor01Icon} size={16} />
+                            Snip
+                          </Button>
+                        }
+                      />
+                    }
+                  >
+                    {isSignalPending ? (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 sm:flex-none"
+                          onClick={() => handleAction(signal.id, "skipped")}
+                          disabled={isPending}
+                        >
+                          {isPending && pendingAction === "skipped" ? (
+                            <HugeiconsIcon
+                              icon={Loading03Icon}
+                              size={16}
+                              className="animate-spin"
+                            />
+                          ) : (
+                            <HugeiconsIcon
+                              icon={BookmarkRemove01Icon}
+                              size={16}
+                            />
+                          )}
+                          Skip
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="flex-1 sm:flex-none"
+                          onClick={() => handleAction(signal.id, "saved")}
+                          disabled={isPending}
+                        >
+                          {isPending && pendingAction === "saved" ? (
+                            <HugeiconsIcon
+                              icon={Loading03Icon}
+                              size={16}
+                              className="animate-spin"
+                            />
+                          ) : (
+                            <HugeiconsIcon
+                              icon={BookmarkCheck01Icon}
+                              size={16}
+                            />
+                          )}
+                          Save
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Badge
+                          variant={
+                            signal.userAction === "saved"
+                              ? "default"
+                              : "secondary"
+                          }
+                          className="text-xs"
+                        >
+                          {signal.userAction === "saved" ? "Saved" : "Skipped"}
+                        </Badge>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 sm:flex-none"
+                          onClick={() => handleUndo(signal.id)}
+                          disabled={isPending}
+                        >
+                          {isPending ? (
+                            <HugeiconsIcon
+                              icon={Loading03Icon}
+                              size={16}
+                              className="animate-spin"
+                            />
+                          ) : (
+                            <HugeiconsIcon icon={Undo02Icon} size={16} />
+                          )}
+                          Undo
+                        </Button>
+                      </>
+                    )}
+                  </SignalCard>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
     </main>
+  );
+}
+
+function LoadingState() {
+  return (
+    <div className="animate-pulse space-y-4">
+      <div className="h-6 w-48 bg-muted rounded" />
+      <div className="h-4 w-full bg-muted rounded" />
+      <div className="h-4 w-full bg-muted rounded" />
+      <div className="h-4 w-3/4 bg-muted rounded" />
+    </div>
   );
 }
 
@@ -1639,7 +1836,6 @@ function formatTimestamp(seconds: number): string {
 
 function CopyTranscriptButton({
   transcriptUrl,
-  audioUrl,
   speakerMappings,
 }: {
   transcriptUrl?: string | null;
@@ -1691,49 +1887,22 @@ function CopyTranscriptButton({
   };
 
   return (
-    <ButtonGroup>
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={handleCopyTranscript}
-        disabled={transcript.isFetching}
-      >
-        {transcript.isFetching ? (
-          <HugeiconsIcon
-            icon={Loading03Icon}
-            size={16}
-            className="animate-spin"
-          />
-        ) : (
-          <HugeiconsIcon icon={Copy01Icon} size={16} />
-        )}
-        Copy Transcript
-      </Button>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm">
-            <ChevronDown className="size-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          {transcriptUrl && (
-            <DropdownMenuItem asChild>
-              <a href={transcriptUrl} target="_blank" rel="noopener noreferrer">
-                <HugeiconsIcon icon={Download01Icon} className="size-4" />
-                Download Transcript
-              </a>
-            </DropdownMenuItem>
-          )}
-          {audioUrl && (
-            <DropdownMenuItem asChild>
-              <a href={audioUrl} target="_blank" rel="noopener noreferrer">
-                <HugeiconsIcon icon={Download01Icon} className="size-4" />
-                Download Audio
-              </a>
-            </DropdownMenuItem>
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </ButtonGroup>
+    <Button
+      size="sm"
+      variant="outline"
+      onClick={handleCopyTranscript}
+      disabled={transcript.isFetching}
+    >
+      {transcript.isFetching ? (
+        <HugeiconsIcon
+          icon={Loading03Icon}
+          size={16}
+          className="animate-spin"
+        />
+      ) : (
+        <HugeiconsIcon icon={Copy01Icon} size={16} />
+      )}
+      Copy Transcript
+    </Button>
   );
 }

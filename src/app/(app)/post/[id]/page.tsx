@@ -17,10 +17,12 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { parseAsStringEnum, useQueryState } from "nuqs";
 import { use, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { Streamdown } from "streamdown";
 
 type SignalAction = "saved" | "skipped";
 
@@ -39,6 +41,21 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import { Item, ItemFooter } from "@/components/ui/item";
 import {
   Select,
   SelectContent,
@@ -60,6 +77,13 @@ export default function PostDetailPage(props: {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const params = use(props.params);
+  const [activeTab, setActiveTab] = useQueryState(
+    "tab",
+    parseAsStringEnum<"summary" | "signals">([
+      "summary",
+      "signals",
+    ]).withDefault("summary"),
+  );
   const [signalFilter, setSignalFilter] = useQueryState(
     "filter",
     parseAsStringEnum<"all" | "pending" | "actioned">([
@@ -104,6 +128,31 @@ export default function PostDetailPage(props: {
   const articleStats = useQuery(
     trpc.signals.articleStats.queryOptions({
       articleId: params.id,
+    }),
+  );
+
+  const summary = useQuery({
+    ...trpc.articles.getSummary.queryOptions({ articleId: params.id }),
+    enabled: activeTab === "summary",
+    refetchInterval: (query) => {
+      const hasSummary = query.state.data?.summaryGeneratedAt;
+      const isGenerating =
+        generateSummary.isPending || article.data?.status === "processing";
+      return !hasSummary && isGenerating ? 3000 : false;
+    },
+  });
+
+  const generateSummary = useMutation(
+    trpc.articles.generateSummary.mutationOptions({
+      onSuccess: () => {
+        toast.success(
+          "Summary generation started! This usually takes 10-30 seconds.",
+        );
+        summary.refetch();
+      },
+      onError: (error) => {
+        toast.error(`Failed to generate summary: ${error.message}`);
+      },
     }),
   );
 
@@ -428,17 +477,12 @@ Content: ${content}
           </div>
 
           <div className="flex gap-2 flex-wrap">
-            <Button variant="outline" size="sm" asChild>
-              <Link href={`/post/${params.id}/summary`}>
-                <HugeiconsIcon icon={SparklesIcon} size={16} />
-                View Summary
-              </Link>
-            </Button>
-
-            <CopyArticleContentButton
-              articleId={params.id}
-              articleUrl={articleData?.url}
-            />
+            <ButtonGroup>
+              <CopyArticleContentButton
+                articleId={params.id}
+                articleUrl={articleData?.url}
+              />
+            </ButtonGroup>
 
             {!isProcessed && (
               <Dialog
@@ -725,278 +769,401 @@ Content: ${content}
         </div>
       )}
 
-      <section className="space-y-3 sm:space-y-4">
-        <div className="flex flex-col gap-3">
-          <h2 className="text-base sm:text-lg font-semibold font-serif">
-            Signals from this Article
-          </h2>
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => setActiveTab(v as typeof activeTab)}
+        className="mt-6"
+      >
+        <TabsList className="w-full">
+          <TabsTrigger value="summary" className="flex-1">
+            Summary
+          </TabsTrigger>
+          <TabsTrigger value="signals" className="flex-1">
+            Signals{" "}
+            <Badge variant="outline" className="ml-1.5">
+              {articleStats.data?.total ?? 0}
+            </Badge>
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
 
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div className="flex items-center justify-between gap-2">
-              <Tabs
-                value={signalFilter}
-                onValueChange={(v) => setSignalFilter(v as typeof signalFilter)}
-              >
-                <TabsList>
-                  <TabsTrigger value="pending">
-                    Pending{" "}
-                    <span className="ml-1 text-muted-foreground">
-                      {articleStats.data?.pending ?? 0}
-                    </span>
-                  </TabsTrigger>
-                  <TabsTrigger value="actioned">
-                    Processed{" "}
-                    <span className="ml-1 text-muted-foreground">
-                      {articleStats.data
-                        ? articleStats.data.saved + articleStats.data.skipped
-                        : 0}
-                    </span>
-                  </TabsTrigger>
-                  <TabsTrigger value="all">
-                    All{" "}
-                    <span className="ml-1 text-muted-foreground">
-                      {articleStats.data?.total ?? 0}
-                    </span>
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
-
-              {relatedSignals.length > 0 && (
+      {activeTab === "summary" && (
+        <section className="space-y-4">
+          {summary.isLoading ? (
+            <LoadingState />
+          ) : summary.data ? (
+            <Item className="space-y-6" variant="muted">
+              <Streamdown className="text-base">
+                {summary.data.markdownContent}
+              </Streamdown>
+              <ItemFooter className="pt-6 border-t flex gap-3 justify-start">
                 <Button
                   variant="outline"
-                  size="icon-sm"
-                  onClick={handleCopySignals}
-                  className="sm:hidden"
-                >
-                  <HugeiconsIcon icon={Copy01Icon} size={16} />
-                  <span className="sr-only">Copy Signals</span>
-                </Button>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2">
-              {signalFilter === "actioned" && (
-                <Select
-                  value={actionFilter}
-                  onValueChange={(v) =>
-                    setActionFilter(v as "all" | "saved" | "skipped")
+                  onClick={() =>
+                    generateSummary.mutate({ articleId: params.id })
                   }
+                  disabled={generateSummary.isPending}
                 >
-                  <SelectTrigger size="sm" className="w-[140px]">
-                    <SelectValue placeholder="Filter" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">
-                      All{" "}
-                      <span className="text-xs font-mono text-muted-foreground">
-                        (
-                        {articleStats.data &&
-                        articleStats.data.saved + articleStats.data.skipped > 0
-                          ? articleStats.data.saved + articleStats.data.skipped
-                          : 0}
-                        )
-                      </span>
-                    </SelectItem>
-                    <SelectItem value="saved">
-                      Saved{" "}
-                      <span className="text-xs font-mono text-muted-foreground">
-                        ({articleStats.data?.saved ?? 0})
-                      </span>
-                    </SelectItem>
-                    <SelectItem value="skipped">
-                      Skipped{" "}
-                      <span className="text-xs font-mono text-muted-foreground">
-                        ({articleStats.data?.skipped ?? 0})
-                      </span>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
-              {relatedSignals.length > 0 && (
-                <Button
-                  variant="outline"
-                  size="icon-sm"
-                  onClick={handleCopySignals}
-                  className="hidden sm:flex sm:size-auto sm:h-8 sm:px-3"
-                >
-                  <HugeiconsIcon icon={Copy01Icon} size={16} />
-                  <span className="hidden sm:inline">Copy Signals</span>
-                </Button>
-              )}
-              <Select
-                value={selectedConfidence}
-                onValueChange={(value) =>
-                  setSelectedConfidence(
-                    value as "all" | "high" | "medium" | "low",
-                  )
-                }
-              >
-                <SelectTrigger size="sm" className="w-[180px]">
-                  <SelectValue placeholder="Confidence" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Confidence</SelectItem>
-                  <SelectItem value="high">High (≥65%)</SelectItem>
-                  <SelectItem value="medium">Medium (40-65%)</SelectItem>
-                  <SelectItem value="low">Low (&lt;40%)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </div>
-
-        {signals.isLoading ? (
-          <div className="grid gap-3 sm:grid-cols-2">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <div
-                key={index}
-                className="animate-pulse rounded-xl border border-border/60 bg-muted/40 p-4"
-              >
-                <div className="h-4 w-1/2 rounded bg-muted-foreground/30" />
-                <div className="mt-3 h-3 w-full rounded bg-muted-foreground/20" />
-                <div className="mt-2 h-3 w-3/4 rounded bg-muted-foreground/20" />
-              </div>
-            ))}
-          </div>
-        ) : signals.error ? (
-          <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-base text-destructive">
-            Unable to load related signals.
-          </div>
-        ) : relatedSignals.length === 0 ? (
-          <div className="rounded-xl border border-border/50 bg-muted/30 p-6 text-base text-muted-foreground">
-            {signalFilter === "pending" && articleStats.data?.total === 0
-              ? "No signals yet. Start processing above and check back after the pipeline finishes."
-              : signalFilter === "pending"
-                ? "No pending signals. All signals have been processed."
-                : signalFilter === "actioned"
-                  ? "No processed signals yet. Start reviewing signals to see them here."
-                  : "No signals found for this article."}
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {relatedSignals.map((signal) => {
-              const isPending = pendingSignalId === signal.id;
-              const isSignalPending = !signal.userAction;
-              const publishedLabel = formatDate(signal.article?.publishedAt);
-              const metadata: SignalCardMetadataItem[] = [];
-              if (publishedLabel) {
-                metadata.push({ label: publishedLabel });
-              }
-              if (
-                signal.relevanceScore !== null &&
-                signal.relevanceScore !== undefined
-              ) {
-                metadata.push({
-                  icon: <HugeiconsIcon icon={BodyPartMuscleIcon} size={12} />,
-                  label: `${Math.round(signal.relevanceScore * 100)}%`,
-                });
-              }
-              const highlightContent =
-                signal.excerpt &&
-                signal.excerpt.trim() !== signal.chunk.content.trim()
-                  ? signal.excerpt
-                  : null;
-              return (
-                <SignalCard
-                  key={signal.id}
-                  className="rounded-2xl"
-                  chunkContent={signal.chunk.content}
-                  highlightContent={highlightContent}
-                  metadata={metadata}
-                  renderMarkdown
-                  snipButton={
-                    <SnipDialog
-                      signalId={signal.id}
-                      defaultBack={highlightContent || signal.chunk.content}
-                      trigger={
-                        <Button variant="outline" size="sm">
-                          <HugeiconsIcon icon={Scissor01Icon} size={16} />
-                          Snip
-                        </Button>
-                      }
+                  {generateSummary.isPending ? (
+                    <HugeiconsIcon
+                      icon={Loading03Icon}
+                      size={16}
+                      className="animate-spin"
                     />
+                  ) : (
+                    <HugeiconsIcon icon={SparklesIcon} size={16} />
+                  )}
+                  Regenerate
+                </Button>
+              </ItemFooter>
+            </Item>
+          ) : (
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <HugeiconsIcon icon={SparklesIcon} size={20} />
+                </EmptyMedia>
+                <EmptyTitle>Quick Overview Summary</EmptyTitle>
+                <EmptyDescription>
+                  {!articleData?.transcriptChunks?.length
+                    ? "Process this article first to generate a bite-sized summary with key takeaways, examples, lessons, and impactful quotes."
+                    : "Generate a bite-sized summary with key takeaways, examples, lessons, and impactful quotes from this article."}
+                </EmptyDescription>
+              </EmptyHeader>
+
+              <EmptyContent>
+                <Button
+                  size="lg"
+                  onClick={() =>
+                    !articleData?.transcriptChunks?.length
+                      ? processArticle.mutate({ articleId: params.id })
+                      : generateSummary.mutate({ articleId: params.id })
                   }
+                  disabled={generateSummary.isPending || isProcessing}
                 >
-                  {isSignalPending ? (
+                  {generateSummary.isPending || isProcessing ? (
                     <>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex-1 sm:flex-none"
-                        onClick={() => handleAction(signal.id, "skipped")}
-                        disabled={isPending}
-                      >
-                        {isPending && pendingAction === "skipped" ? (
-                          <HugeiconsIcon
-                            icon={Loading03Icon}
-                            size={16}
-                            className="animate-spin"
-                          />
-                        ) : (
-                          <HugeiconsIcon
-                            icon={BookmarkRemove01Icon}
-                            size={16}
-                          />
-                        )}
-                        Skip
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="flex-1 sm:flex-none"
-                        onClick={() => handleAction(signal.id, "saved")}
-                        disabled={isPending}
-                      >
-                        {isPending && pendingAction === "saved" ? (
-                          <HugeiconsIcon
-                            icon={Loading03Icon}
-                            size={16}
-                            className="animate-spin"
-                          />
-                        ) : (
-                          <HugeiconsIcon icon={BookmarkCheck01Icon} size={16} />
-                        )}
-                        Save
-                      </Button>
+                      <HugeiconsIcon
+                        icon={Loading03Icon}
+                        size={16}
+                        className="animate-spin"
+                      />
+                      {!articleData?.transcriptChunks?.length
+                        ? "Processing & Generating..."
+                        : "Generating Summary..."}
                     </>
                   ) : (
                     <>
-                      <Badge
-                        variant={
-                          signal.userAction === "saved"
-                            ? "default"
-                            : "secondary"
-                        }
-                        className="text-xs"
-                      >
-                        {signal.userAction === "saved" ? "Saved" : "Skipped"}
-                      </Badge>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex-1 sm:flex-none"
-                        onClick={() => handleUndo(signal.id)}
-                        disabled={isPending}
-                      >
-                        {isPending ? (
-                          <HugeiconsIcon
-                            icon={Loading03Icon}
-                            size={16}
-                            className="animate-spin"
-                          />
-                        ) : (
-                          <HugeiconsIcon icon={Undo02Icon} size={16} />
-                        )}
-                        Undo
-                      </Button>
+                      <HugeiconsIcon icon={SparklesIcon} size={16} />
+                      {!articleData?.transcriptChunks?.length
+                        ? "Process & Generate Summary"
+                        : "Generate Summary"}
                     </>
                   )}
-                </SignalCard>
-              );
-            })}
+                </Button>
+
+                {(generateSummary.isPending || isProcessing) && (
+                  <p className="text-sm text-muted-foreground">
+                    This usually takes{" "}
+                    {!articleData?.transcriptChunks?.length
+                      ? "1-3 minutes"
+                      : "10-30 seconds"}
+                  </p>
+                )}
+              </EmptyContent>
+            </Empty>
+          )}
+        </section>
+      )}
+
+      {activeTab === "signals" && (
+        <section className="space-y-3 sm:space-y-4">
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="flex items-center justify-between gap-2">
+                <Tabs
+                  value={signalFilter}
+                  onValueChange={(v) =>
+                    setSignalFilter(v as typeof signalFilter)
+                  }
+                >
+                  <TabsList>
+                    <TabsTrigger value="pending">
+                      Pending{" "}
+                      <span className="ml-1 text-muted-foreground">
+                        {articleStats.data?.pending ?? 0}
+                      </span>
+                    </TabsTrigger>
+                    <TabsTrigger value="actioned">
+                      Processed{" "}
+                      <span className="ml-1 text-muted-foreground">
+                        {articleStats.data
+                          ? articleStats.data.saved + articleStats.data.skipped
+                          : 0}
+                      </span>
+                    </TabsTrigger>
+                    <TabsTrigger value="all">
+                      All{" "}
+                      <span className="ml-1 text-muted-foreground">
+                        {articleStats.data?.total ?? 0}
+                      </span>
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+
+                {relatedSignals.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    onClick={handleCopySignals}
+                    className="sm:hidden"
+                  >
+                    <HugeiconsIcon icon={Copy01Icon} size={16} />
+                    <span className="sr-only">Copy Signals</span>
+                  </Button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                {signalFilter === "actioned" && (
+                  <Select
+                    value={actionFilter}
+                    onValueChange={(v) =>
+                      setActionFilter(v as "all" | "saved" | "skipped")
+                    }
+                  >
+                    <SelectTrigger size="sm" className="w-[140px]">
+                      <SelectValue placeholder="Filter" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">
+                        All{" "}
+                        <span className="text-xs font-mono text-muted-foreground">
+                          (
+                          {articleStats.data &&
+                          articleStats.data.saved + articleStats.data.skipped >
+                            0
+                            ? articleStats.data.saved +
+                              articleStats.data.skipped
+                            : 0}
+                          )
+                        </span>
+                      </SelectItem>
+                      <SelectItem value="saved">
+                        Saved{" "}
+                        <span className="text-xs font-mono text-muted-foreground">
+                          ({articleStats.data?.saved ?? 0})
+                        </span>
+                      </SelectItem>
+                      <SelectItem value="skipped">
+                        Skipped{" "}
+                        <span className="text-xs font-mono text-muted-foreground">
+                          ({articleStats.data?.skipped ?? 0})
+                        </span>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+                {relatedSignals.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    onClick={handleCopySignals}
+                    className="hidden sm:flex sm:size-auto sm:h-8 sm:px-3"
+                  >
+                    <HugeiconsIcon icon={Copy01Icon} size={16} />
+                    <span className="hidden sm:inline">Copy Signals</span>
+                  </Button>
+                )}
+                <Select
+                  value={selectedConfidence}
+                  onValueChange={(value) =>
+                    setSelectedConfidence(
+                      value as "all" | "high" | "medium" | "low",
+                    )
+                  }
+                >
+                  <SelectTrigger size="sm" className="w-[180px]">
+                    <SelectValue placeholder="Confidence" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Confidence</SelectItem>
+                    <SelectItem value="high">High (≥65%)</SelectItem>
+                    <SelectItem value="medium">Medium (40-65%)</SelectItem>
+                    <SelectItem value="low">Low (&lt;40%)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </div>
-        )}
-      </section>
+
+          {signals.isLoading ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div
+                  key={index}
+                  className="animate-pulse rounded-xl border border-border/60 bg-muted/40 p-4"
+                >
+                  <div className="h-4 w-1/2 rounded bg-muted-foreground/30" />
+                  <div className="mt-3 h-3 w-full rounded bg-muted-foreground/20" />
+                  <div className="mt-2 h-3 w-3/4 rounded bg-muted-foreground/20" />
+                </div>
+              ))}
+            </div>
+          ) : signals.error ? (
+            <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-base text-destructive">
+              Unable to load related signals.
+            </div>
+          ) : relatedSignals.length === 0 ? (
+            <div className="rounded-xl border border-border/50 bg-muted/30 p-6 text-base text-muted-foreground">
+              {signalFilter === "pending" && articleStats.data?.total === 0
+                ? "No signals yet. Start processing above and check back after the pipeline finishes."
+                : signalFilter === "pending"
+                  ? "No pending signals. All signals have been processed."
+                  : signalFilter === "actioned"
+                    ? "No processed signals yet. Start reviewing signals to see them here."
+                    : "No signals found for this article."}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {relatedSignals.map((signal) => {
+                const isPending = pendingSignalId === signal.id;
+                const isSignalPending = !signal.userAction;
+                const publishedLabel = formatDate(signal.article?.publishedAt);
+                const metadata: SignalCardMetadataItem[] = [];
+                if (publishedLabel) {
+                  metadata.push({ label: publishedLabel });
+                }
+                if (
+                  signal.relevanceScore !== null &&
+                  signal.relevanceScore !== undefined
+                ) {
+                  metadata.push({
+                    icon: <HugeiconsIcon icon={BodyPartMuscleIcon} size={12} />,
+                    label: `${Math.round(signal.relevanceScore * 100)}%`,
+                  });
+                }
+                const highlightContent =
+                  signal.excerpt &&
+                  signal.excerpt.trim() !== signal.chunk.content.trim()
+                    ? signal.excerpt
+                    : null;
+                return (
+                  <SignalCard
+                    key={signal.id}
+                    className="rounded-2xl"
+                    chunkContent={signal.chunk.content}
+                    highlightContent={highlightContent}
+                    metadata={metadata}
+                    renderMarkdown
+                    snipButton={
+                      <SnipDialog
+                        signalId={signal.id}
+                        defaultBack={highlightContent || signal.chunk.content}
+                        trigger={
+                          <Button variant="outline" size="sm">
+                            <HugeiconsIcon icon={Scissor01Icon} size={16} />
+                            Snip
+                          </Button>
+                        }
+                      />
+                    }
+                  >
+                    {isSignalPending ? (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 sm:flex-none"
+                          onClick={() => handleAction(signal.id, "skipped")}
+                          disabled={isPending}
+                        >
+                          {isPending && pendingAction === "skipped" ? (
+                            <HugeiconsIcon
+                              icon={Loading03Icon}
+                              size={16}
+                              className="animate-spin"
+                            />
+                          ) : (
+                            <HugeiconsIcon
+                              icon={BookmarkRemove01Icon}
+                              size={16}
+                            />
+                          )}
+                          Skip
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="flex-1 sm:flex-none"
+                          onClick={() => handleAction(signal.id, "saved")}
+                          disabled={isPending}
+                        >
+                          {isPending && pendingAction === "saved" ? (
+                            <HugeiconsIcon
+                              icon={Loading03Icon}
+                              size={16}
+                              className="animate-spin"
+                            />
+                          ) : (
+                            <HugeiconsIcon
+                              icon={BookmarkCheck01Icon}
+                              size={16}
+                            />
+                          )}
+                          Save
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Badge
+                          variant={
+                            signal.userAction === "saved"
+                              ? "default"
+                              : "secondary"
+                          }
+                          className="text-xs"
+                        >
+                          {signal.userAction === "saved" ? "Saved" : "Skipped"}
+                        </Badge>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 sm:flex-none"
+                          onClick={() => handleUndo(signal.id)}
+                          disabled={isPending}
+                        >
+                          {isPending ? (
+                            <HugeiconsIcon
+                              icon={Loading03Icon}
+                              size={16}
+                              className="animate-spin"
+                            />
+                          ) : (
+                            <HugeiconsIcon icon={Undo02Icon} size={16} />
+                          )}
+                          Undo
+                        </Button>
+                      </>
+                    )}
+                  </SignalCard>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
     </main>
+  );
+}
+
+function LoadingState() {
+  return (
+    <div className="animate-pulse space-y-4">
+      <div className="h-6 w-48 bg-muted rounded" />
+      <div className="h-4 w-full bg-muted rounded" />
+      <div className="h-4 w-full bg-muted rounded" />
+      <div className="h-4 w-3/4 bg-muted rounded" />
+    </div>
   );
 }
 
@@ -1043,19 +1210,28 @@ function CopyArticleContentButton({
   };
 
   return (
-    <ButtonGroup>
-      {articleUrl && (
-        <Button size="sm" variant="outline" asChild>
-          <Link href={articleUrl} target="_blank" rel="noopener noreferrer">
-            <HugeiconsIcon icon={Link01Icon} size={16} />
-            Read Article
-          </Link>
-        </Button>
-      )}
+    <>
       <Button size="sm" variant="outline" onClick={handleCopyContent}>
         <HugeiconsIcon icon={Copy01Icon} size={16} />
         Copy Content
       </Button>
-    </ButtonGroup>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button size="sm" variant="outline">
+            <ChevronDown className="size-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {articleUrl && (
+            <DropdownMenuItem asChild>
+              <Link href={articleUrl} target="_blank" rel="noopener noreferrer">
+                <HugeiconsIcon icon={Link01Icon} size={16} />
+                Read Article
+              </Link>
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
   );
 }

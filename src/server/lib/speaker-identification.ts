@@ -207,7 +207,7 @@ export async function identifyEpisodeSpeakers({
 
   try {
     const result = await generateText({
-      model: openrouter("x-ai/grok-4-fast:free"),
+      model: openrouter("openai/gpt-4.1-mini"),
       system: `You are an expert at identifying podcast speakers from episode descriptions.
 
 Your task is to extract speaker names and map them to speaker numbers (0, 1, 2, etc.) based on the episode context.
