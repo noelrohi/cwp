@@ -218,7 +218,7 @@ export function SnipDialog({
                       <FormControl>
                         <Textarea
                           placeholder="What's the key insight here?"
-                          className="min-h-[120px]"
+                          className="min-h-[80px] max-h-[120px] overflow-y-auto resize-none"
                           maxLength={500}
                           {...field}
                         />
@@ -246,7 +246,7 @@ export function SnipDialog({
                         <FormControl>
                           <Textarea
                             placeholder="Your snipped content or answer"
-                            className="min-h-[300px] md:min-h-[400px]"
+                            className="min-h-[200px] max-h-[300px] md:min-h-[250px] md:max-h-[350px] overflow-y-auto resize-none"
                             maxLength={5000}
                             {...field}
                           />
@@ -273,7 +273,7 @@ export function SnipDialog({
                         <FormControl>
                           <Textarea
                             placeholder="What's the key insight here?"
-                            className="min-h-[120px]"
+                            className="min-h-[80px] max-h-[120px] overflow-y-auto resize-none"
                             maxLength={500}
                             {...field}
                           />
