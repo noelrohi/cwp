@@ -181,10 +181,16 @@ export default function PostDetailPage(props: {
       currentStatus &&
       currentStatus !== "processing"
     ) {
-      // Processing completed, refetch everything
-      article.refetch();
-      signals.refetch();
-      articleStats.refetch();
+      // Processing completed, invalidate queries
+      queryClient.invalidateQueries({
+        queryKey: trpc.articles.getById.queryKey({ id: params.id }),
+      });
+      queryClient.invalidateQueries({
+        queryKey: trpc.signals.byArticle.queryKey(),
+      });
+      queryClient.invalidateQueries({
+        queryKey: trpc.signals.articleStats.queryKey(),
+      });
 
       if (currentStatus === "processed") {
         toast.success("Article processing completed");
@@ -200,18 +206,26 @@ export default function PostDetailPage(props: {
     articleStatus.data?.status,
     articleStatus.data?.errorMessage,
     article.data?.status,
-    article.refetch,
-    signals.refetch,
-    articleStats.refetch,
+    params.id,
+    queryClient,
+    trpc.articles.getById,
+    trpc.signals.byArticle,
+    trpc.signals.articleStats,
   ]);
 
   const processArticle = useMutation(
     trpc.articles.processArticle.mutationOptions({
       onSuccess: () => {
         toast.success("Article processing started");
-        article.refetch();
-        signals.refetch();
-        articleStats.refetch();
+        queryClient.invalidateQueries({
+          queryKey: trpc.articles.getById.queryKey({ id: params.id }),
+        });
+        queryClient.invalidateQueries({
+          queryKey: trpc.signals.byArticle.queryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: trpc.signals.articleStats.queryKey(),
+        });
         setShowProcessDialog(false);
       },
       onError: (error) => {
@@ -227,9 +241,15 @@ export default function PostDetailPage(props: {
         toast.success(
           "Article reprocessing started - all existing data will be replaced",
         );
-        article.refetch();
-        signals.refetch();
-        articleStats.refetch();
+        queryClient.invalidateQueries({
+          queryKey: trpc.articles.getById.queryKey({ id: params.id }),
+        });
+        queryClient.invalidateQueries({
+          queryKey: trpc.signals.byArticle.queryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: trpc.signals.articleStats.queryKey(),
+        });
         setShowReprocessDialog(false);
       },
       onError: (error) => {
@@ -243,8 +263,12 @@ export default function PostDetailPage(props: {
     trpc.articles.regenerateSignals.mutationOptions({
       onSuccess: () => {
         toast.success("Signal regeneration started");
-        signals.refetch();
-        articleStats.refetch();
+        queryClient.invalidateQueries({
+          queryKey: trpc.signals.byArticle.queryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: trpc.signals.articleStats.queryKey(),
+        });
         setShowRegenerateDialog(false);
       },
       onError: (error) => {

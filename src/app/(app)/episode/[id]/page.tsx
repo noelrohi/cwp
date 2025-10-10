@@ -177,9 +177,15 @@ export default function EpisodeDetailPage(props: {
     trpc.episodes.processEpisode.mutationOptions({
       onSuccess: () => {
         toast.success("Episode processing started");
-        episode.refetch();
-        signals.refetch();
-        episodeStats.refetch();
+        queryClient.invalidateQueries({
+          queryKey: trpc.episodes.get.queryKey({ episodeId: params.id }),
+        });
+        queryClient.invalidateQueries({
+          queryKey: trpc.signals.byEpisode.queryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: trpc.signals.episodeStats.queryKey(),
+        });
         setShowProcessDialog(false);
       },
       onError: (error) => {
@@ -193,9 +199,15 @@ export default function EpisodeDetailPage(props: {
     trpc.episodes.generateSignals.mutationOptions({
       onSuccess: () => {
         toast.success("Signal generation started");
-        episode.refetch();
-        signals.refetch();
-        episodeStats.refetch();
+        queryClient.invalidateQueries({
+          queryKey: trpc.episodes.get.queryKey({ episodeId: params.id }),
+        });
+        queryClient.invalidateQueries({
+          queryKey: trpc.signals.byEpisode.queryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: trpc.signals.episodeStats.queryKey(),
+        });
         setShowGenerateDialog(false);
       },
       onError: (error) => {
@@ -211,9 +223,15 @@ export default function EpisodeDetailPage(props: {
         toast.success(
           "Episode reprocessing started - all existing data will be replaced",
         );
-        episode.refetch();
-        signals.refetch();
-        episodeStats.refetch();
+        queryClient.invalidateQueries({
+          queryKey: trpc.episodes.get.queryKey({ episodeId: params.id }),
+        });
+        queryClient.invalidateQueries({
+          queryKey: trpc.signals.byEpisode.queryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: trpc.signals.episodeStats.queryKey(),
+        });
         setShowReprocessDialog(false);
       },
       onError: (error) => {
@@ -227,8 +245,12 @@ export default function EpisodeDetailPage(props: {
     trpc.episodes.regenerateSignals.mutationOptions({
       onSuccess: () => {
         toast.success("Signal regeneration started");
-        signals.refetch();
-        episodeStats.refetch();
+        queryClient.invalidateQueries({
+          queryKey: trpc.signals.byEpisode.queryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: trpc.signals.episodeStats.queryKey(),
+        });
         setShowRegenerateDialog(false);
       },
       onError: (error) => {
