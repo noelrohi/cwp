@@ -328,7 +328,7 @@ export default function Dashboard() {
       {totalContent > 0 ? (
         <div className="space-y-6 sm:space-y-8">
           {Object.entries(groupedContent)
-            .sort(([a], [b]) => {
+            .sort(([a, aItems], [b, bItems]) => {
               // Sort by priority: Today, Yesterday, then chronologically
               const order = { Today: 0, Yesterday: 1 };
               const aOrder = order[a as keyof typeof order] ?? 2;
@@ -336,9 +336,13 @@ export default function Dashboard() {
 
               if (aOrder !== bOrder) return aOrder - bOrder;
               if (aOrder === 2 && bOrder === 2) {
-                // For other dates, sort by the actual date (most recent first)
-                const aDate = new Date(a);
-                const bDate = new Date(b);
+                // For other dates, use the actual date from the first item in each group
+                const aDate = aItems[0]?.publishedAt
+                  ? new Date(aItems[0].publishedAt)
+                  : new Date(0);
+                const bDate = bItems[0]?.publishedAt
+                  ? new Date(bItems[0].publishedAt)
+                  : new Date(0);
                 return bDate.getTime() - aDate.getTime();
               }
               return 0;
@@ -349,19 +353,29 @@ export default function Dashboard() {
                   {dateGroup}
                 </h3>
                 <div className="space-y-0">
-                  {items.map((item) => {
-                    if (item.type === "episode" && item.episode) {
-                      return (
-                        <EpisodeCard key={item.id} episode={item.episode} />
-                      );
-                    }
-                    if (item.type === "article" && item.article) {
-                      return (
-                        <ArticleCard key={item.id} article={item.article} />
-                      );
-                    }
-                    return null;
-                  })}
+                  {items
+                    .sort((a, b) => {
+                      const aDate = a.publishedAt
+                        ? new Date(a.publishedAt).getTime()
+                        : 0;
+                      const bDate = b.publishedAt
+                        ? new Date(b.publishedAt).getTime()
+                        : 0;
+                      return bDate - aDate;
+                    })
+                    .map((item) => {
+                      if (item.type === "episode" && item.episode) {
+                        return (
+                          <EpisodeCard key={item.id} episode={item.episode} />
+                        );
+                      }
+                      if (item.type === "article" && item.article) {
+                        return (
+                          <ArticleCard key={item.id} article={item.article} />
+                        );
+                      }
+                      return null;
+                    })}
                 </div>
               </div>
             ))}
