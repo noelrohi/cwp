@@ -13,6 +13,14 @@ import { use } from "react";
 import { toast } from "sonner";
 import { Streamdown } from "streamdown";
 import { Button } from "@/components/ui/button";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { useTRPC } from "@/server/trpc/client";
 import { Item, ItemFooter } from "../../../../../components/ui/item";
 
@@ -22,8 +30,25 @@ export default function ArticleSummaryPage(props: {
   const trpc = useTRPC();
   const params = use(props.params);
 
-  const article = useQuery(
-    trpc.articles.getById.queryOptions({ id: params.id }),
+  const article = useQuery({
+    ...trpc.articles.getById.queryOptions({ id: params.id }),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === "processing" ? 2000 : false;
+    },
+  });
+
+  const processArticle = useMutation(
+    trpc.articles.processArticle.mutationOptions({
+      onSuccess: () => {
+        toast.success("Article processing started");
+        article.refetch();
+        summary.refetch();
+      },
+      onError: (error) => {
+        toast.error(`Failed to process article: ${error.message}`);
+      },
+    }),
   );
 
   const generateSummary = useMutation(
@@ -44,7 +69,11 @@ export default function ArticleSummaryPage(props: {
     refetchInterval: (query) => {
       const hasSummary =
         query.state.data !== null && query.state.data !== undefined;
-      return !hasSummary && generateSummary.isPending ? 3000 : false;
+      const isProcessingOrGenerating =
+        article.data?.status === "processing" ||
+        generateSummary.isPending ||
+        processArticle.isPending;
+      return !hasSummary && isProcessingOrGenerating ? 3000 : false;
     },
   });
 
@@ -54,6 +83,8 @@ export default function ArticleSummaryPage(props: {
 
   const articleData = article.data;
   const summaryData = summary.data;
+  const isProcessing =
+    articleData?.status === "processing" || processArticle.isPending;
 
   return (
     <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
@@ -110,7 +141,9 @@ export default function ArticleSummaryPage(props: {
 
       {summaryData ? (
         <Item className="space-y-6" variant="muted">
-          <Streamdown>{summaryData.markdownContent}</Streamdown>
+          <Streamdown className="text-base">
+            {summaryData.markdownContent}
+          </Streamdown>
           <ItemFooter className="pt-6 border-t flex gap-3 justify-start">
             <Button
               variant="outline"
@@ -131,43 +164,58 @@ export default function ArticleSummaryPage(props: {
           </ItemFooter>
         </Item>
       ) : (
-        <div className="rounded-xl border bg-muted/30 p-12 text-center space-y-6">
-          <div className="space-y-2">
-            <h2 className="text-xl font-semibold">Quick Overview Summary</h2>
-            <p className="text-muted-foreground max-w-md mx-auto">
-              Generate a bite-sized summary with key takeaways, examples,
-              lessons, and impactful quotes from this article.
-            </p>
-          </div>
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <HugeiconsIcon icon={SparklesIcon} size={20} />
+            </EmptyMedia>
+            <EmptyTitle>Quick Overview Summary</EmptyTitle>
+            <EmptyDescription>
+              {!articleData?.hasContent
+                ? "Process this article first to generate a bite-sized summary with key takeaways, examples, lessons, and impactful quotes."
+                : "Generate a bite-sized summary with key takeaways, examples, lessons, and impactful quotes from this article."}
+            </EmptyDescription>
+          </EmptyHeader>
 
-          <Button
-            size="lg"
-            onClick={() => generateSummary.mutate({ articleId: params.id })}
-            disabled={generateSummary.isPending}
-          >
-            {generateSummary.isPending ? (
-              <>
-                <HugeiconsIcon
-                  icon={Loading03Icon}
-                  size={16}
-                  className="animate-spin"
-                />
-                Generating Summary...
-              </>
-            ) : (
-              <>
-                <HugeiconsIcon icon={SparklesIcon} size={16} />
-                Generate Summary
-              </>
+          <EmptyContent>
+            <Button
+              size="lg"
+              onClick={() =>
+                !articleData?.hasContent
+                  ? processArticle.mutate({ articleId: params.id })
+                  : generateSummary.mutate({ articleId: params.id })
+              }
+              disabled={generateSummary.isPending || isProcessing}
+            >
+              {generateSummary.isPending || isProcessing ? (
+                <>
+                  <HugeiconsIcon
+                    icon={Loading03Icon}
+                    size={16}
+                    className="animate-spin"
+                  />
+                  {!articleData?.hasContent
+                    ? "Processing & Generating..."
+                    : "Generating Summary..."}
+                </>
+              ) : (
+                <>
+                  <HugeiconsIcon icon={SparklesIcon} size={16} />
+                  {!articleData?.hasContent
+                    ? "Process & Generate Summary"
+                    : "Generate Summary"}
+                </>
+              )}
+            </Button>
+
+            {(generateSummary.isPending || isProcessing) && (
+              <p className="text-sm text-muted-foreground">
+                This usually takes{" "}
+                {!articleData?.hasContent ? "1-3 minutes" : "10-30 seconds"}
+              </p>
             )}
-          </Button>
-
-          {generateSummary.isPending && (
-            <p className="text-sm text-muted-foreground">
-              This usually takes 10-30 seconds
-            </p>
-          )}
-        </div>
+          </EmptyContent>
+        </Empty>
       )}
     </main>
   );

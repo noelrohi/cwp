@@ -15,6 +15,14 @@ import { use } from "react";
 import { toast } from "sonner";
 import { Streamdown } from "streamdown";
 import { Button } from "@/components/ui/button";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { useTRPC } from "@/server/trpc/client";
 import { Item, ItemFooter } from "../../../../../components/ui/item";
 
@@ -24,18 +32,26 @@ export default function EpisodeSummaryPage(props: {
   const trpc = useTRPC();
   const params = use(props.params);
 
-  const episode = useQuery(
-    trpc.episodes.get.queryOptions({ episodeId: params.id }),
-  );
-
-  const summary = useQuery({
-    ...trpc.episodes.getSummary.queryOptions({ episodeId: params.id }),
+  const episode = useQuery({
+    ...trpc.episodes.get.queryOptions({ episodeId: params.id }),
     refetchInterval: (query) => {
-      const hasSummary =
-        query.state.data !== null && query.state.data !== undefined;
-      return !hasSummary && generateSummary.isPending ? 3000 : false;
+      const status = query.state.data?.status;
+      return status === "processing" ? 2000 : false;
     },
   });
+
+  const processEpisode = useMutation(
+    trpc.episodes.processEpisode.mutationOptions({
+      onSuccess: () => {
+        toast.success("Episode processing started");
+        episode.refetch();
+        summary.refetch();
+      },
+      onError: (error) => {
+        toast.error(`Failed to process episode: ${error.message}`);
+      },
+    }),
+  );
 
   const generateSummary = useMutation(
     trpc.episodes.generateSummary.mutationOptions({
@@ -50,12 +66,27 @@ export default function EpisodeSummaryPage(props: {
     }),
   );
 
+  const summary = useQuery({
+    ...trpc.episodes.getSummary.queryOptions({ episodeId: params.id }),
+    refetchInterval: (query) => {
+      const hasSummary =
+        query.state.data !== null && query.state.data !== undefined;
+      const isProcessingOrGenerating =
+        episode.data?.status === "processing" ||
+        generateSummary.isPending ||
+        processEpisode.isPending;
+      return !hasSummary && isProcessingOrGenerating ? 3000 : false;
+    },
+  });
+
   if (episode.isLoading || summary.isLoading) {
     return <LoadingState />;
   }
 
   const episodeData = episode.data;
   const summaryData = summary.data;
+  const isProcessing =
+    episodeData?.status === "processing" || processEpisode.isPending;
 
   return (
     <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
@@ -131,7 +162,9 @@ export default function EpisodeSummaryPage(props: {
 
       {summaryData ? (
         <Item className="space-y-6" variant="muted">
-          <Streamdown>{summaryData.markdownContent}</Streamdown>
+          <Streamdown className="text-base">
+            {summaryData.markdownContent}
+          </Streamdown>
           <ItemFooter className="pt-6 border-t flex gap-3 justify-start">
             <Button
               variant="outline"
@@ -152,43 +185,60 @@ export default function EpisodeSummaryPage(props: {
           </ItemFooter>
         </Item>
       ) : (
-        <div className="rounded-xl border bg-muted/30 p-12 text-center space-y-6">
-          <div className="space-y-2">
-            <h2 className="text-xl font-semibold">Quick Overview Summary</h2>
-            <p className="text-muted-foreground max-w-md mx-auto">
-              Generate a bite-sized summary with key takeaways, examples,
-              lessons, and impactful quotes from this episode.
-            </p>
-          </div>
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <HugeiconsIcon icon={SparklesIcon} size={20} />
+            </EmptyMedia>
+            <EmptyTitle>Quick Overview Summary</EmptyTitle>
+            <EmptyDescription>
+              {!episodeData?.transcriptUrl
+                ? "Process this episode first to generate a bite-sized summary with key takeaways, examples, lessons, and impactful quotes."
+                : "Generate a bite-sized summary with key takeaways, examples, lessons, and impactful quotes from this episode."}
+            </EmptyDescription>
+          </EmptyHeader>
 
-          <Button
-            size="lg"
-            onClick={() => generateSummary.mutate({ episodeId: params.id })}
-            disabled={generateSummary.isPending}
-          >
-            {generateSummary.isPending ? (
-              <>
-                <HugeiconsIcon
-                  icon={Loading03Icon}
-                  size={16}
-                  className="animate-spin"
-                />
-                Generating Summary...
-              </>
-            ) : (
-              <>
-                <HugeiconsIcon icon={SparklesIcon} size={16} />
-                Generate Summary
-              </>
+          <EmptyContent>
+            <Button
+              size="lg"
+              onClick={() =>
+                !episodeData?.transcriptUrl
+                  ? processEpisode.mutate({ episodeId: params.id })
+                  : generateSummary.mutate({ episodeId: params.id })
+              }
+              disabled={generateSummary.isPending || isProcessing}
+            >
+              {generateSummary.isPending || isProcessing ? (
+                <>
+                  <HugeiconsIcon
+                    icon={Loading03Icon}
+                    size={16}
+                    className="animate-spin"
+                  />
+                  {!episodeData?.transcriptUrl
+                    ? "Processing & Generating..."
+                    : "Generating Summary..."}
+                </>
+              ) : (
+                <>
+                  <HugeiconsIcon icon={SparklesIcon} size={16} />
+                  {!episodeData?.transcriptUrl
+                    ? "Process & Generate Summary"
+                    : "Generate Summary"}
+                </>
+              )}
+            </Button>
+
+            {(generateSummary.isPending || isProcessing) && (
+              <p className="text-sm text-muted-foreground">
+                This usually takes{" "}
+                {!episodeData?.transcriptUrl
+                  ? "2.5-5.5 minutes"
+                  : "10-30 seconds"}
+              </p>
             )}
-          </Button>
-
-          {generateSummary.isPending && (
-            <p className="text-sm text-muted-foreground">
-              This usually takes 10-30 seconds
-            </p>
-          )}
-        </div>
+          </EmptyContent>
+        </Empty>
       )}
     </main>
   );
