@@ -131,6 +131,19 @@ export default function PostDetailPage(props: {
     }),
   );
 
+  const generateSummary = useMutation(
+    trpc.articles.generateSummary.mutationOptions({
+      onSuccess: () => {
+        toast.success(
+          "Summary generation started! This usually takes 10-30 seconds.",
+        );
+      },
+      onError: (error) => {
+        toast.error(`Failed to generate summary: ${error.message}`);
+      },
+    }),
+  );
+
   const summary = useQuery({
     ...trpc.articles.getSummary.queryOptions({ articleId: params.id }),
     enabled: activeTab === "summary",
@@ -141,20 +154,6 @@ export default function PostDetailPage(props: {
       return !hasSummary && isGenerating ? 3000 : false;
     },
   });
-
-  const generateSummary = useMutation(
-    trpc.articles.generateSummary.mutationOptions({
-      onSuccess: () => {
-        toast.success(
-          "Summary generation started! This usually takes 10-30 seconds.",
-        );
-        summary.refetch();
-      },
-      onError: (error) => {
-        toast.error(`Failed to generate summary: ${error.message}`);
-      },
-    }),
-  );
 
   // Track previous status to detect when processing completes
   const prevStatusRef = useRef<string | undefined>(undefined);
