@@ -22,7 +22,12 @@ export {
   dailyIntelligenceProcessUser,
   dailyIntelligenceReprocessEpisode,
 } from "./daily-intelligence-pipeline";
-export { bulkRefreshFeeds, refreshPodcastFeed } from "./feed-parser";
+export {
+  bulkRefreshArticleFeeds,
+  bulkRefreshFeeds,
+  refreshArticleFeed,
+  refreshPodcastFeed,
+} from "./feed-parser";
 export { healthCheck } from "./health-monitoring";
 export { helloWorld } from "./hello";
 export {
