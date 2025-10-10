@@ -1,11 +1,17 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
-import { SidebarLeftIcon } from "@hugeicons/core-free-icons";
+import {
+  File01Icon,
+  PodcastIcon,
+  SidebarLeftIcon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { IconMessage2Bolt } from "@tabler/icons-react";
+import { useQuery } from "@tanstack/react-query";
 import { DefaultChatTransport } from "ai";
 import { ChevronDown } from "lucide-react";
+import { parseAsString, useQueryState } from "nuqs";
 import { useState } from "react";
 import type { ChatUIMessage } from "@/app/api/chat/route";
 import { SignalCard } from "@/blocks/signals/signal-card";
@@ -34,6 +40,7 @@ import {
   TaskItem,
   TaskTrigger,
 } from "@/components/ai-elements/task";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Collapsible,
@@ -42,6 +49,7 @@ import {
 } from "@/components/ui/collapsible";
 import { useSidebar } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
+import { useTRPC } from "@/server/trpc/client";
 
 type ChunkData = {
   content: string;
@@ -116,6 +124,24 @@ function CollapsibleChunks({ chunks }: { chunks: ChunkData[] }) {
 export default function ChatPage() {
   const [input, setInput] = useState("");
   const { toggleSidebar, isMobile } = useSidebar();
+  const trpc = useTRPC();
+
+  const [episodeId] = useQueryState("episodeId", parseAsString);
+  const [articleId] = useQueryState("articleId", parseAsString);
+
+  const episode = useQuery({
+    ...trpc.episodes.get.queryOptions({
+      episodeId: episodeId as string,
+    }),
+    enabled: !!episodeId,
+  });
+
+  const article = useQuery({
+    ...trpc.articles.getById.queryOptions({
+      id: articleId as string,
+    }),
+    enabled: !!articleId,
+  });
 
   const { messages, sendMessage, status } = useChat<ChatUIMessage>({
     transport: new DefaultChatTransport({
@@ -129,6 +155,9 @@ export default function ChatPage() {
       setInput("");
     }
   };
+
+  const contextTitle = episode.data?.title || article.data?.title;
+  const contextType = episodeId ? "episode" : articleId ? "article" : null;
 
   return (
     <div className="flex flex-col min-h-dvh relative">
@@ -219,6 +248,24 @@ export default function ChatPage() {
       {/* Sticky prompt input at bottom */}
       <div className="sticky bottom-0 inset-x-0 z-20 mt-auto">
         <div className="mx-auto w-full max-w-3xl px-4 pb-4 pt-3">
+          {contextTitle && contextType && (
+            <div className="mb-0 text-xs sm:text-sm text-muted-foreground bg-muted border border-b-0 rounded-t-lg px-3 py-2 w-[calc(100%-0.5rem)] mx-auto flex items-center gap-2">
+              <Badge
+                variant="outline"
+                className="inline-flex items-center shrink-0"
+              >
+                <HugeiconsIcon
+                  icon={contextType === "episode" ? PodcastIcon : File01Icon}
+                  size={12}
+                  className="sm:mr-1 shrink-0"
+                />
+                <span className="hidden sm:inline capitalize">
+                  {contextType}
+                </span>
+              </Badge>
+              <span>{contextTitle}</span>
+            </div>
+          )}
           <PromptInput onSubmit={handleSubmit} className="backdrop-blur-md">
             <PromptInputBody className="border-none">
               <PromptInputAttachments>

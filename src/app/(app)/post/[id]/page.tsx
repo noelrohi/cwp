@@ -7,6 +7,7 @@ import {
   BookmarkCheck01Icon,
   BookmarkRemove01Icon,
   Calendar03Icon,
+  Chat01Icon,
   Copy01Icon,
   FingerPrintIcon,
   Link01Icon,
@@ -438,10 +439,34 @@ Content: ${content}
 
           <div className="flex gap-2 flex-wrap">
             <ButtonGroup>
-              <CopyArticleContentButton
-                articleId={params.id}
-                articleUrl={articleData?.url}
-              />
+              <CopyArticleContentButton articleId={params.id} />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="sm" variant="outline">
+                    <ChevronDown className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem asChild>
+                    <Link href={`/chat?articleId=${params.id}`}>
+                      <HugeiconsIcon icon={Chat01Icon} size={16} />
+                      Chat with Article
+                    </Link>
+                  </DropdownMenuItem>
+                  {articleData?.url && (
+                    <DropdownMenuItem asChild>
+                      <Link
+                        href={articleData.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <HugeiconsIcon icon={Link01Icon} size={16} />
+                        Read Article
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </ButtonGroup>
 
             {!isProcessed && (
@@ -1142,13 +1167,7 @@ function formatDate(value: Date | string | null | undefined): string | null {
   });
 }
 
-function CopyArticleContentButton({
-  articleId,
-  articleUrl,
-}: {
-  articleId: string;
-  articleUrl?: string;
-}) {
+function CopyArticleContentButton({ articleId }: { articleId: string }) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
 
@@ -1174,28 +1193,9 @@ function CopyArticleContentButton({
   };
 
   return (
-    <>
-      <Button size="sm" variant="outline" onClick={handleCopyContent}>
-        <HugeiconsIcon icon={Copy01Icon} size={16} />
-        Copy Content
-      </Button>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button size="sm" variant="outline">
-            <ChevronDown className="size-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          {articleUrl && (
-            <DropdownMenuItem asChild>
-              <Link href={articleUrl} target="_blank" rel="noopener noreferrer">
-                <HugeiconsIcon icon={Link01Icon} size={16} />
-                Read Article
-              </Link>
-            </DropdownMenuItem>
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </>
+    <Button size="sm" variant="outline" onClick={handleCopyContent}>
+      <HugeiconsIcon icon={Copy01Icon} size={16} />
+      Copy Content
+    </Button>
   );
 }

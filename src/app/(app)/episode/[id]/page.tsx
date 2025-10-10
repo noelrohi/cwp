@@ -7,6 +7,7 @@ import {
   BookmarkCheck01Icon,
   BookmarkRemove01Icon,
   Calendar03Icon,
+  Chat01Icon,
   Clock01Icon,
   Copy01Icon,
   Download01Icon,
@@ -897,6 +898,12 @@ Content: ${content}
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
+                      <DropdownMenuItem asChild>
+                        <Link href={`/chat?episodeId=${params.id}`}>
+                          <HugeiconsIcon icon={Chat01Icon} size={16} />
+                          Chat with Episode
+                        </Link>
+                      </DropdownMenuItem>
                       <DropdownMenuItem asChild>
                         <button
                           type="button"
