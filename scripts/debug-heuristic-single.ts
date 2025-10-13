@@ -51,7 +51,7 @@ console.log(
   `Examples: ${/\b(for example|for instance|such as|like when|imagine)\b/i.test(content)}`,
 );
 
-console.log("\n" + "=".repeat(80));
+console.log(`\n${"=".repeat(80)}`);
 console.log("ANALYSIS:");
 console.log("This chunk has:");
 console.log("  • 'We call that hyperfluency' - NAMED FRAMEWORK ✓");

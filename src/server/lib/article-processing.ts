@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { cosineSimilarity } from "ai";
 import { and, eq, sql } from "drizzle-orm";
-import { generateEmbedding, generateEmbeddingBatch } from "@/lib/embedding";
+import { generateEmbeddingBatch } from "@/lib/embedding";
 import type { db as dbInstance } from "@/server/db";
 import {
   article as articleSchema,

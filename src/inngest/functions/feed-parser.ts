@@ -618,7 +618,9 @@ async function parseFeedAndUpsertArticles(feedRecord: {
 
   // Extract all URLs from feed items
   const feedUrls = (feedData.items || [])
+    // biome-ignore lint/suspicious/noExplicitAny: RSS feed items have dynamic structure
     .filter((item: any) => item.link)
+    // biome-ignore lint/suspicious/noExplicitAny: RSS feed items have dynamic structure
     .map((item: any) => item.link as string);
 
   if (feedUrls.length === 0) {
@@ -641,7 +643,9 @@ async function parseFeedAndUpsertArticles(feedRecord: {
 
   // Filter to only new articles
   const newArticleData = (feedData.items || [])
+    // biome-ignore lint/suspicious/noExplicitAny: RSS feed items have dynamic structure
     .filter((item: any) => item.link && !existingUrls.has(item.link))
+    // biome-ignore lint/suspicious/noExplicitAny: RSS feed items have dynamic structure
     .map((item: any) => ({
       id: nanoid(),
       userId: feedRecord.userId,

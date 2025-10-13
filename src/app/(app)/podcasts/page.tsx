@@ -178,7 +178,6 @@ export default function Podcasts() {
               {/* Podcast Thumbnail */}
               <div className="h-12 w-12 rounded-lg bg-muted flex-shrink-0">
                 {podcast.imageUrl ? (
-                  // biome-ignore lint/performance/noImgElement: **
                   <img
                     src={podcast.imageUrl}
                     alt={podcast.title}

@@ -228,14 +228,14 @@ async function main() {
   );
   console.log();
 
-  const savedContrastiveScores = savedChunks.slice(0, 20).map((chunk, i) => {
+  const savedContrastiveScores = savedChunks.slice(0, 20).map((_chunk, i) => {
     const score = savedToSavedSims[i] - savedToSkippedSims[i];
     return score;
   });
 
   const skippedContrastiveScores = skippedChunks
     .slice(0, 20)
-    .map((chunk, i) => {
+    .map((_chunk, i) => {
       const score = skippedToSavedSims[i] - skippedToSkippedSims[i];
       return score;
     });

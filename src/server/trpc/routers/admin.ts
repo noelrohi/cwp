@@ -1,4 +1,4 @@
-import { randomUUID } from "crypto";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { inngest } from "@/inngest/client";
 import { podcast } from "@/server/db/schema";

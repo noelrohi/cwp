@@ -136,7 +136,6 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
         <div className="flex gap-4">
           <div className="h-32 w-32 rounded-lg bg-muted flex-shrink-0">
             {podcastData?.imageUrl ? (
-              // biome-ignore lint/performance/noImgElement: **
               <img
                 src={podcastData.imageUrl}
                 alt={podcastData.title}

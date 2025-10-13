@@ -1,7 +1,7 @@
 import { createClient as createDeepgramClient } from "@deepgram/sdk";
 import { put } from "@vercel/blob";
 import { and, eq, sql } from "drizzle-orm";
-import { generateEmbedding, generateEmbeddingBatch } from "@/lib/embedding";
+import { generateEmbeddingBatch } from "@/lib/embedding";
 import type { db as dbInstance } from "@/server/db";
 import {
   episode as episodeSchema,

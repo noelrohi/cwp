@@ -135,7 +135,6 @@ export default function ArticleDetailPage(props: PageProps<"/article/[id]">) {
         <div className="flex gap-4">
           <div className="h-32 w-32 rounded-lg bg-muted flex-shrink-0">
             {feedData?.imageUrl ? (
-              // biome-ignore lint/performance/noImgElement: **
               <img
                 src={feedData.imageUrl}
                 alt={feedData.title}

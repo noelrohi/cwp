@@ -240,7 +240,6 @@ export function AddPodcastDialog({ children }: AddPodcastDialogProps) {
                 >
                   <div className="h-10 w-10 rounded bg-muted flex-shrink-0">
                     {result.artworkUrl100 && (
-                      // biome-ignore lint/performance/noImgElement: **
                       <img
                         src={result.artworkUrl100}
                         alt={result.collectionName}

@@ -22,7 +22,7 @@ export const processArticle = inngest.createFunction(
   },
   { event: "article/process.requested" },
   async ({ event, step }) => {
-    const { articleId, userId, url } = event.data;
+    const { articleId, url } = event.data;
 
     // Step 1: Mark as processing
     await step.run("mark-processing", async () => {
@@ -308,7 +308,7 @@ export const generateArticleSignalsFunction = inngest.createFunction(
   },
   { event: "article/signals.generate" },
   async ({ event, step }) => {
-    const { articleId, userId, maxSignals = 30 } = event.data;
+    const { articleId, userId } = event.data;
 
     // Step 1: Verify article has chunks
     await step.run("verify-chunks", async () => {

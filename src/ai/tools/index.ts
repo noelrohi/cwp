@@ -1,7 +1,6 @@
 import type { UIMessageStreamWriter } from "ai";
 import { z } from "zod";
 import type { ChatUIMessage } from "@/app/api/chat/route";
-import type { AppRouter } from "@/server/trpc/root";
 
 // Helper function to format timestamps for citations
 function formatTimestamp(seconds: number | null): string {
@@ -18,6 +17,7 @@ function formatTimestamp(seconds: number | null): string {
 }
 
 // Type for the tRPC caller - using 'any' to avoid complex type inference
+// biome-ignore lint/suspicious/noExplicitAny: tRPC caller type is too complex to infer
 type TRPCCaller = any;
 
 export function createTools(
@@ -118,6 +118,7 @@ export function createTools(
           }
 
           const formattedResults = {
+            // biome-ignore lint/suspicious/noExplicitAny: search results type varies
             results: results.map((r: any) => ({
               content: r.content,
               podcast: r.podcastTitle,
@@ -255,6 +256,7 @@ export function createTools(
           }
 
           const formattedResults = {
+            // biome-ignore lint/suspicious/noExplicitAny: search results type varies
             results: results.map((r: any) => ({
               content: r.content,
               podcast: r.podcastTitle,

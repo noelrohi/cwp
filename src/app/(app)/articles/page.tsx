@@ -155,7 +155,6 @@ export default function ArticlesPage() {
             >
               <div className="h-12 w-12 rounded-lg bg-muted flex-shrink-0">
                 {feed.imageUrl ? (
-                  // biome-ignore lint/performance/noImgElement: **
                   <img
                     src={feed.imageUrl}
                     alt={feed.title}

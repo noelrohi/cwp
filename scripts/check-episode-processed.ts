@@ -24,6 +24,7 @@ async function main() {
     return;
   }
 
+  // biome-ignore lint/suspicious/noExplicitAny: db query results have dynamic structure
   const ep = episodeCheck.rows[0] as any;
   console.log("\n📺 Episode Status:\n");
   console.log(`   Title: ${ep.title}`);
@@ -53,6 +54,7 @@ async function main() {
       AND ds.user_id = ${userId}
   `);
 
+  // biome-ignore lint/suspicious/noExplicitAny: db query results have dynamic structure
   const signalCount = (signalsCheck.rows[0] as any)?.signal_count || "0";
 
   console.log(`📊 Signals generated: ${signalCount}\n`);
