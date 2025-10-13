@@ -1,7 +1,7 @@
 export const LENGTH_SKIP_THRESHOLD = 80;
-export const HEURISTIC_SAVE_THRESHOLD = 52;
-export const HEURISTIC_SKIP_THRESHOLD = 28;
-export const LLM_SAVE_THRESHOLD = 48;
+export const HEURISTIC_SAVE_THRESHOLD = 55;
+export const HEURISTIC_SKIP_THRESHOLD = 30;
+export const LLM_SAVE_THRESHOLD = 52;
 
 export type ScoringMethod = "length" | "heuristics" | "llm";
 

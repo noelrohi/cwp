@@ -32,12 +32,12 @@ export function extractHeuristicBuckets(content: string): HeuristicBuckets {
 
   // AD & NON-CONTENT DETECTION
   const adIndicators = [
-    /\b(check out|visit|learn more at|sign up|get started|try|subscribe to)\b/i,
+    /\b(check out|visit|learn more at|sign up now|get started today|try (it|this) (now|today)|subscribe to)\b/i,
     /\.(com|io|net|org)\/[a-z-_]/i, // URLs with paths
-    /\b(sponsor|sponsored|brought to you|partner with|partnering with)\b/i,
+    /\b(this episode is sponsored|brought to you by|today'?s sponsor)\b/i,
     /\b(member fdic|terms.*conditions apply|subject to)\b/i,
     /\b(pricing|plans starting at|\$\d+\/month)\b/i,
-    /\b(register|join (me|us)|save your spot|rsvp|inaugural)\b/i,
+    /\b(register (now|today)|join (me|us) (at|for)|save your spot|rsvp|inaugural)\b/i,
     /\b(excited to (join|announce|share)|I'm (on stage|speaking at))\b/i,
     /\b(event features|connect with peers|lineup of.*speakers)\b/i,
   ];
@@ -90,6 +90,10 @@ export function extractHeuristicBuckets(content: string): HeuristicBuckets {
       /\b(framework|model|pattern|principle|law|rule|playbook|system|theory|concept|paradigm)\b/gi,
     ) || [];
 
+  // Detect "the X of Y" conceptual phrases (art of, hack of, secret to, key to)
+  const hasConceptualPhrase =
+    /\b(art|hack|secret|key|essence|heart|core) (of|to|in)\b/i.test(trimmed);
+
   const hasComparison =
     /\b\w+\s+(vs\.?|versus|compared to|rather than|instead of|as opposed to)\s+\w+/i.test(
       trimmed,
@@ -118,6 +122,10 @@ export function extractHeuristicBuckets(content: string): HeuristicBuckets {
   } else if (frameworkMarkers.length === 1) {
     frameworkScore += 0.2;
     reasons.push("Framework marker");
+  }
+  if (hasConceptualPhrase) {
+    frameworkScore += 0.4;
+    reasons.push("Conceptual phrase (art/hack/secret of)");
   }
   if (hasComparison) {
     frameworkScore += 0.4;
@@ -157,6 +165,18 @@ export function extractHeuristicBuckets(content: string): HeuristicBuckets {
       trimmed,
     );
 
+  // Detect hidden motivation / psychological insight
+  const hasPsychologicalInsight =
+    /\b((pure|just) (ego|fear|insecurity)|gets? in the way|driven by|motivated by|stems from)\b/i.test(
+      trimmed,
+    );
+
+  // Detect "best X do Y vs others do Z" pattern (comparison-based insight)
+  const hasBestVsOthers =
+    /\b(best|top|great|exceptional).+(do|are|have).+(while|but|whereas|and).+(most|others|average)\b/i.test(
+      trimmed,
+    );
+
   if (contrarianPhrases.length >= 2) {
     insightScore += 0.6;
     reasons.push(`Strong contrarian language (${contrarianPhrases.length})`);
@@ -171,6 +191,16 @@ export function extractHeuristicBuckets(content: string): HeuristicBuckets {
   } else if (causalPhrases.length >= 1) {
     insightScore += 0.3;
     reasons.push("Causal reasoning");
+  }
+
+  if (hasPsychologicalInsight) {
+    insightScore += 0.4;
+    reasons.push("Psychological/motivational insight");
+  }
+
+  if (hasBestVsOthers) {
+    insightScore += 0.4;
+    reasons.push("Best-practice comparison");
   }
 
   if (negations.length >= 4) {
@@ -281,6 +311,38 @@ export function extractHeuristicBuckets(content: string): HeuristicBuckets {
   if (vocabularyRichness > 0.6) {
     qualityScore += 0.3;
     reasons.push("Rich vocabulary");
+  }
+
+  // ANTI-PATTERN DETECTION (light penalties)
+  // Meta-defensive language reduces insight score
+  const metaDefensiveCount =
+    trimmed.match(
+      /\b(caveat|disclaimer|reductionist|you don'?t (need|have to)|oversimplif)/gi,
+    )?.length || 0;
+  if (metaDefensiveCount >= 2) {
+    insightScore -= 0.3;
+    qualityScore -= 0.2;
+    reasons.push("Meta-defensive language detected");
+  }
+
+  // Biographical indicators without frameworks
+  const biographicalCount =
+    trimmed.match(
+      /\b((my|your|his|her) (journey|story|background|career|experience)|(grew|worked|studied) (up|at)|spectrum of experiences)/gi,
+    )?.length || 0;
+  if (biographicalCount >= 2 && frameworkScore < 0.3) {
+    specificityScore -= 0.25;
+    reasons.push("Biographical focus without frameworks");
+  }
+
+  // Pure list pattern without synthesis
+  const listPattern = sentences.filter(
+    (s) => /^(and|or|they|it) /i.test(s) || s.split(/,\s*/).length > 3,
+  ).length;
+  const listDensity = sentences.length > 0 ? listPattern / sentences.length : 0;
+  if (listDensity > 0.4 && causalPhrases.length === 0) {
+    insightScore -= 0.2;
+    reasons.push("List-heavy without synthesis");
   }
 
   frameworkScore = clamp(frameworkScore);
