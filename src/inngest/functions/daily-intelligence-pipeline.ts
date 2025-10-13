@@ -13,10 +13,11 @@ import {
   userPreferences,
 } from "@/server/db/schema";
 import { generateEpisodeSummary } from "@/server/lib/episode-summary";
-import {
-  computeHybridScore,
-  learnUserQualityProfile,
-} from "@/server/lib/quality-scoring";
+import { hybridScore } from "@/server/lib/hybrid-scoring";
+import type {
+  HybridDiagnostics,
+  ScoringMethod,
+} from "@/server/lib/hybrid-types";
 import { identifyEpisodeSpeakers } from "@/server/lib/speaker-identification";
 import {
   chunkEpisodeTranscript,
@@ -609,14 +610,17 @@ export const dailyIntelligenceGenerateSignals = inngest.createFunction(
       `Pipeline run ${pipelineRunId}: Signal Generation Complete for user ${userId}${episodeId ? ` (episode: ${episodeId})` : ""}`,
     );
     logger.info(`📊 Signals Generated: ${result.signalsGenerated}`);
-    logger.info(`🎯 Scoring Method: ${result.scoringMethod}`);
+    logger.info(
+      `🎯 Hybrid Methods: length=${result.methodDistribution.length}, heuristics=${result.methodDistribution.heuristics}, llm=${result.methodDistribution.llm}`,
+    );
+    logger.info(`🤖 LLM Calls: ${result.llmCalls}`);
 
-    if (result.qualityProfileUsed) {
+    if (result.baselineMethod) {
       logger.info(
-        `✨ Quality Scoring: ENABLED (${result.qualitySnipCount} snips + ${result.qualitySavedCount} saves)`,
+        `🧪 Embedding Baseline: ${result.baselineMethod.type} (saved=${result.baselineMethod.savedCount}, skipped=${result.baselineMethod.skippedCount})`,
       );
     } else {
-      logger.info(`⚠️  Quality Scoring: DISABLED (insufficient training data)`);
+      logger.info(`🧪 Embedding Baseline: none`);
     }
 
     logger.info(
@@ -632,15 +636,10 @@ export const dailyIntelligenceGenerateSignals = inngest.createFunction(
 );
 
 /**
- * Generate signals for a user using simplified algorithm per Karpathy's advice:
- * - Phase 1: Pure random until user has 10 saves (cold start exploration)
- * - Phase 2a: Positive-only similarity (< 5 skips)
- * - Phase 2b: Contrastive learning (≥ 5 skips) - NEW!
- *   - Score = similarity(saved_centroid) - similarity(skipped_centroid)
- *   - User skipping low scores reinforces "system got it right"
- *   - Spreads distribution across full 0-100% range
- *
- * Store top 30 results for daily review via stratified sampling
+ * Generate signals for a user via the hybrid scoring pipeline:
+ * - Stage 1: Run hybrid scorer per chunk (length filter → heuristics → LLM)
+ * - Stage 2: Compute embedding baseline for diagnostics and A/B tracking
+ * - Stage 3: Stratified sampling to keep 30 high-quality signals
  *
  * @param userId - User to generate signals for
  * @param episodeId - Optional episode ID to limit signal generation to specific episode
@@ -665,10 +664,9 @@ async function generateUserSignals(
   if (candidateChunks.length === 0) {
     return {
       signalsGenerated: 0,
-      scoringMethod: "random",
-      qualityProfileUsed: false,
-      qualitySnipCount: 0,
-      qualitySavedCount: 0,
+      methodDistribution: { length: 0, heuristics: 0, llm: 0 },
+      baselineMethod: null,
+      llmCalls: 0,
       minScore: 0,
       maxScore: 0,
       avgScore: 0,
@@ -680,6 +678,18 @@ async function generateUserSignals(
     preferences,
     userId,
   );
+
+  console.log(
+    `User ${userId}: Hybrid method distribution — length: ${diagnostics.methodDistribution.length}, heuristics: ${diagnostics.methodDistribution.heuristics}, llm: ${diagnostics.methodDistribution.llm} (LLM calls: ${diagnostics.llmCalls})`,
+  );
+
+  if (diagnostics.baselineMethod) {
+    const baseline = diagnostics.baselineMethod;
+    console.log(
+      `User ${userId}: Embedding baseline (${baseline.type}) — saved: ${baseline.savedCount}, skipped: ${baseline.skippedCount}`,
+    );
+  }
+
   const filteredChunks = filterRankedChunks(scoredChunks, preferences);
 
   console.log(
@@ -689,10 +699,9 @@ async function generateUserSignals(
   if (filteredChunks.length === 0) {
     return {
       signalsGenerated: 0,
-      scoringMethod: diagnostics.scoringMethod,
-      qualityProfileUsed: diagnostics.qualityProfileUsed,
-      qualitySnipCount: diagnostics.qualitySnipCount,
-      qualitySavedCount: diagnostics.qualitySavedCount,
+      methodDistribution: diagnostics.methodDistribution,
+      baselineMethod: diagnostics.baselineMethod,
+      llmCalls: diagnostics.llmCalls,
       minScore: 0,
       maxScore: 0,
       avgScore: 0,
@@ -710,10 +719,9 @@ async function generateUserSignals(
 
   return {
     signalsGenerated: filteredChunks.length,
-    scoringMethod: diagnostics.scoringMethod,
-    qualityProfileUsed: diagnostics.qualityProfileUsed,
-    qualitySnipCount: diagnostics.qualitySnipCount,
-    qualitySavedCount: diagnostics.qualitySavedCount,
+    methodDistribution: diagnostics.methodDistribution,
+    baselineMethod: diagnostics.baselineMethod,
+    llmCalls: diagnostics.llmCalls,
     minScore,
     maxScore,
     avgScore,
@@ -736,32 +744,52 @@ type ChunkRecord = {
   speaker: string | null;
 };
 
-type ScoredChunk = ChunkRecord & { relevanceScore: number };
+type MethodDistribution = Record<ScoringMethod, number>;
+
+type BaselineMethodType =
+  | "random"
+  | "positive-only"
+  | "contrastive"
+  | "contrastive-fallback";
+
+type BaselineSummary = {
+  type: BaselineMethodType;
+  savedCount: number;
+  skippedCount: number;
+};
+
+type EmbeddingBaseline = {
+  method: BaselineMethodType;
+  scores: Map<string, number>;
+  savedCount: number;
+  skippedCount: number;
+};
+
+type ScoredChunk = ChunkRecord & {
+  relevanceScore: number;
+  scoringMethod: ScoringMethod;
+  hybridRawScore: number;
+  hybridDiagnostics: HybridDiagnostics;
+  embeddingScore: number | null;
+};
 
 type SignalGenerationDiagnostics = {
   signalsGenerated: number;
-  scoringMethod:
-    | "random"
-    | "positive-only"
-    | "contrastive"
-    | "contrastive-fallback";
-  qualityProfileUsed: boolean;
-  qualitySnipCount: number;
-  qualitySavedCount: number;
+  methodDistribution: MethodDistribution;
+  baselineMethod: BaselineSummary | null;
+  llmCalls: number;
   minScore: number;
   maxScore: number;
   avgScore: number;
 };
 
 type ScoringDiagnostics = {
-  scoringMethod:
-    | "random"
-    | "positive-only"
-    | "contrastive"
-    | "contrastive-fallback";
-  qualityProfileUsed: boolean;
-  qualitySnipCount: number;
-  qualitySavedCount: number;
+  methodDistribution: MethodDistribution;
+  baselineMethod: BaselineSummary | null;
+  llmCalls: number;
+  minScore: number;
+  maxScore: number;
+  avgScore: number;
 };
 
 async function getOrCreateUserPreferences(
@@ -854,51 +882,31 @@ async function getNewChunksForUser(
   return chunks as ChunkRecord[];
 }
 
-async function scoreChunksForRelevance(
+async function computeEmbeddingBaseline(
   chunks: ChunkRecord[],
   preferences: UserPreferenceRecord,
   userId: string,
-): Promise<{ scoredChunks: ScoredChunk[]; diagnostics: ScoringDiagnostics }> {
-  console.log(
-    `Scoring ${chunks.length} chunks for user ${userId}. Total saved: ${preferences.totalSaved}`,
-  );
-
-  // Learn quality profile from snips/saves
-  const qualityProfile = await learnUserQualityProfile(userId);
-
-  if (qualityProfile) {
-    console.log(
-      `User ${userId}: Quality profile learned from ${qualityProfile.snipCount} snips + ${qualityProfile.savedCount} saves`,
-    );
+): Promise<EmbeddingBaseline | null> {
+  if (chunks.length === 0) {
+    return null;
   }
 
-  // PHASE 1: Random scoring until we have 10 saves
-  // This avoids cold-start bias and lets the user train the system
   if (preferences.totalSaved < 10) {
-    console.log(
-      `User ${userId} has < 10 saves. Using random distribution for exploration.`,
-    );
+    const scores = new Map<string, number>();
+    for (const chunk of chunks) {
+      scores.set(chunk.id, Math.random());
+    }
+
     return {
-      scoredChunks: chunks.map((chunk) => ({
-        ...chunk,
-        relevanceScore: Math.random(), // Pure random 0.0-1.0
-      })),
-      diagnostics: {
-        scoringMethod: "random",
-        qualityProfileUsed: false,
-        qualitySnipCount: 0,
-        qualitySavedCount: 0,
-      },
+      method: "random",
+      scores,
+      savedCount: preferences.totalSaved,
+      skippedCount: 0,
     };
   }
 
-  // PHASE 2: Embedding-based similarity - NOW WITH CONTRASTIVE LEARNING
-
-  // Get embeddings of all saved chunks (positive examples)
-  const savedChunks = await db
-    .select({
-      embedding: transcriptChunk.embedding,
-    })
+  const savedEmbeddings = await db
+    .select({ embedding: transcriptChunk.embedding })
     .from(savedChunk)
     .innerJoin(transcriptChunk, eq(savedChunk.chunkId, transcriptChunk.id))
     .where(
@@ -908,11 +916,26 @@ async function scoreChunksForRelevance(
       ),
     );
 
-  // Get embeddings of all skipped chunks (negative examples)
-  const skippedChunks = await db
-    .select({
-      embedding: transcriptChunk.embedding,
-    })
+  if (savedEmbeddings.length === 0) {
+    const scores = new Map<string, number>();
+    for (const chunk of chunks) {
+      scores.set(chunk.id, Math.random());
+    }
+
+    return {
+      method: "random",
+      scores,
+      savedCount: 0,
+      skippedCount: 0,
+    };
+  }
+
+  const savedCentroid = calculateCentroid(
+    savedEmbeddings.map((row) => row.embedding as number[]),
+  );
+
+  const skippedEmbeddings = await db
+    .select({ embedding: transcriptChunk.embedding })
     .from(dailySignal)
     .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
     .where(
@@ -923,204 +946,128 @@ async function scoreChunksForRelevance(
       ),
     );
 
-  if (savedChunks.length === 0) {
-    console.log(
-      `User ${userId} has saves but no embeddings. Falling back to random.`,
-    );
-    return {
-      scoredChunks: chunks.map((chunk) => ({
-        ...chunk,
-        relevanceScore: Math.random(),
-      })),
-      diagnostics: {
-        scoringMethod: "random",
-        qualityProfileUsed: false,
-        qualitySnipCount: 0,
-        qualitySavedCount: 0,
-      },
-    };
-  }
+  const scores = new Map<string, number>();
 
-  // Calculate saved centroid (what user likes)
-  const savedCentroid = calculateCentroid(
-    savedChunks.map((c) => c.embedding as number[]),
-  );
-
-  // CONTRASTIVE LEARNING: Use skipped chunks if we have enough
-  const useContrastiveScoring = skippedChunks.length >= 5;
-
-  if (useContrastiveScoring) {
-    // Calculate skipped centroid (what user dislikes)
+  if (skippedEmbeddings.length >= 5) {
     const skippedCentroid = calculateCentroid(
-      skippedChunks.map((c) => c.embedding as number[]),
+      skippedEmbeddings.map((row) => row.embedding as number[]),
+    );
+    const centroidSimilarity = cosineSimilarity(
+      savedCentroid,
+      skippedCentroid,
     );
 
-    // DIAGNOSTIC: Check if centroids are too similar
-    const centroidSimilarity = cosineSimilarity(savedCentroid, skippedCentroid);
+    if (centroidSimilarity <= 0.85) {
+      for (const chunk of chunks) {
+        const embedding = chunk.embedding;
+        if (!embedding) {
+          scores.set(chunk.id, 0.3);
+          continue;
+        }
 
-    console.log(
-      `User ${userId}: Using CONTRASTIVE scoring with ${savedChunks.length} saved + ${skippedChunks.length} skipped chunks`,
-    );
-    console.log(
-      `User ${userId}: Centroid similarity: ${centroidSimilarity.toFixed(3)} ` +
-        `(${centroidSimilarity > 0.9 ? "⚠️ TOO SIMILAR - centroids nearly identical!" : centroidSimilarity > 0.7 ? "⚠️ High similarity - limited discrimination" : "✅ Good separation"})`,
-    );
-
-    // FALLBACK: If centroids are too similar (> 0.85), contrastive scoring won't help
-    // Fall back to positive-only scoring
-    if (centroidSimilarity > 0.85) {
-      console.log(
-        `User ${userId}: ⚠️ Centroids too similar (${centroidSimilarity.toFixed(3)} > 0.85), ` +
-          `falling back to POSITIVE-ONLY scoring to avoid clustering at 0.5`,
-      );
-
-      return {
-        scoredChunks: chunks.map((chunk) => {
-          if (!chunk.embedding) {
-            return {
-              ...chunk,
-              relevanceScore: 0.3,
-            };
-          }
-
-          const semanticScore = cosineSimilarity(
-            chunk.embedding,
-            savedCentroid,
-          );
-          const relevanceScore = qualityProfile
-            ? computeHybridScore(semanticScore, chunk.content, qualityProfile)
-            : Math.max(0, semanticScore);
-
-          return {
-            ...chunk,
-            relevanceScore,
-          };
-        }),
-        diagnostics: {
-          scoringMethod: "contrastive-fallback",
-          qualityProfileUsed: qualityProfile !== null,
-          qualitySnipCount: qualityProfile?.snipCount ?? 0,
-          qualitySavedCount: qualityProfile?.savedCount ?? 0,
-        },
-      };
-    }
-
-    // Contrastive scoring: positive similarity MINUS negative similarity
-    // PLUS quality boost for multiplicative enhancement
-    const scoredChunks = chunks.map((chunk) => {
-      if (!chunk.embedding) {
-        return {
-          ...chunk,
-          relevanceScore: 0.3,
-        };
+        const savedSimilarity = cosineSimilarity(embedding, savedCentroid);
+        const skippedSimilarity = cosineSimilarity(embedding, skippedCentroid);
+        const contrastiveScore = savedSimilarity - skippedSimilarity;
+        const normalized = (contrastiveScore + 2) / 4;
+        scores.set(chunk.id, Math.max(0, Math.min(1, normalized)));
       }
 
-      const savedSimilarity = cosineSimilarity(chunk.embedding, savedCentroid);
-      const skippedSimilarity = cosineSimilarity(
-        chunk.embedding,
-        skippedCentroid,
-      );
-
-      // Contrastive score: how similar to saved MINUS how similar to skipped
-      // Cosine similarity ranges from -1 to 1, so difference ranges from -2 to 2
-      const contrastiveScore = savedSimilarity - skippedSimilarity;
-
-      // Normalize to 0-1 range: map [-2, 2] to [0, 1]
-      const semanticScore = (contrastiveScore + 2) / 4;
-
-      // Apply quality boost for better differentiation
-      const relevanceScore = qualityProfile
-        ? computeHybridScore(semanticScore, chunk.content, qualityProfile)
-        : Math.max(0, Math.min(1, semanticScore));
-
       return {
-        ...chunk,
-        relevanceScore,
+        method: "contrastive",
+        scores,
+        savedCount: savedEmbeddings.length,
+        skippedCount: skippedEmbeddings.length,
       };
-    });
-
-    // Log distribution for validation
-    const distribution = {
-      veryLow: scoredChunks.filter((c) => c.relevanceScore < 0.2).length,
-      low: scoredChunks.filter(
-        (c) => c.relevanceScore >= 0.2 && c.relevanceScore < 0.4,
-      ).length,
-      mid: scoredChunks.filter(
-        (c) => c.relevanceScore >= 0.4 && c.relevanceScore < 0.6,
-      ).length,
-      high: scoredChunks.filter(
-        (c) => c.relevanceScore >= 0.6 && c.relevanceScore < 0.8,
-      ).length,
-      veryHigh: scoredChunks.filter((c) => c.relevanceScore >= 0.8).length,
-    };
-
-    const minScore = Math.min(...scoredChunks.map((c) => c.relevanceScore));
-    const maxScore = Math.max(...scoredChunks.map((c) => c.relevanceScore));
-    const avgScore =
-      scoredChunks.reduce((sum, c) => sum + c.relevanceScore, 0) /
-      scoredChunks.length;
-
-    console.log(
-      `User ${userId}: Contrastive score distribution: ` +
-        `0-20%: ${distribution.veryLow}, ` +
-        `20-40%: ${distribution.low}, ` +
-        `40-60%: ${distribution.mid}, ` +
-        `60-80%: ${distribution.high}, ` +
-        `80-100%: ${distribution.veryHigh}`,
-    );
-    console.log(
-      `User ${userId}: Score stats: min=${minScore.toFixed(3)}, max=${maxScore.toFixed(3)}, avg=${avgScore.toFixed(3)}, range=${(maxScore - minScore).toFixed(3)}`,
-    );
-
-    // WARNING: If all scores are clustered around 0.5, contrastive isn't helping
-    if (maxScore - minScore < 0.1) {
-      console.warn(
-        `User ${userId}: ⚠️ WARNING - Contrastive scores too clustered (range < 0.1). ` +
-          `Saved/skipped centroids may be too similar. Consider using positive-only scoring.`,
-      );
     }
 
-    return {
-      scoredChunks,
-      diagnostics: {
-        scoringMethod: "contrastive",
-        qualityProfileUsed: qualityProfile !== null,
-        qualitySnipCount: qualityProfile?.snipCount ?? 0,
-        qualitySavedCount: qualityProfile?.savedCount ?? 0,
-      },
-    };
+    console.warn(
+      `User ${userId}: embedding centroids too similar (${centroidSimilarity.toFixed(3)}), using positive-only baseline`,
+    );
   }
 
-  // Fallback: Positive-only scoring with quality boost
-  console.log(
-    `User ${userId}: Using POSITIVE-ONLY scoring against ${savedChunks.length} saved chunks ` +
-      `(need ${5 - skippedChunks.length} more skips for contrastive learning)`,
-  );
+  for (const chunk of chunks) {
+    const embedding = chunk.embedding;
+    if (!embedding) {
+      scores.set(chunk.id, 0.3);
+      continue;
+    }
+
+    const similarity = cosineSimilarity(embedding, savedCentroid);
+    scores.set(chunk.id, Math.max(0, Math.min(1, similarity)));
+  }
 
   return {
-    scoredChunks: chunks.map((chunk) => {
-      if (!chunk.embedding) {
-        return {
-          ...chunk,
-          relevanceScore: 0.3,
-        };
-      }
+    method:
+      skippedEmbeddings.length >= 5 ? "contrastive-fallback" : "positive-only",
+    scores,
+    savedCount: savedEmbeddings.length,
+    skippedCount: skippedEmbeddings.length,
+  };
+}
 
-      const semanticScore = cosineSimilarity(chunk.embedding, savedCentroid);
-      const relevanceScore = qualityProfile
-        ? computeHybridScore(semanticScore, chunk.content, qualityProfile)
-        : Math.max(0, semanticScore);
+async function scoreChunksForRelevance(
+  chunks: ChunkRecord[],
+  preferences: UserPreferenceRecord,
+  userId: string,
+): Promise<{ scoredChunks: ScoredChunk[]; diagnostics: ScoringDiagnostics }> {
+  if (chunks.length === 0) {
+    return {
+      scoredChunks: [],
+      diagnostics: {
+        methodDistribution: { length: 0, heuristics: 0, llm: 0 },
+        baselineMethod: null,
+        llmCalls: 0,
+        minScore: 0,
+        maxScore: 0,
+        avgScore: 0,
+      },
+    };
+  }
 
-      return {
-        ...chunk,
-        relevanceScore,
-      };
-    }),
+  const baseline = await computeEmbeddingBaseline(chunks, preferences, userId);
+  const methodCounts: MethodDistribution = { length: 0, heuristics: 0, llm: 0 };
+  const scoredChunks: ScoredChunk[] = [];
+
+  let minScore = 1;
+  let maxScore = 0;
+  let totalScore = 0;
+
+  for (const chunk of chunks) {
+    const result = await hybridScore(chunk.content);
+    methodCounts[result.method] += 1;
+
+    const normalized = result.normalizedScore;
+    minScore = Math.min(minScore, normalized);
+    maxScore = Math.max(maxScore, normalized);
+    totalScore += normalized;
+
+    scoredChunks.push({
+      ...chunk,
+      relevanceScore: normalized,
+      scoringMethod: result.method,
+      hybridRawScore: result.rawScore,
+      hybridDiagnostics: result.diagnostics,
+      embeddingScore: baseline?.scores.get(chunk.id) ?? null,
+    });
+  }
+
+  const count = scoredChunks.length;
+
+  return {
+    scoredChunks,
     diagnostics: {
-      scoringMethod: "positive-only",
-      qualityProfileUsed: qualityProfile !== null,
-      qualitySnipCount: qualityProfile?.snipCount ?? 0,
-      qualitySavedCount: qualityProfile?.savedCount ?? 0,
+      methodDistribution: methodCounts,
+      baselineMethod: baseline
+        ? {
+            type: baseline.method,
+            savedCount: baseline.savedCount,
+            skippedCount: baseline.skippedCount,
+          }
+        : null,
+      llmCalls: methodCounts.llm,
+      minScore: count > 0 ? minScore : 0,
+      maxScore: count > 0 ? maxScore : 0,
+      avgScore: count > 0 ? totalScore / count : 0,
     },
   };
 }
@@ -1265,6 +1212,9 @@ async function storeDailySignals(
       userId,
       signalDate,
       relevanceScore: chunk.relevanceScore,
+      embeddingScore: chunk.embeddingScore,
+      scoringMethod: chunk.scoringMethod,
+      hybridDiagnostics: chunk.hybridDiagnostics,
       title: null,
       summary: null,
       excerpt: chunk.content,
@@ -1297,6 +1247,21 @@ async function storeDailySignals(
           WHEN ${dailySignal.userAction} IS NULL 
           THEN excluded.speaker_name 
           ELSE ${dailySignal.speakerName} 
+        END`,
+        scoringMethod: sql`CASE 
+          WHEN ${dailySignal.userAction} IS NULL 
+          THEN excluded.scoring_method 
+          ELSE ${dailySignal.scoringMethod} 
+        END`,
+        embeddingScore: sql`CASE 
+          WHEN ${dailySignal.userAction} IS NULL 
+          THEN excluded.embedding_score 
+          ELSE ${dailySignal.embeddingScore} 
+        END`,
+        hybridDiagnostics: sql`CASE 
+          WHEN ${dailySignal.userAction} IS NULL 
+          THEN excluded.hybrid_diagnostics 
+          ELSE ${dailySignal.hybridDiagnostics} 
         END`,
         // CRITICAL FIX: Don't update signalDate on regeneration
         // Keep original date so cleanup can delete old pending signals

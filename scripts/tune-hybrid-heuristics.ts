@@ -9,13 +9,14 @@
  * 3. Lower thresholds for borderline cases
  * 4. Content quality signals (questions, specificity)
  */
+/** biome-ignore-all lint/correctness/useParseIntRadix: ** */
 
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateObject } from "ai";
+import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/server/db";
-import { dailySignal, transcriptChunk, savedChunk } from "@/server/db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { dailySignal, savedChunk, transcriptChunk } from "@/server/db/schema";
 
 const USMAN_USER_ID = "50MVpUIZfdsAAA9Qpl6Z42NuGYbyma2G";
 
@@ -329,7 +330,7 @@ async function llmScore(content: string): Promise<{
 }> {
   try {
     const result = await generateObject({
-      model: openai("gpt-4o-mini"),
+      model: openai("gpt-4.1-mini"),
       schema: llmScoreSchema,
       prompt: `You are evaluating podcast transcript chunks for Usman, an investor/founder who values:
 - Named frameworks ("idea maze", "operating rails", "sea of sameness")

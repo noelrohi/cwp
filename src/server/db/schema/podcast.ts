@@ -21,6 +21,34 @@ export const episodeStatusEnum = pgEnum("episode_status", [
   "retrying",
 ]);
 
+export type DailySignalHybridDiagnostics = {
+  wordCount: number;
+  heuristic?: {
+    frameworkScore: number;
+    insightScore: number;
+    specificityScore: number;
+    qualityScore: number;
+    overallScore: number;
+    reasons: string[];
+  };
+  llm?: {
+    buckets: {
+      frameworkClarity: number;
+      insightNovelty: number;
+      tacticalSpecificity: number;
+      reasoningDepth: number;
+      overallScore: number;
+    };
+    reasoning: string;
+    reasons: string[];
+    usage?: {
+      promptTokens?: number;
+      completionTokens?: number;
+      totalTokens?: number;
+    };
+  };
+};
+
 export const podcast = pgTable(
   "podcast",
   {
@@ -185,6 +213,9 @@ export const dailySignal = pgTable(
     signalDate: timestamp("signal_date", { withTimezone: true }).notNull(),
     relevanceScore: doublePrecision("relevance_score").notNull(), // 0.0 to 1.0
     similarityScore: doublePrecision("similarity_score"), // Keep for backward compatibility
+    embeddingScore: doublePrecision("embedding_score"),
+    scoringMethod: text("scoring_method"),
+    hybridDiagnostics: jsonb("hybrid_diagnostics").$type<DailySignalHybridDiagnostics>(),
     title: text("title"),
     summary: text("summary"),
     excerpt: text("excerpt"),
@@ -200,6 +231,7 @@ export const dailySignal = pgTable(
     index().on(table.userId, table.signalDate),
     index().on(table.userAction),
     index().on(table.relevanceScore),
+    index().on(table.scoringMethod),
     index().on(table.chunkId),
     unique().on(table.chunkId, table.userId),
   ],

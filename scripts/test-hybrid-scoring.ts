@@ -9,13 +9,15 @@
  * This script tests the approach on Usman's actual saves/skips
  * to see if it would predict his behavior better than current system.
  */
+/** biome-ignore-all lint/correctness/useParseIntRadix: ** */
+/** biome-ignore-all lint/style/useTemplate: ** */
 
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateObject } from "ai";
+import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/server/db";
-import { dailySignal, transcriptChunk, savedChunk } from "@/server/db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { dailySignal, savedChunk, transcriptChunk } from "@/server/db/schema";
 
 const USMAN_USER_ID = "50MVpUIZfdsAAA9Qpl6Z42NuGYbyma2G";
 
@@ -252,7 +254,7 @@ async function llmScore(content: string): Promise<{
 
   try {
     const result = await generateObject({
-      model: openai("gpt-4o-mini"), // Cheapest, good enough for scoring
+      model: openai("gpt-4.1-mini"), // Cheapest, good enough for scoring
       schema: llmScoreSchema,
       prompt: `You are evaluating podcast transcript chunks for Usman, an investor/founder who writes about:
 - Professional services disruption
@@ -281,7 +283,7 @@ Be critical. Most content should score 30-50. Only truly exceptional content sco
 
     const elapsed = Date.now() - startTime;
 
-    // Estimate cost (gpt-4o-mini is ~$0.15 per 1M input tokens, ~$0.60 per 1M output tokens)
+    // Estimate cost (gpt-4.1-mini is ~$0.15 per 1M input tokens, ~$0.60 per 1M output tokens)
     // Rough estimate: ~500 input tokens, ~100 output tokens
     const estimatedCost = (500 * 0.15 + 100 * 0.6) / 1_000_000;
 
@@ -492,7 +494,9 @@ async function evaluateHybridScoring(
     console.log(
       `  Result: ${predicted ? "✅ SAVE" : "❌ SKIP"} ` +
         `(score: ${result.score.toFixed(1)}, method: ${result.method}, ` +
-        `current score: ${save.currentScore ? (save.currentScore * 100).toFixed(1) + "%" : "N/A"})`,
+        `current score: ${
+          save.currentScore ? (save.currentScore * 100).toFixed(1) + "%" : "N/A"
+        })`,
     );
   }
 
