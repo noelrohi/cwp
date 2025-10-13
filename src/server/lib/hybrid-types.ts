@@ -1,6 +1,7 @@
+// Garbage filter: Skip content shorter than this
 export const LENGTH_SKIP_THRESHOLD = 80;
-export const HEURISTIC_SAVE_THRESHOLD = 60;
-export const HEURISTIC_SKIP_THRESHOLD = 25;
+
+// LLM judgment: Save content scoring above this
 export const LLM_SAVE_THRESHOLD = 50;
 
 export type ScoringMethod = "length" | "heuristics" | "llm";
