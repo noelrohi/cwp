@@ -99,6 +99,12 @@ export function extractHeuristicBuckets(content: string): HeuristicBuckets {
       trimmed,
     );
 
+  // Detect implicit contrast structure (not just explicit "vs")
+  const hasContrastStructure =
+    /\b(not .+ but|can'?t .+ only|the only way|instead of .+ing)\b/i.test(
+      trimmed,
+    );
+
   const hasAnalogy =
     /\b(it'?s like|similar to|think of it as|imagine|as if|metaphor|analogy)\b/i.test(
       trimmed,
@@ -130,6 +136,10 @@ export function extractHeuristicBuckets(content: string): HeuristicBuckets {
   if (hasComparison) {
     frameworkScore += 0.4;
     reasons.push("Comparison pattern (X vs Y)");
+  }
+  if (hasContrastStructure && !hasComparison) {
+    frameworkScore += 0.3;
+    reasons.push("Implicit contrast structure");
   }
   if (hasAnalogy) {
     frameworkScore += 0.3;
@@ -165,15 +175,21 @@ export function extractHeuristicBuckets(content: string): HeuristicBuckets {
       trimmed,
     );
 
-  // Detect hidden motivation / psychological insight
+  // Detect hidden motivation / psychological insight (structural, not specific words)
   const hasPsychologicalInsight =
-    /\b((pure|just) (ego|fear|insecurity)|gets? in the way|driven by|motivated by|stems from)\b/i.test(
+    /\b((pure|just) \w+|gets? in the way|driven by|motivated by|stems from)\b/i.test(
       trimmed,
     );
 
   // Detect "best X do Y vs others do Z" pattern (comparison-based insight)
   const hasBestVsOthers =
     /\b(best|top|great|exceptional).+(do|are|have).+(while|but|whereas|and).+(most|others|average)\b/i.test(
+      trimmed,
+    );
+
+  // Detect anti-pattern structure ("most X do Y" - what NOT to do)
+  const hasAntiPattern =
+    /\b(most|many|everyone).+(just|simply|only|always).+(chase|follow|do|say|think)\b/i.test(
       trimmed,
     );
 
@@ -201,6 +217,11 @@ export function extractHeuristicBuckets(content: string): HeuristicBuckets {
   if (hasBestVsOthers) {
     insightScore += 0.4;
     reasons.push("Best-practice comparison");
+  }
+
+  if (hasAntiPattern) {
+    insightScore += 0.3;
+    reasons.push("Anti-pattern identification");
   }
 
   if (negations.length >= 4) {
@@ -249,6 +270,12 @@ export function extractHeuristicBuckets(content: string): HeuristicBuckets {
       trimmed,
     );
 
+  // Detect judgment/assessment criteria phrases
+  const hasAssessmentCriteria =
+    /\b(how to (judge|tell|know|identify|spot|recognize)|the way to (tell|know|figure out)|you figure (it|this) out by)\b/i.test(
+      trimmed,
+    );
+
   if (numbers.length >= 3) {
     specificityScore += 0.5;
     reasons.push(`Data-rich (${numbers.length} numbers)`);
@@ -278,6 +305,12 @@ export function extractHeuristicBuckets(content: string): HeuristicBuckets {
   if (hasTactic) {
     specificityScore += 0.3;
     reasons.push("Actionable tactics");
+  }
+
+  if (hasAssessmentCriteria) {
+    specificityScore += 0.4;
+    insightScore += 0.2;
+    reasons.push("Assessment/judgment criteria");
   }
 
   // QUALITY SIGNALS
