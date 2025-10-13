@@ -40,7 +40,11 @@ export async function extractArticleContent(
 
   // Request markdown format - simpler and more reliable
   // No special headers needed - Jina's public endpoint is free
-  const response = await fetch(jinaUrl);
+  const response = await fetch(jinaUrl, {
+    headers: {
+      Authorization: `Bearer ${process.env.JINA_API_KEY}`,
+    },
+  });
 
   if (!response.ok) {
     throw new Error(

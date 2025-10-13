@@ -24,7 +24,6 @@ import {
   transcriptChunk,
 } from "@/server/db/schema";
 import { dailySignal } from "@/server/db/schema/podcast";
-import { extractArticleBody } from "@/server/lib/article-processing";
 import { createTRPCRouter, protectedProcedure } from "../init";
 
 export const articlesRouter = createTRPCRouter({
@@ -715,7 +714,12 @@ export const articlesRouter = createTRPCRouter({
       }
 
       const jinaUrl = `https://r.jina.ai/${articleRecord.url}`;
-      const response = await fetch(jinaUrl);
+      const response = await fetch(jinaUrl, {
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${process.env.JINA_API_KEY}`,
+        },
+      });
 
       if (!response.ok) {
         throw new TRPCError({
@@ -724,8 +728,8 @@ export const articlesRouter = createTRPCRouter({
         });
       }
 
-      const fullText = await response.text();
-      const rawContent = extractArticleBody(fullText);
+      const data = await response.json();
+      const rawContent = data.data.content;
 
       await ctx.db
         .update(article)

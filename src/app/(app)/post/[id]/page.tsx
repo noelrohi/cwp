@@ -31,6 +31,7 @@ import {
   SignalCard,
   type SignalCardMetadataItem,
 } from "@/blocks/signals/signal-card";
+import { FavoriteButton } from "@/components/favorite-button";
 import { SnipDialog } from "@/components/snip-dialog";
 import { StreamdownWithSnip } from "@/components/streamdown-with-snip";
 import { Badge } from "@/components/ui/badge";
@@ -614,6 +615,7 @@ Content: ${content}
           <div className="flex gap-2 flex-wrap">
             <ButtonGroup>
               <CopyArticleContentButton articleId={params.id} />
+              <FavoriteButton articleId={params.id} />
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button size="sm" variant="outline">

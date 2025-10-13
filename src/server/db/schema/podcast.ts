@@ -478,3 +478,45 @@ export const articleRelations = relations(article, ({ one, many }) => ({
 export const articleFeedRelations = relations(articleFeed, ({ many }) => ({
   articles: many(article),
 }));
+
+export const favorite = pgTable(
+  "favorite",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    episodeId: text("episode_id").references(() => episode.id, {
+      onDelete: "cascade",
+    }),
+    articleId: text("article_id").references(() => article.id, {
+      onDelete: "cascade",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index().on(table.userId),
+    index().on(table.episodeId),
+    index().on(table.articleId),
+    unique().on(table.userId, table.episodeId),
+    unique().on(table.userId, table.articleId),
+    check(
+      "favorite_source_check",
+      sql`(
+        (episode_id IS NOT NULL AND article_id IS NULL) OR
+        (episode_id IS NULL AND article_id IS NOT NULL)
+      )`,
+    ),
+  ],
+);
+
+export const favoriteRelations = relations(favorite, ({ one }) => ({
+  episode: one(episode, {
+    fields: [favorite.episodeId],
+    references: [episode.id],
+  }),
+  article: one(article, {
+    fields: [favorite.articleId],
+    references: [article.id],
+  }),
+}));

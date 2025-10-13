@@ -36,6 +36,7 @@ import {
   SignalCard,
   type SignalCardMetadataItem,
 } from "@/blocks/signals/signal-card";
+import { FavoriteButton } from "@/components/favorite-button";
 import { SnipDialog } from "@/components/snip-dialog";
 import { TranscriptDisplay } from "@/components/transcript-display";
 import { Badge } from "@/components/ui/badge";
@@ -1037,6 +1038,7 @@ Content: ${content}
                         : null
                     }
                   />
+                  <FavoriteButton episodeId={params.id} />
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button size="sm" variant="outline">

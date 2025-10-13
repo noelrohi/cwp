@@ -2,6 +2,7 @@ import { createTRPCRouter } from "./init";
 import { adminRouter } from "./routers/admin";
 import { articlesRouter } from "./routers/articles";
 import { episodesRouter } from "./routers/episodes";
+import { favoritesRouter } from "./routers/favorites";
 import { flashcardsRouter } from "./routers/flashcards";
 import { podcastsRouter } from "./routers/podcasts";
 import { ragRouter } from "./routers/rag";
@@ -16,6 +17,7 @@ export const appRouter = createTRPCRouter({
   rag: ragRouter,
   articles: articlesRouter,
   flashcards: flashcardsRouter,
+  favorites: favoritesRouter,
   admin: adminRouter,
 });
 
