@@ -23,9 +23,11 @@ Step 2: Chunk Content
     ↓
 Step 3: Generate Embeddings (OpenAI)
     ↓
-Step 4: Create Signals
+Step 4: Mark as "Processed"
     ↓
-Mark as "Processed"
+User clicks "Generate Signals" (manual)
+    ↓
+Inngest signal generation job runs
     ↓
 UI Polls & Auto-Refreshes
 ```
@@ -48,8 +50,7 @@ UI Polls & Auto-Refreshes
 1. **Mark Processing**: Update article status to "processing"
 2. **Extract Content**: Fetch from Jina AI, validate, update metadata
 3. **Chunk & Embed**: Split into semantic chunks, generate embeddings
-4. **Generate Signals**: Create relevance-scored signals for user
-5. **Mark Processed**: Update status to "processed"
+4. **Mark Processed**: Update status to "processed" (signals are generated manually from the UI)
 
 **Error Handling**:
 - Each step has try/catch
@@ -96,6 +97,39 @@ UI Polls & Auto-Refreshes
 **Use Case**: User's preferences changed, want new signals without reprocessing content
 
 ---
+
+## Manual Signal Generation
+
+Signal generation now runs on-demand so users stay in control of when new insights arrive. Both articles and episodes share the same Inngest event with a richer payload for finer control.
+
+### Event: `app/daily-intelligence.user.generate-signals`
+
+```typescript
+{
+  pipelineRunId: string;
+  userId: string;
+  episodeId?: string; // Required for podcast episodes
+  maxSignals?: number; // Defaults to 30 when omitted
+  regenerate?: boolean; // Include previously scored chunks when true
+}
+```
+
+- **Articles** trigger `article/signals.generate` from the UI. When that finishes, the Inngest job sets `signalsGeneratedAt` on the article.
+- **Episodes** trigger `app/daily-intelligence.user.generate-signals`. The same event is used for both initial generation and regeneration by toggling the `regenerate` flag.
+- The UI now shows status badges (Pending, Processing, Processed, Failed) and inline progress messages for processing, summary generation, and signal generation.
+- The "Generate Signals" button only appears once processing is complete, ensuring the action does exactly what it says—no hidden reprocessing work.
+
+### Episode Flow
+
+1. `episodes.generateSignals` validates that the episode is processed and dispatches the Inngest event with `{ maxSignals, regenerate: false }`.
+2. `episodes.regenerateSignals` reuses the same event but forces regeneration with `{ regenerate: true }`.
+3. `app/daily-intelligence.user.generate-signals` calls the hybrid scoring pipeline with the `maxSignals` override and updates `signalsGeneratedAt` once finished.
+
+### Article Flow
+
+1. `articles.generateSignals` ensures the article is processed and sends `article/signals.generate`.
+2. The Inngest handler validates chunks, scores them, stores signals, and stamps `signalsGeneratedAt`.
+3. `articles.regenerateSignals` keeps using `article/signals.regenerate` to rescore existing chunks without reprocessing content.
 
 ## TRPC Endpoints
 

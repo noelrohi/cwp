@@ -77,3 +77,12 @@ export async function judgeHybrid(content: string): Promise<JudgeResult> {
     };
   }
 }
+
+export async function judgeHybridBatch(
+  contents: string[],
+): Promise<JudgeResult[]> {
+  const results = await Promise.all(
+    contents.map((content) => judgeHybrid(content)),
+  );
+  return results;
+}

@@ -4,9 +4,9 @@
  */
 
 import { cosineSimilarity } from "ai";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/server/db";
-import { dailySignal, transcriptChunk, savedChunk } from "@/server/db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { dailySignal, savedChunk, transcriptChunk } from "@/server/db/schema";
 
 const USMAN_USER_ID = "50MVpUIZfdsAAA9Qpl6Z42NuGYbyma2G";
 

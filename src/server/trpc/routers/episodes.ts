@@ -275,6 +275,7 @@ export const episodesRouter = createTRPCRouter({
           userId: ctx.user.id,
           episodeId: input.episodeId,
           maxSignals: input.maxSignals,
+          regenerate: false,
         },
       });
 
@@ -329,6 +330,8 @@ export const episodesRouter = createTRPCRouter({
           pipelineRunId,
           userId: ctx.user.id,
           episodeId: input.episodeId,
+          maxSignals: 30,
+          regenerate: true,
         },
       });
 

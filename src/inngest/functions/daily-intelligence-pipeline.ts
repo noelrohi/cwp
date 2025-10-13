@@ -13,7 +13,7 @@ import {
   userPreferences,
 } from "@/server/db/schema";
 import { generateEpisodeSummary } from "@/server/lib/episode-summary";
-import { hybridScore } from "@/server/lib/hybrid-scoring";
+import { hybridScoreBatch } from "@/server/lib/hybrid-scoring";
 import type {
   HybridDiagnostics,
   ScoringMethod,
@@ -68,6 +68,8 @@ type DailyIntelligenceGenerateSignalsEvent = {
   pipelineRunId: string;
   userId: string;
   episodeId?: string;
+  maxSignals?: number;
+  regenerate?: boolean;
 };
 
 export const dailyIntelligenceProcessUser = inngest.createFunction(
@@ -579,11 +581,16 @@ export const dailyIntelligenceGenerateSignals = inngest.createFunction(
   { id: "daily-intelligence-generate-signals" },
   { event: DAILY_INTELLIGENCE_GENERATE_SIGNALS_EVENT },
   async ({ event, step, logger }) => {
-    const { pipelineRunId, userId, episodeId } =
+    const { pipelineRunId, userId, episodeId, maxSignals, regenerate } =
       event.data as DailyIntelligenceGenerateSignalsEvent;
 
     const result = await step.run("generate-user-signals", async () => {
-      const diagnostics = await generateUserSignals(userId, episodeId, true);
+      const diagnostics = await generateUserSignals({
+        userId,
+        episodeId,
+        forceRegenerate: regenerate ?? false,
+        maxSignals,
+      });
 
       // Mark episode signals as generated IMMEDIATELY after signals are stored
       // This happens in the same step to prevent race conditions
@@ -598,7 +605,7 @@ export const dailyIntelligenceGenerateSignals = inngest.createFunction(
           .where(eq(episode.id, episodeId));
 
         logger.info(
-          `Pipeline run ${pipelineRunId}: episode ${episodeId} signals generated (${diagnostics.signalsGenerated} signals)`,
+          `Pipeline run ${pipelineRunId}: episode ${episodeId} signals ${regenerate ? "regenerated" : "generated"} (${diagnostics.signalsGenerated} signals)`,
         );
       }
 
@@ -643,13 +650,23 @@ export const dailyIntelligenceGenerateSignals = inngest.createFunction(
  *
  * @param userId - User to generate signals for
  * @param episodeId - Optional episode ID to limit signal generation to specific episode
+ * @param maxSignals - Overrides default number of signals to keep after sampling
  * @param forceRegenerate - If true, includes chunks that already have signals (for regeneration)
  */
-async function generateUserSignals(
-  userId: string,
-  episodeId?: string,
+type GenerateUserSignalsParams = {
+  userId: string;
+  episodeId?: string;
+  forceRegenerate?: boolean;
+  maxSignals?: number;
+};
+
+async function generateUserSignals({
+  userId,
+  episodeId,
   forceRegenerate = false,
-): Promise<SignalGenerationDiagnostics> {
+  maxSignals,
+}: GenerateUserSignalsParams): Promise<SignalGenerationDiagnostics> {
+  const targetSignalCount = maxSignals ?? PIPELINE_SETTINGS.maxDailySignals;
   const preferences = await getOrCreateUserPreferences(userId);
   const candidateChunks = await getNewChunksForUser(
     userId,
@@ -690,10 +707,14 @@ async function generateUserSignals(
     );
   }
 
-  const filteredChunks = filterRankedChunks(scoredChunks, preferences);
+  const filteredChunks = filterRankedChunks(
+    scoredChunks,
+    preferences,
+    targetSignalCount,
+  );
 
   console.log(
-    `User ${userId}: After filtering, ${filteredChunks.length} chunks`,
+    `User ${userId}: After filtering, ${filteredChunks.length} chunks (target ${targetSignalCount})`,
   );
 
   if (filteredChunks.length === 0) {
@@ -952,10 +973,7 @@ async function computeEmbeddingBaseline(
     const skippedCentroid = calculateCentroid(
       skippedEmbeddings.map((row) => row.embedding as number[]),
     );
-    const centroidSimilarity = cosineSimilarity(
-      savedCentroid,
-      skippedCentroid,
-    );
+    const centroidSimilarity = cosineSimilarity(savedCentroid, skippedCentroid);
 
     if (centroidSimilarity <= 0.85) {
       for (const chunk of chunks) {
@@ -1026,14 +1044,15 @@ async function scoreChunksForRelevance(
 
   const baseline = await computeEmbeddingBaseline(chunks, preferences, userId);
   const methodCounts: MethodDistribution = { length: 0, heuristics: 0, llm: 0 };
-  const scoredChunks: ScoredChunk[] = [];
 
   let minScore = 1;
   let maxScore = 0;
   let totalScore = 0;
 
-  for (const chunk of chunks) {
-    const result = await hybridScore(chunk.content);
+  const results = await hybridScoreBatch(chunks.map((chunk) => chunk.content));
+
+  const scoredChunks = chunks.map((chunk, i) => {
+    const result = results[i];
     methodCounts[result.method] += 1;
 
     const normalized = result.normalizedScore;
@@ -1041,15 +1060,15 @@ async function scoreChunksForRelevance(
     maxScore = Math.max(maxScore, normalized);
     totalScore += normalized;
 
-    scoredChunks.push({
+    return {
       ...chunk,
       relevanceScore: normalized,
       scoringMethod: result.method,
       hybridRawScore: result.rawScore,
       hybridDiagnostics: result.diagnostics,
       embeddingScore: baseline?.scores.get(chunk.id) ?? null,
-    });
-  }
+    };
+  });
 
   const count = scoredChunks.length;
 
@@ -1075,6 +1094,7 @@ async function scoreChunksForRelevance(
 function filterRankedChunks(
   chunks: ScoredChunk[],
   preferences: UserPreferenceRecord,
+  targetCount: number,
 ): ScoredChunk[] {
   if (chunks.length === 0) return [];
 
@@ -1083,8 +1103,6 @@ function filterRankedChunks(
   );
 
   console.log(`Filtering chunks. User has ${preferences.totalSaved} saves`);
-
-  const targetCount = PIPELINE_SETTINGS.maxDailySignals;
 
   if (sorted.length <= targetCount) {
     return sorted;

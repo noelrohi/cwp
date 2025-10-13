@@ -9,6 +9,7 @@
  * This script tests the approach on Usman's actual saves/skips
  * to see if it would predict his behavior better than current system.
  */
+/** biome-ignore-all lint/correctness/noUnusedVariables: ** */
 /** biome-ignore-all lint/correctness/useParseIntRadix: ** */
 /** biome-ignore-all lint/style/useTemplate: ** */
 

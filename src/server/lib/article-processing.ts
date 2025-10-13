@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { cosineSimilarity } from "ai";
 import { and, eq, sql } from "drizzle-orm";
-import { generateEmbedding } from "@/lib/embedding";
+import { generateEmbedding, generateEmbeddingBatch } from "@/lib/embedding";
 import type { db as dbInstance } from "@/server/db";
 import {
   article as articleSchema,
@@ -276,24 +276,23 @@ export async function chunkArticleContent({
 
   // Generate embeddings in batches
   console.log(`Generating embeddings for ${chunks.length} article chunks`);
-  const BATCH_SIZE = 10;
+  const BATCH_SIZE = 100;
   const embeddings: (number[] | null)[] = [];
 
   for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
     const batch = chunks.slice(i, i + BATCH_SIZE);
-    const batchEmbeddings = await Promise.all(
-      batch.map((chunk) =>
-        generateEmbedding(chunk.content).catch((error) => {
-          console.error("Failed to generate embedding:", error);
-          return null;
-        }),
-      ),
-    );
-    embeddings.push(...batchEmbeddings);
 
-    // Rate limiting
-    if (i + BATCH_SIZE < chunks.length) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
+    try {
+      const batchEmbeddings = await generateEmbeddingBatch(
+        batch.map((chunk) => chunk.content),
+      );
+      embeddings.push(...batchEmbeddings);
+    } catch (error) {
+      console.error(
+        `Failed to generate embeddings for batch starting at ${i}:`,
+        error,
+      );
+      embeddings.push(...new Array(batch.length).fill(null));
     }
   }
 

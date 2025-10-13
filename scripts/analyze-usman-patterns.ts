@@ -7,16 +7,16 @@
  * 3. What differentiates saves from skips?
  */
 
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/server/db";
 import {
   dailySignal,
-  transcriptChunk,
   episode,
+  flashcard,
   podcast,
   savedChunk,
-  flashcard,
+  transcriptChunk,
 } from "@/server/db/schema";
-import { eq, and, desc, inArray } from "drizzle-orm";
 
 const USMAN_USER_ID = "50MVpUIZfdsAAA9Qpl6Z42NuGYbyma2G";
 
@@ -220,7 +220,7 @@ async function main() {
 
   for (const [idx, chunk] of flashcardSaves.entries()) {
     console.log(
-      `${idx + 1}. Score: ${chunk.relevanceScore ? (chunk.relevanceScore * 100).toFixed(1) + "%" : "N/A"}`,
+      `${idx + 1}. Score: ${chunk.relevanceScore ? `${(chunk.relevanceScore * 100).toFixed(1)}%` : "N/A"}`,
     );
     console.log(
       `   Source: ${chunk.podcastTitle || "Unknown"} - ${chunk.episodeTitle || "Unknown"}`,
@@ -235,7 +235,7 @@ async function main() {
 
   for (const [idx, chunk] of savedChunks.slice(0, 5).entries()) {
     console.log(
-      `${idx + 1}. Score: ${chunk.relevanceScore ? (chunk.relevanceScore * 100).toFixed(1) + "%" : "N/A"} ${chunk.hasFlashcard ? "⭐ FLASHCARD" : ""}`,
+      `${idx + 1}. Score: ${chunk.relevanceScore ? `${(chunk.relevanceScore * 100).toFixed(1)}%` : "N/A"} ${chunk.hasFlashcard ? "⭐ FLASHCARD" : ""}`,
     );
     console.log(
       `   Source: ${chunk.podcastTitle || "Unknown"} - ${chunk.episodeTitle || "Unknown"}`,
@@ -402,8 +402,8 @@ async function main() {
   };
 
   // Write to file for manual review
-  const fs = await import("fs");
-  const path = await import("path");
+  const fs = await import("node:fs");
+  const path = await import("node:path");
   const outputPath = path.join(process.cwd(), "usman-analysis.json");
   fs.writeFileSync(outputPath, JSON.stringify(analysisData, null, 2));
 
@@ -414,7 +414,7 @@ async function main() {
 
 function truncate(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
-  return text.substring(0, maxLength) + "...";
+  return `${text.substring(0, maxLength)}...`;
 }
 
 main()

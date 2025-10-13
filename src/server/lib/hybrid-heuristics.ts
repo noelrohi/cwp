@@ -1,9 +1,9 @@
+import type { HeuristicBuckets, HeuristicResult } from "./hybrid-types";
 import {
   HEURISTIC_SAVE_THRESHOLD,
   HEURISTIC_SKIP_THRESHOLD,
   LENGTH_SKIP_THRESHOLD,
 } from "./hybrid-types";
-import type { HeuristicBuckets, HeuristicResult } from "./hybrid-types";
 
 function clamp(value: number, min = 0, max = 1): number {
   return Math.min(max, Math.max(min, value));
@@ -163,8 +163,7 @@ export function extractHeuristicBuckets(content: string): HeuristicBuckets {
       /\d+([.,]\d+)?(%|x|X|\s*(percent|million|billion|thousand|times))?/g,
     ) || [];
 
-  const properNouns =
-    trimmed.match(/\b[A-Z][a-z]+(\s[A-Z][a-z]+)?\b/g) || [];
+  const properNouns = trimmed.match(/\b[A-Z][a-z]+(\s[A-Z][a-z]+)?\b/g) || [];
 
   const hasExample =
     /\b(for example|for instance|such as|like when|case in point|consider)\b/i.test(
@@ -237,7 +236,8 @@ export function extractHeuristicBuckets(content: string): HeuristicBuckets {
 
   const totalWords = Math.max(wordCount, 1);
   const commonWordCount =
-    trimmed.match(/\b(the|a|an|and|or|but|in|on|at|to|for|of|with|by)\b/gi)?.length || 0;
+    trimmed.match(/\b(the|a|an|and|or|but|in|on|at|to|for|of|with|by)\b/gi)
+      ?.length || 0;
   const vocabularyRichness = 1 - commonWordCount / totalWords;
   if (vocabularyRichness > 0.6) {
     qualityScore += 0.3;

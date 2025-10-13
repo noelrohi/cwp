@@ -1,7 +1,7 @@
 import { createClient as createDeepgramClient } from "@deepgram/sdk";
 import { put } from "@vercel/blob";
 import { and, eq, sql } from "drizzle-orm";
-import { generateEmbedding } from "@/lib/embedding";
+import { generateEmbedding, generateEmbeddingBatch } from "@/lib/embedding";
 import type { db as dbInstance } from "@/server/db";
 import {
   episode as episodeSchema,
@@ -169,34 +169,29 @@ export async function chunkEpisodeTranscript({
 
   if (!skipEmbeddings) {
     console.time("chunk-transcript-embeddings");
-    const BATCH_SIZE = 10; // Process 10 chunks at a time
+    const BATCH_SIZE = 100;
 
     for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
       const batch = chunks.slice(i, i + BATCH_SIZE);
       console.log(
-        `Processing embedding batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(chunks.length / BATCH_SIZE)}`,
+        `Processing embedding batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(chunks.length / BATCH_SIZE)} (${batch.length} chunks)`,
       );
 
-      const batchPromises = batch.map((chunk, batchIndex) =>
-        generateEmbedding(chunk.content).catch((error) => {
-          console.error(
-            `Failed to generate embedding for chunk ${i + batchIndex}:`,
-            error,
-          );
-          return null; // Return null for failed embeddings
-        }),
-      );
-      const batchEmbeddings = await Promise.all(batchPromises);
-      embeddings.push(...batchEmbeddings);
-
-      // Small delay between batches to be nice to the API
-      if (i + BATCH_SIZE < chunks.length) {
-        await new Promise((resolve) => setTimeout(resolve, 100));
+      try {
+        const batchEmbeddings = await generateEmbeddingBatch(
+          batch.map((chunk) => chunk.content),
+        );
+        embeddings.push(...batchEmbeddings);
+      } catch (error) {
+        console.error(
+          `Failed to generate embeddings for batch starting at ${i}:`,
+          error,
+        );
+        embeddings.push(...new Array(batch.length).fill(null));
       }
     }
     console.timeEnd("chunk-transcript-embeddings");
   } else {
-    // Fill with nulls when skipping embeddings
     embeddings = new Array(chunks.length).fill(null);
   }
 
@@ -249,42 +244,34 @@ export async function generateMissingEmbeddings({
     `Generating embeddings for ${chunksNeedingEmbeddings.length} chunks`,
   );
 
-  // Process in batches
-  const BATCH_SIZE = 10;
+  const BATCH_SIZE = 100;
   let embeddingsGenerated = 0;
 
   for (let i = 0; i < chunksNeedingEmbeddings.length; i += BATCH_SIZE) {
     const batch = chunksNeedingEmbeddings.slice(i, i + BATCH_SIZE);
 
-    const updates = await Promise.all(
-      batch.map(async (chunk) => {
-        try {
-          const embedding = await generateEmbedding(chunk.content);
-          return { id: chunk.id, embedding };
-        } catch (error) {
-          console.error(
-            `Failed to generate embedding for chunk ${chunk.id}:`,
-            error,
-          );
-          return null;
+    try {
+      const batchEmbeddings = await generateEmbeddingBatch(
+        batch.map((chunk) => chunk.content),
+      );
+
+      for (let j = 0; j < batch.length; j++) {
+        const chunk = batch[j];
+        const embedding = batchEmbeddings[j];
+
+        if (embedding) {
+          await db
+            .update(transcriptChunk)
+            .set({ embedding })
+            .where(eq(transcriptChunk.id, chunk.id));
+          embeddingsGenerated++;
         }
-      }),
-    );
-
-    // Update chunks with successful embeddings
-    for (const update of updates) {
-      if (update) {
-        await db
-          .update(transcriptChunk)
-          .set({ embedding: update.embedding })
-          .where(eq(transcriptChunk.id, update.id));
-        embeddingsGenerated++;
       }
-    }
-
-    // Small delay between batches
-    if (i + BATCH_SIZE < chunksNeedingEmbeddings.length) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
+    } catch (error) {
+      console.error(
+        `Failed to generate embeddings for batch starting at ${i}:`,
+        error,
+      );
     }
   }
 

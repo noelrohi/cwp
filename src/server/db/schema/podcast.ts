@@ -215,7 +215,8 @@ export const dailySignal = pgTable(
     similarityScore: doublePrecision("similarity_score"), // Keep for backward compatibility
     embeddingScore: doublePrecision("embedding_score"),
     scoringMethod: text("scoring_method"),
-    hybridDiagnostics: jsonb("hybrid_diagnostics").$type<DailySignalHybridDiagnostics>(),
+    hybridDiagnostics:
+      jsonb("hybrid_diagnostics").$type<DailySignalHybridDiagnostics>(),
     title: text("title"),
     summary: text("summary"),
     excerpt: text("excerpt"),

@@ -1,7 +1,7 @@
 import type { UIMessageStreamWriter } from "ai";
 import { z } from "zod";
-import type { AppRouter } from "@/server/trpc/root";
 import type { ChatUIMessage } from "@/app/api/chat/route";
+import type { AppRouter } from "@/server/trpc/root";
 
 // Helper function to format timestamps for citations
 function formatTimestamp(seconds: number | null): string {

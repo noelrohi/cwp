@@ -1135,6 +1135,8 @@ export const signalsRouter = createTRPCRouter({
       data: {
         pipelineRunId: "manual-trigger",
         userId: ctx.user.id,
+        regenerate: true,
+        maxSignals: 30,
       },
     });
 

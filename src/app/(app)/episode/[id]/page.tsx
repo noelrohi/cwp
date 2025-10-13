@@ -14,6 +14,7 @@ import {
   File01Icon,
   FingerPrintIcon,
   FlashIcon,
+  InformationCircleIcon,
   Loading03Icon,
   Scissor01Icon,
   SparklesIcon,
@@ -414,14 +415,133 @@ Content: ${content}
 
   const episodeData = episode.data;
   const relatedSignals = signals.data ?? [];
+  const currentStatus = episodeData?.status;
+  const currentErrorMessage = episodeData?.errorMessage;
   const isProcessing =
-    episodeData?.status === "processing" ||
+    currentStatus === "processing" ||
     processEpisode.isPending ||
     reprocessEpisode.isPending;
   const isGenerating = generateSignals.isPending;
   const isRegenerating = regenerateSignals.isPending;
-  const isProcessed = episodeData?.status === "processed";
-  const hasSignalsGenerated = !!episodeData?.signalsGeneratedAt;
+  const isProcessed = currentStatus === "processed";
+  const hasSignalsGenerated = Boolean(episodeData?.signalsGeneratedAt);
+  const lastProcessedAt = episodeData?.lastProcessedAt
+    ? new Date(episodeData.lastProcessedAt)
+    : null;
+  const lastSignalsGeneratedAt = episodeData?.signalsGeneratedAt
+    ? new Date(episodeData.signalsGeneratedAt)
+    : null;
+  const statusLabel = (() => {
+    switch (currentStatus) {
+      case "processed":
+        return "Processed";
+      case "processing":
+        return "Processing";
+      case "failed":
+        return "Failed";
+      case "retrying":
+        return "Retrying";
+      case "pending":
+        return "Pending";
+      default:
+        return currentStatus ? currentStatus : "Unknown";
+    }
+  })();
+
+  const statusTooltipItems = (() => {
+    const items: Array<{ text: string; tone?: "error" }> = [];
+    if (statusLabel) {
+      items.push({ text: `Status: ${statusLabel}` });
+    }
+    if (lastProcessedAt) {
+      items.push({
+        text: `Last processed ${lastProcessedAt.toLocaleString("en-US", {
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        })}.`,
+      });
+    }
+    if (isProcessing) {
+      items.push({
+        text: "Processing in progress. Transcript and embeddings are being prepared.",
+      });
+    }
+    if (isGenerating) {
+      items.push({
+        text: "Signal generation running. Insights will appear shortly.",
+      });
+    }
+    if (isRegenerating) {
+      items.push({ text: "Signal regeneration refreshing current results." });
+    }
+    if (generateSummary.isPending) {
+      items.push({ text: "Summary generation in progress." });
+    }
+    if (hasSignalsGenerated && lastSignalsGeneratedAt) {
+      items.push({
+        text: `Signals generated ${lastSignalsGeneratedAt.toLocaleString(
+          "en-US",
+          {
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          },
+        )}.`,
+      });
+    } else if (isProcessed) {
+      items.push({ text: "Signals not generated yet." });
+    }
+    if (currentErrorMessage) {
+      items.push({ text: `Last error: ${currentErrorMessage}`, tone: "error" });
+    }
+    return items;
+  })();
+  const activeOperation = (() => {
+    if (isProcessing) {
+      return {
+        title: "Processing episode",
+        description:
+          "Fetching the transcript, chunking audio, and preparing embeddings. This usually takes a few minutes depending on length.",
+        icon: Loading03Icon,
+        spinning: true,
+        showProgress: true,
+      } as const;
+    }
+    if (isGenerating) {
+      return {
+        title: "Generating signals",
+        description:
+          "Scoring transcript segments to deliver the top 30 insights for review.",
+        icon: Loading03Icon,
+        spinning: true,
+        showProgress: false,
+      } as const;
+    }
+    if (isRegenerating) {
+      return {
+        title: "Regenerating signals",
+        description:
+          "Refreshing scores with your latest preferences. We'll replace the existing list shortly.",
+        icon: Loading03Icon,
+        spinning: true,
+        showProgress: false,
+      } as const;
+    }
+    if (generateSummary.isPending) {
+      return {
+        title: "Generating summary",
+        description: "Creating a concise recap tailored to your preferences.",
+        icon: Loading03Icon,
+        spinning: true,
+        showProgress: false,
+      } as const;
+    }
+    return null;
+  })();
+  const isBusy = isProcessing || isGenerating || isRegenerating;
   const processButtonLabel = (() => {
     if (isProcessing) return "Processing...";
     return "Process Episode";
@@ -490,7 +610,7 @@ Content: ${content}
                   {episodeData?.title}
                 </h1>
 
-                <dl className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                <dl className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
                   {episodeData?.publishedAt && (
                     <div className="flex items-center gap-1.5">
                       <HugeiconsIcon icon={Calendar03Icon} size={14} />
@@ -514,7 +634,35 @@ Content: ${content}
                       <dd>{Math.floor(episodeData.durationSec / 60)} min</dd>
                     </div>
                   )}
+                  {statusTooltipItems.length > 0 && (
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <HugeiconsIcon icon={InformationCircleIcon} size={14} />
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs">
+                        <div className="space-y-1 text-xs">
+                          {statusTooltipItems.map((item, index) => (
+                            <p
+                              key={`${item.text}-${index}`}
+                              className={
+                                item.tone === "error"
+                                  ? "text-destructive"
+                                  : undefined
+                              }
+                            >
+                              {item.text}
+                            </p>
+                          ))}
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
                 </dl>
+                {currentErrorMessage && (
+                  <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                    {currentErrorMessage}
+                  </div>
+                )}
               </div>
 
               {/* Thumbnail - Mobile only */}
@@ -610,8 +758,8 @@ Content: ${content}
                   onOpenChange={setShowGenerateDialog}
                 >
                   <DialogTrigger asChild>
-                    <Button disabled={isGenerating} size="sm">
-                      {isGenerating ? (
+                    <Button disabled={isGenerating || isProcessing} size="sm">
+                      {isGenerating || isProcessing ? (
                         <HugeiconsIcon
                           icon={Loading03Icon}
                           size={16}
@@ -657,9 +805,11 @@ Content: ${content}
                           onClick={() =>
                             generateSignals.mutate({ episodeId: params.id })
                           }
-                          disabled={isGenerating}
+                          disabled={isGenerating || isProcessing}
                         >
-                          {isGenerating ? "Generating..." : "Generate Signals"}
+                          {isGenerating || isProcessing
+                            ? "Generating..."
+                            : "Generate Signals"}
                         </Button>
                       </div>
                     </div>
@@ -675,11 +825,11 @@ Content: ${content}
                   >
                     <DialogTrigger asChild>
                       <Button
-                        disabled={isRegenerating}
+                        disabled={isRegenerating || isProcessing}
                         variant="outline"
                         size="sm"
                       >
-                        {isRegenerating ? (
+                        {isRegenerating || isProcessing ? (
                           <HugeiconsIcon
                             icon={Loading03Icon}
                             size={16}
@@ -765,9 +915,9 @@ Content: ${content}
                             onClick={() =>
                               regenerateSignals.mutate({ episodeId: params.id })
                             }
-                            disabled={isRegenerating}
+                            disabled={isRegenerating || isProcessing}
                           >
-                            {isRegenerating
+                            {isRegenerating || isProcessing
                               ? "Regenerating..."
                               : "Regenerate Signals"}
                           </Button>
@@ -781,11 +931,7 @@ Content: ${content}
                     onOpenChange={setShowReprocessDialog}
                   >
                     <DialogTrigger asChild>
-                      <Button
-                        disabled={isProcessing}
-                        variant="destructive"
-                        size="sm"
-                      >
+                      <Button disabled={isBusy} variant="destructive" size="sm">
                         {isProcessing ? (
                           <HugeiconsIcon
                             icon={Loading03Icon}
@@ -867,7 +1013,7 @@ Content: ${content}
                             onClick={() =>
                               reprocessEpisode.mutate({ episodeId: params.id })
                             }
-                            disabled={isProcessing}
+                            disabled={isBusy}
                           >
                             {isProcessing
                               ? "Reprocessing..."
@@ -978,6 +1124,27 @@ Content: ${content}
         </div>
       </div>
 
+      {activeOperation && (
+        <div className="rounded-lg border border-border bg-muted/60 p-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+            <HugeiconsIcon
+              icon={activeOperation.icon}
+              size={16}
+              className={activeOperation.spinning ? "animate-spin" : undefined}
+            />
+            {activeOperation.title}
+          </div>
+          {activeOperation.showProgress && (
+            <div className="mt-3 h-2 rounded-full bg-muted">
+              <div className="h-2 w-full rounded-full bg-primary animate-pulse" />
+            </div>
+          )}
+          <p className="mt-3 text-xs text-muted-foreground">
+            {activeOperation.description}
+          </p>
+        </div>
+      )}
+
       <Tabs
         value={activeTab}
         onValueChange={(v) => setActiveTab(v as typeof activeTab)}
@@ -1011,9 +1178,9 @@ Content: ${content}
                   onClick={() =>
                     generateSummary.mutate({ episodeId: params.id })
                   }
-                  disabled={generateSummary.isPending}
+                  disabled={generateSummary.isPending || isProcessing}
                 >
-                  {generateSummary.isPending ? (
+                  {generateSummary.isPending || isProcessing ? (
                     <HugeiconsIcon
                       icon={Loading03Icon}
                       size={16}
@@ -1022,7 +1189,9 @@ Content: ${content}
                   ) : (
                     <HugeiconsIcon icon={SparklesIcon} size={16} />
                   )}
-                  Regenerate
+                  {generateSummary.isPending || isProcessing
+                    ? "Working..."
+                    : "Regenerate"}
                 </Button>
               </ItemFooter>
             </Item>
