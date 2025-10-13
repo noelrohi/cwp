@@ -2,7 +2,7 @@
 export const LENGTH_SKIP_THRESHOLD = 80;
 
 // LLM judgment: Save content scoring above this
-export const LLM_SAVE_THRESHOLD = 50;
+export const LLM_SAVE_THRESHOLD = 60;
 
 export type ScoringMethod = "length" | "heuristics" | "llm";
 

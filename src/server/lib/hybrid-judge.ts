@@ -60,18 +60,28 @@ WHAT HE SKIPS (even if topically relevant):
    - "Here are the problems: A, B, C..." without deeper pattern
    - Enumeration without insight
 
-SCORING GUIDANCE:
-- Most content should score 30-50 (average podcast content)
-- 50-65: Good but not exceptional (useful but not save-worthy)
-- 65-75: Strong content with frameworks OR insights (save-worthy)
-- 75-85: Exceptional - multiple frameworks + insights + specificity
-- 85+: Rare - groundbreaking frameworks with deep reasoning
+SCORING GUIDANCE (calibrated to Usman's actual behavior):
+- Generic/obvious: 10-25 (everyone knows this)
+- Topically relevant but shallow: 30-45 (interesting but not actionable)
+- Good insight but incomplete: 50-60 (useful but not exceptional)
+- SAVE-WORTHY THRESHOLD: 60-75 (must meet criteria below)
+- Exceptional: 75-85 (multiple frameworks + deep reasoning)
+- Groundbreaking: 85+ (rare - transforms thinking)
 
-PENALTIES (subtract 15-25 points):
-- Biographical storytelling without patterns
-- Meta-commentary about the content itself
-- Dense academic references without practical grounding
-- Generic wisdom everyone already knows
+CRITICAL: Only score 60+ if content includes:
+✓ Named framework with explanation ("we call this X"), OR
+✓ Counter-intuitive insight with reasoning (flips conventional wisdom), OR
+✓ Specific tactic with deep "why" (not just "what"), OR
+✓ Clear assessment criteria (how to judge X)
+
+Red flags that indicate LOW score (20-40):
+✗ Biographical details without generalizable lessons
+✗ "Incentives matter" type obvious observations
+✗ Meta-commentary ("I'm simplifying but...")
+✗ Lists without synthesis or deeper pattern
+✗ Academic jargon without practical application
+
+When in doubt: Default to 40. Usman's bar is HIGH.
 
 Score each dimension 0-100, then provide overall score.`;
 
@@ -94,8 +104,17 @@ export async function judgeHybrid(content: string): Promise<JudgeResult> {
             .filter(Boolean)
         : [];
 
+    // Use weighted formula emphasizing analytical depth
+    // Usman values: frameworks, novelty, and DEPTH over tactics
+    const weightedScore = Math.round(
+      object.frameworkClarity * 0.25 +
+        object.insightNovelty * 0.25 +
+        object.reasoningDepth * 0.35 + // Emphasize depth
+        object.tacticalSpecificity * 0.15,
+    );
+
     return {
-      score: object.overallScore,
+      score: weightedScore, // Use weighted instead of overallScore
       buckets: {
         frameworkClarity: object.frameworkClarity,
         insightNovelty: object.insightNovelty,
