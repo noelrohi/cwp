@@ -3,7 +3,13 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { inngest } from "@/inngest/client";
-import { dailySignal, flashcard, savedChunk } from "@/server/db/schema/podcast";
+import {
+  article,
+  dailySignal,
+  flashcard,
+  savedChunk,
+  transcriptChunk,
+} from "@/server/db/schema/podcast";
 import { createTRPCRouter, protectedProcedure } from "../init";
 
 export const flashcardsRouter = createTRPCRouter({
@@ -89,6 +95,113 @@ export const flashcardsRouter = createTRPCRouter({
       });
 
       return { id };
+    }),
+
+  createFromSelection: protectedProcedure
+    .input(
+      z.object({
+        articleId: z.string(),
+        front: z
+          .string()
+          .min(1, "Front is required")
+          .max(500, "Front must be 500 characters or less"),
+        back: z
+          .string()
+          .min(1, "Back is required")
+          .max(5000, "Back must be 5000 characters or less"),
+        tags: z.array(z.string()).optional(),
+        source: z.enum(["summary", "article"]).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const articleRecord = await ctx.db.query.article.findFirst({
+        where: and(
+          eq(article.id, input.articleId),
+          eq(article.userId, ctx.user.id),
+        ),
+        columns: {
+          id: true,
+          title: true,
+          publishedAt: true,
+        },
+      });
+
+      if (!articleRecord) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Article not found",
+        });
+      }
+
+      const trimmedBack = input.back.trim();
+      if (trimmedBack.length === 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Back content cannot be empty",
+        });
+      }
+
+      const chunkId = nanoid();
+      const wordCount = trimmedBack.split(/\s+/).filter(Boolean).length;
+
+      await ctx.db.insert(transcriptChunk).values({
+        id: chunkId,
+        articleId: articleRecord.id,
+        content: trimmedBack,
+        wordCount,
+      });
+
+      const signalId = nanoid();
+      const now = new Date();
+      const safeFront = input.front.trim();
+      const summary = buildSummary(trimmedBack, safeFront);
+      const excerpt = buildExcerpt(trimmedBack);
+
+      await ctx.db.insert(dailySignal).values({
+        id: signalId,
+        chunkId,
+        userId: ctx.user.id,
+        signalDate: articleRecord.publishedAt ?? now,
+        relevanceScore: 1,
+        title: safeFront || articleRecord.title,
+        summary,
+        excerpt,
+        userAction: "saved",
+        presentedAt: now,
+        actionedAt: now,
+        scoringMethod: input.source ? `manual-${input.source}` : "manual",
+      });
+
+      const savedChunkId = nanoid();
+      await ctx.db.insert(savedChunk).values({
+        id: savedChunkId,
+        chunkId,
+        userId: ctx.user.id,
+        tags: input.tags?.length ? input.tags.join(",") : null,
+        highlightExtractedQuote: trimmedBack,
+        highlightExtractedAt: now,
+        savedAt: now,
+      });
+
+      await inngest.send({
+        name: "signal/actioned",
+        data: {
+          signalId,
+          action: "saved",
+        },
+      });
+
+      const flashcardId = nanoid();
+      await ctx.db.insert(flashcard).values({
+        id: flashcardId,
+        userId: ctx.user.id,
+        signalId,
+        front: safeFront,
+        back: trimmedBack,
+        tags: input.tags ?? [],
+      });
+
+      return { id: flashcardId, signalId };
     }),
 
   list: protectedProcedure.query(async ({ ctx }) => {
@@ -220,3 +333,21 @@ export const flashcardsRouter = createTRPCRouter({
       return { success: true };
     }),
 });
+
+function buildSummary(back: string, front: string): string {
+  if (front) {
+    return truncateText(front, 320);
+  }
+  return truncateText(back, 320);
+}
+
+function buildExcerpt(back: string): string {
+  return truncateText(back, 180);
+}
+
+function truncateText(content: string, maxLength: number): string {
+  if (content.length <= maxLength) {
+    return content;
+  }
+  return `${content.slice(0, maxLength - 3).trimEnd()}...`;
+}

@@ -43,23 +43,48 @@ const flashcardSchema = z.object({
 type FlashcardFormData = z.infer<typeof flashcardSchema>;
 
 type SnipDialogProps = {
-  signalId: string;
+  signalId?: string;
+  articleId?: string;
   defaultBack?: string;
-  trigger: React.ReactNode;
+  trigger?: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  selectionSource?: "summary" | "article";
 };
 
 export function SnipDialog({
   signalId,
+  articleId,
   defaultBack,
   trigger,
+  open: controlledOpen,
+  onOpenChange,
+  selectionSource,
 }: SnipDialogProps) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+
+  if (!signalId && !articleId) {
+    throw new Error("SnipDialog requires either a signalId or articleId");
+  }
+
+  const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
+  const handleOpenChange = (newOpen: boolean) => {
+    if (onOpenChange) {
+      onOpenChange(newOpen);
+    } else {
+      setInternalOpen(newOpen);
+    }
+  };
+
+  const isSignalMode = Boolean(signalId);
 
   const existingFlashcard = useQuery({
-    ...trpc.flashcards.getBySignal.queryOptions({ signalId }),
-    enabled: open,
+    ...trpc.flashcards.getBySignal.queryOptions({
+      signalId: signalId ?? "",
+    }),
+    enabled: open && isSignalMode && Boolean(signalId),
   });
 
   const createMutation = useMutation(
@@ -89,7 +114,52 @@ export function SnipDialog({
             queryKey: trpc.flashcards.getBySignal.queryKey(),
           }),
         ]);
-        setOpen(false);
+        handleOpenChange(false);
+        form.reset();
+      },
+      onError: (error) => {
+        toast.error(error.message);
+      },
+    }),
+  );
+
+  const createFromSelectionMutation = useMutation(
+    trpc.flashcards.createFromSelection.mutationOptions({
+      onSuccess: async () => {
+        toast.success("Flashcard created");
+        await Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: trpc.flashcards.list.queryKey(),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: trpc.signals.list.queryKey(),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: trpc.signals.metrics.queryKey(),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: trpc.signals.listArticleSignals.queryKey(),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: trpc.signals.articlesWithSignals.queryKey(),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: trpc.signals.episodesWithSignals.queryKey(),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: trpc.signals.byArticle.queryKey(),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: trpc.signals.articleStats.queryKey(),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: trpc.articles.getSummary.queryKey(),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: trpc.articles.getRawContent.queryKey(),
+          }),
+        ]);
+        handleOpenChange(false);
         form.reset();
       },
       onError: (error) => {
@@ -125,7 +195,7 @@ export function SnipDialog({
             queryKey: trpc.signals.episodesWithSignals.queryKey(),
           }),
         ]);
-        setOpen(false);
+        handleOpenChange(false);
       },
       onError: (error) => {
         toast.error(error.message);
@@ -135,6 +205,15 @@ export function SnipDialog({
 
   const form = useForm<FlashcardFormData>({
     resolver: zodResolver(flashcardSchema),
+    values: existingFlashcard.data
+      ? {
+          front: existingFlashcard.data.front,
+          back: existingFlashcard.data.back,
+          tags: existingFlashcard.data.tags
+            ? existingFlashcard.data.tags.join(",")
+            : "",
+        }
+      : undefined,
     defaultValues: {
       front: "",
       back: defaultBack || "",
@@ -142,8 +221,11 @@ export function SnipDialog({
     },
   });
 
-  // Reset form when existing flashcard data loads
   useEffect(() => {
+    if (!open) {
+      return;
+    }
+
     if (existingFlashcard.data) {
       form.reset({
         front: existingFlashcard.data.front,
@@ -152,14 +234,14 @@ export function SnipDialog({
           ? existingFlashcard.data.tags.join(",")
           : "",
       });
-    } else if (open) {
-      // Reset to default values when creating new flashcard
-      form.reset({
-        front: "",
-        back: defaultBack || "",
-        tags: "",
-      });
+      return;
     }
+
+    form.reset({
+      front: "",
+      back: defaultBack || "",
+      tags: "",
+    });
   }, [existingFlashcard.data, open, defaultBack, form]);
 
   const onSubmit = (data: FlashcardFormData) => {
@@ -170,32 +252,39 @@ export function SnipDialog({
           .filter(Boolean)
       : [];
 
-    if (existingFlashcard.data) {
+    if (existingFlashcard.data && isSignalMode && signalId) {
       updateMutation.mutate({
         id: existingFlashcard.data.id,
         front: data.front,
         back: data.back,
         tags,
       });
-    } else {
+    } else if (isSignalMode && signalId) {
       createMutation.mutate({
         signalId,
         front: data.front,
         back: data.back,
         tags,
       });
+    } else if (articleId) {
+      createFromSelectionMutation.mutate({
+        articleId,
+        front: data.front,
+        back: data.back,
+        tags,
+        source: selectionSource,
+      });
     }
   };
 
-  const handleOpenChange = (newOpen: boolean) => {
-    setOpen(newOpen);
-  };
-
-  const isLoading = createMutation.isPending || updateMutation.isPending;
+  const isLoading =
+    createMutation.isPending ||
+    updateMutation.isPending ||
+    createFromSelectionMutation.isPending;
 
   return (
     <Credenza open={open} onOpenChange={handleOpenChange}>
-      <CredenzaTrigger asChild>{trigger}</CredenzaTrigger>
+      {trigger && <CredenzaTrigger asChild>{trigger}</CredenzaTrigger>}
       <CredenzaContent className="sm:max-w-5xl">
         <CredenzaHeader className="text-left">
           <CredenzaTitle className="text-left text-2xl">
@@ -339,7 +428,7 @@ export function SnipDialog({
             <Button
               type="button"
               variant="outline"
-              onClick={() => setOpen(false)}
+              onClick={() => handleOpenChange(false)}
               disabled={isLoading}
             >
               Cancel

@@ -4,7 +4,6 @@ import {
   Add01Icon,
   AiMicIcon,
   AlertCircleIcon,
-  File01Icon,
   File02Icon,
   Loading03Icon,
   PodcastIcon,
@@ -12,6 +11,7 @@ import {
   TimeQuarterPassIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { IconArrowRight } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
@@ -170,13 +170,6 @@ function EpisodeCard({
           signalCounts={episode.signalCounts}
           status={episode.status}
         />
-
-        <Link href={`/episode/${episode.id}?tab=summary`}>
-          <Button variant="ghost" size="icon-sm">
-            <HugeiconsIcon icon={File01Icon} size={14} />
-            <span className="sr-only">View Summary</span>
-          </Button>
-        </Link>
       </div>
     </div>
   );
@@ -188,11 +181,11 @@ function ArticleCard({
   article: RouterOutput["articles"]["list"][number];
 }) {
   return (
-    <div className="flex gap-3 sm:gap-4 mb-3 sm:mb-4 p-3 sm:p-4 border rounded-lg hover:bg-muted/50 transition-colors">
-      <Link
-        href={`/post/${article.id}`}
-        className="flex gap-3 sm:gap-4 flex-1 min-w-0"
-      >
+    <Link
+      href={`/post/${article.id}?tab=article`}
+      className="flex gap-3 sm:gap-4 mb-3 sm:mb-4 p-3 sm:p-4 border rounded-lg hover:bg-muted/50 transition-colors"
+    >
+      <div className="flex gap-3 sm:gap-4 flex-1 min-w-0">
         <div className="relative h-12 w-12 sm:h-16 sm:w-16 rounded-lg bg-muted flex-shrink-0 overflow-hidden flex items-center justify-center">
           <HugeiconsIcon
             icon={File02Icon}
@@ -214,22 +207,15 @@ function ArticleCard({
               "Article"}
           </p>
         </div>
-      </Link>
-
-      <div className="flex flex-col gap-2 items-end justify-between">
-        <SignalCountIndicator
-          signalCounts={article.signalCounts}
-          status={article.status}
-        />
-
-        <Link href={`/post/${article.id}?tab=summary`}>
-          <Button variant="ghost" size="icon-sm">
-            <HugeiconsIcon icon={File01Icon} size={14} />
-            <span className="sr-only">View Summary</span>
-          </Button>
-        </Link>
       </div>
-    </div>
+
+      <div className="flex items-center">
+        <Button variant="ghost" size="sm" className="gap-1">
+          Read
+          <IconArrowRight size={16} />
+        </Button>
+      </div>
+    </Link>
   );
 }
 

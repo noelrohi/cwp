@@ -143,6 +143,7 @@ export const article = pgTable(
     publishedAt: timestamp("published_at", { withTimezone: true }),
     siteName: text("site_name"),
     excerpt: text("excerpt"),
+    rawContent: text("raw_content"),
     status: episodeStatusEnum("status").default("pending").notNull(),
     errorMessage: text("error_message"),
     signalsGeneratedAt: timestamp("signals_generated_at", {

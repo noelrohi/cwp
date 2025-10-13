@@ -16,6 +16,7 @@ export type DatabaseClient = typeof dbInstance;
 export interface ArticleExtractionResult {
   title: string;
   content: string;
+  rawContent: string;
   author?: string;
   publishedAt?: Date;
   siteName?: string;
@@ -49,18 +50,10 @@ export async function extractArticleContent(
 
   const text = await response.text();
 
-  // Jina returns text with metadata headers:
-  // Title: ...
-  // URL Source: ...
-  // Published Time: ...
-  // Markdown Content:
-  // [actual content]
-
   // Parse metadata from headers
   const lines = text.split("\n");
   let title = "Untitled Article";
   let publishedAt: Date | undefined;
-  let contentStartIndex = 0;
 
   for (let i = 0; i < Math.min(lines.length, 20); i++) {
     const line = lines[i];
@@ -71,17 +64,12 @@ export async function extractArticleContent(
       const timeStr = line.substring(16).trim();
       const parsed = new Date(timeStr);
       publishedAt = Number.isNaN(parsed.getTime()) ? undefined : parsed;
-    } else if (line.startsWith("Markdown Content:")) {
-      contentStartIndex = i + 1;
-      break;
     }
   }
 
-  // Extract content (everything after "Markdown Content:")
-  let content = lines.slice(contentStartIndex).join("\n").trim();
+  const rawBodyContent = extractArticleBody(text);
 
-  // Clean up markdown artifacts that pollute embeddings
-  content = cleanMarkdownContent(content);
+  const content = cleanMarkdownContent(rawBodyContent);
 
   if (!content || content.length < 100) {
     throw new Error("Article content too short or empty");
@@ -90,11 +78,62 @@ export async function extractArticleContent(
   return {
     title,
     content,
-    author: undefined, // Not in markdown headers
+    rawContent: rawBodyContent,
+    author: undefined,
     publishedAt,
-    siteName: undefined, // Not in markdown headers
-    excerpt: content.slice(0, 200), // First 200 chars as excerpt
+    siteName: undefined,
+    excerpt: content.slice(0, 200),
   };
+}
+
+/**
+ * Extract article body from Jina markdown response
+ * Removes Jina metadata headers, navigation, footers, and extracts main content
+ */
+export function extractArticleBody(jinaMarkdown: string): string {
+  const lines = jinaMarkdown.split("\n");
+  let contentStartIndex = 0;
+
+  for (let i = 0; i < Math.min(lines.length, 20); i++) {
+    const line = lines[i];
+    if (line.startsWith("Markdown Content:")) {
+      contentStartIndex = i + 1;
+      break;
+    }
+  }
+
+  let content = lines.slice(contentStartIndex).join("\n");
+
+  const commonFooterPatterns = [
+    /Privacy & Cookies:.*/g,
+    /Share This\s+Facebook.*/g,
+    /Share on Mastodon.*/g,
+    /Enter your.*instance URL.*/g,
+    /Subscribe.*Email Terms.*Privacy.*/g,
+    /back\s+random\s+next/gi,
+    /Search\s+Search for:.*/g,
+    /Get the weekly digest.*/g,
+    /Type your email…\s+Subscribe/g,
+    /Learn\s+Which workshop\?.*/g,
+    /Connect\s+News and updates.*/g,
+    /More Seth\s+Books.*/g,
+    /Welcome back\. Have you thought about subscribing\?.*/g,
+  ];
+
+  for (const pattern of commonFooterPatterns) {
+    content = content.replace(pattern, "");
+  }
+
+  content = content
+    .replace(/Image \d+:.*/gim, "")
+    .replace(/\[Image \d+:.*?\]/gi, "")
+    .replace(/You have unread updates\d+/gi, "")
+    .replace(/Or try my new AI-powered search bot/gi, "")
+    .replace(/Find all the books at [\w.]+/gi, "");
+
+  content = content.replace(/\n{3,}/g, "\n\n").trim();
+
+  return content;
 }
 
 /**
@@ -551,6 +590,7 @@ export async function processArticle({
         publishedAt: extracted.publishedAt,
         siteName: extracted.siteName,
         excerpt: extracted.excerpt,
+        rawContent: extracted.rawContent,
       })
       .where(eq(articleSchema.id, articleId));
   } else {
@@ -564,6 +604,7 @@ export async function processArticle({
       publishedAt: extracted.publishedAt,
       siteName: extracted.siteName,
       excerpt: extracted.excerpt,
+      rawContent: extracted.rawContent,
       status: "processing",
     });
   }

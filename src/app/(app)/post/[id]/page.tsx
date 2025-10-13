@@ -24,7 +24,6 @@ import Link from "next/link";
 import { parseAsStringEnum, useQueryState } from "nuqs";
 import { use, useState } from "react";
 import { toast } from "sonner";
-import { Streamdown } from "streamdown";
 
 type SignalAction = "saved" | "skipped";
 
@@ -33,6 +32,7 @@ import {
   type SignalCardMetadataItem,
 } from "@/blocks/signals/signal-card";
 import { SnipDialog } from "@/components/snip-dialog";
+import { StreamdownWithSnip } from "@/components/streamdown-with-snip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
@@ -81,8 +81,9 @@ export default function PostDetailPage(props: {
   const params = use(props.params);
   const [activeTab, setActiveTab] = useQueryState(
     "tab",
-    parseAsStringEnum<"summary" | "signals">([
+    parseAsStringEnum<"summary" | "article" | "signals">([
       "summary",
+      "article",
       "signals",
     ]).withDefault("summary"),
   );
@@ -153,6 +154,11 @@ export default function PostDetailPage(props: {
   const summary = useQuery({
     ...trpc.articles.getSummary.queryOptions({ articleId: params.id }),
     enabled: activeTab === "summary",
+  });
+
+  const rawContent = useQuery({
+    ...trpc.articles.getRawContent.queryOptions({ articleId: params.id }),
+    enabled: activeTab === "article",
   });
 
   const processArticle = useMutation(
@@ -975,6 +981,9 @@ Content: ${content}
           <TabsTrigger value="summary" className="flex-1">
             Summary
           </TabsTrigger>
+          <TabsTrigger value="article" className="flex-1">
+            Full Article
+          </TabsTrigger>
           <TabsTrigger value="signals" className="flex-1">
             Signals{" "}
             <Badge variant="outline" className="ml-1.5">
@@ -990,9 +999,13 @@ Content: ${content}
             <LoadingState />
           ) : summary.data ? (
             <Item className="space-y-6" variant="muted">
-              <Streamdown className="text-base">
-                {summary.data.markdownContent}
-              </Streamdown>
+              <StreamdownWithSnip
+                content={summary.data.markdownContent}
+                className="text-base"
+                articleId={params.id}
+                disallowedElements={["img"]}
+                selectionSource="summary"
+              />
               <ItemFooter className="pt-6 border-t flex gap-3 justify-start">
                 <Button
                   variant="outline"
@@ -1067,6 +1080,63 @@ Content: ${content}
                       : "10-30 seconds"}
                   </p>
                 )}
+              </EmptyContent>
+            </Empty>
+          )}
+        </section>
+      )}
+
+      {activeTab === "article" && (
+        <section className="space-y-4">
+          {rawContent.isPending ? (
+            <LoadingState />
+          ) : rawContent.data?.rawContent ? (
+            <Item className="space-y-6" variant="muted">
+              <StreamdownWithSnip
+                content={rawContent.data.rawContent}
+                className="text-base prose prose-neutral dark:prose-invert max-w-none"
+                disallowedElements={["img"]}
+                articleId={params.id}
+                selectionSource="article"
+              />
+            </Item>
+          ) : (
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <HugeiconsIcon icon={InformationCircleIcon} size={20} />
+                </EmptyMedia>
+                <EmptyTitle>Full Article Content</EmptyTitle>
+                <EmptyDescription>
+                  Process this article to read the full content parsed by Jina
+                  AI.
+                </EmptyDescription>
+              </EmptyHeader>
+
+              <EmptyContent>
+                <Button
+                  size="lg"
+                  onClick={() =>
+                    processArticle.mutate({ articleId: params.id })
+                  }
+                  disabled={isProcessing}
+                >
+                  {isProcessing ? (
+                    <>
+                      <HugeiconsIcon
+                        icon={Loading03Icon}
+                        size={16}
+                        className="animate-spin"
+                      />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <HugeiconsIcon icon={SparklesIcon} size={16} />
+                      Process Article
+                    </>
+                  )}
+                </Button>
               </EmptyContent>
             </Empty>
           )}

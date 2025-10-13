@@ -24,6 +24,7 @@ import {
   transcriptChunk,
 } from "@/server/db/schema";
 import { dailySignal } from "@/server/db/schema/podcast";
+import { extractArticleBody } from "@/server/lib/article-processing";
 import { createTRPCRouter, protectedProcedure } from "../init";
 
 export const articlesRouter = createTRPCRouter({
@@ -681,6 +682,59 @@ export const articlesRouter = createTRPCRouter({
         .join("\n\n");
 
       return { content };
+    }),
+
+  getRawContent: protectedProcedure
+    .input(z.object({ articleId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const articleRecord = await ctx.db.query.article.findFirst({
+        where: and(
+          eq(article.id, input.articleId),
+          eq(article.userId, ctx.user.id),
+        ),
+      });
+
+      if (!articleRecord) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Article not found",
+        });
+      }
+
+      if (articleRecord.rawContent) {
+        return {
+          rawContent: articleRecord.rawContent,
+        };
+      }
+
+      if (!articleRecord.url) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Article has no URL to fetch content from",
+        });
+      }
+
+      const jinaUrl = `https://r.jina.ai/${articleRecord.url}`;
+      const response = await fetch(jinaUrl);
+
+      if (!response.ok) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to fetch article content: ${response.statusText}`,
+        });
+      }
+
+      const fullText = await response.text();
+      const rawContent = extractArticleBody(fullText);
+
+      await ctx.db
+        .update(article)
+        .set({ rawContent })
+        .where(eq(article.id, input.articleId));
+
+      return {
+        rawContent,
+      };
     }),
 
   generateSummary: protectedProcedure

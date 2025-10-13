@@ -3,6 +3,8 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+@source "../node_modules/streamdown/dist/index.js";
+
 @theme {
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
