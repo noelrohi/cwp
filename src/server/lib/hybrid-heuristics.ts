@@ -30,7 +30,7 @@ export function extractHeuristicBuckets(content: string): HeuristicBuckets {
     ]);
   }
 
-  // AD DETECTION - Heavy penalty for commercial content
+  // AD & NON-CONTENT DETECTION
   const adIndicators = [
     /\b(check out|visit|learn more at|sign up|get started|try|subscribe to)\b/i,
     /\.(com|io|net|org)\/[a-z-_]/i, // URLs with paths
@@ -42,10 +42,30 @@ export function extractHeuristicBuckets(content: string): HeuristicBuckets {
     /\b(event features|connect with peers|lineup of.*speakers)\b/i,
   ];
 
+  const introOutroIndicators = [
+    /\b(enjoy the episode|stick to the end|if you (stay|stick) (around|to)|let's (dive|jump) in)\b/i,
+    /\b(like for the algorithm|comment for|subscribe|hit the bell)\b/i,
+    /\b(that's why (I|we) (built|created|made))\s+\w+\.(com|io)/i,
+    /\b(in this episode|so in this episode|in today's episode)\b/i,
+    /\b(thanks for (coming on|having me)|hope you come back|include links)\b/i,
+    /\b(show notes|in the (description|comments))\b/i,
+    /\b(delivered.*over delivered|glad to be here|thank you for having me)\b/i,
+  ];
+
   const adPenalty = adIndicators.filter((pattern) => pattern.test(trimmed));
+  const introPenalty = introOutroIndicators.filter((pattern) =>
+    pattern.test(trimmed),
+  );
+
   if (adPenalty.length > 0) {
     return buildEmptyBuckets([
       `Commercial/ad content detected (${adPenalty.length} indicators)`,
+    ]);
+  }
+
+  if (introPenalty.length > 0) {
+    return buildEmptyBuckets([
+      `Episode intro/outro detected (${introPenalty.length} indicators)`,
     ]);
   }
 
