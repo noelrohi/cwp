@@ -174,17 +174,8 @@ export const dailyIntelligenceProcessEpisode = inngest.createFunction(
 
     if (episodeData.status === "processed") {
       logger.info(
-        `Pipeline run ${pipelineRunId}: episode ${episodeId} already processed`,
+        `Pipeline run ${pipelineRunId}: episode ${episodeId} already processed, skipping`,
       );
-      await step.sendEvent("signal-generation", [
-        {
-          name: DAILY_INTELLIGENCE_GENERATE_SIGNALS_EVENT,
-          data: {
-            pipelineRunId,
-            userId,
-          } satisfies DailyIntelligenceGenerateSignalsEvent,
-        },
-      ]);
       return { status: "already-processed" } as const;
     }
 
