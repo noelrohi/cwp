@@ -30,6 +30,25 @@ export function extractHeuristicBuckets(content: string): HeuristicBuckets {
     ]);
   }
 
+  // AD DETECTION - Heavy penalty for commercial content
+  const adIndicators = [
+    /\b(check out|visit|learn more at|sign up|get started|try|subscribe to)\b/i,
+    /\.(com|io|net|org)\/[a-z-_]/i, // URLs with paths
+    /\b(sponsor|sponsored|brought to you|partner with|partnering with)\b/i,
+    /\b(member fdic|terms.*conditions apply|subject to)\b/i,
+    /\b(pricing|plans starting at|\$\d+\/month)\b/i,
+    /\b(register|join (me|us)|save your spot|rsvp|inaugural)\b/i,
+    /\b(excited to (join|announce|share)|I'm (on stage|speaking at))\b/i,
+    /\b(event features|connect with peers|lineup of.*speakers)\b/i,
+  ];
+
+  const adPenalty = adIndicators.filter((pattern) => pattern.test(trimmed));
+  if (adPenalty.length > 0) {
+    return buildEmptyBuckets([
+      `Commercial/ad content detected (${adPenalty.length} indicators)`,
+    ]);
+  }
+
   const reasons: string[] = [];
   let frameworkScore = 0;
   let insightScore = 0;
