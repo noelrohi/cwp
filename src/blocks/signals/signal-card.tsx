@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  ArrowDown01Icon,
   ArrowReloadHorizontalIcon,
   PauseIcon,
   PlayCircleIcon,
@@ -9,15 +8,9 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { useState } from "react";
 import { Response } from "@/components/ai-elements/response";
 import { useAudioPlayer } from "@/components/audio-player/audio-player-provider";
 import { Button } from "@/components/ui/button";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import { formatTimecode } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
@@ -28,7 +21,6 @@ export type SignalCardMetadataItem = {
 
 export type SignalCardProps = {
   chunkContent: string;
-  highlightContent?: string | null;
   speakerLabel?: string | null;
   startTimeSec?: number | null;
   endTimeSec?: number | null;
@@ -55,7 +47,6 @@ export type SignalCardProps = {
 export function SignalCard(props: SignalCardProps) {
   const {
     chunkContent,
-    highlightContent,
     speakerLabel,
     startTimeSec,
     endTimeSec,
@@ -67,9 +58,6 @@ export function SignalCard(props: SignalCardProps) {
     renderMarkdown = false,
     sourceLink,
   } = props;
-
-  const [isExpanded, setIsExpanded] = useState(false);
-  const hasHighlight = Boolean(highlightContent);
 
   const timestampLabel =
     startTimeSec && endTimeSec
@@ -208,54 +196,7 @@ export function SignalCard(props: SignalCardProps) {
               </>
             )}
           </div>
-          {hasHighlight ? (
-            <div className="space-y-2">
-              {renderMarkdown ? (
-                <Response
-                  className="text-base leading-relaxed text-foreground/90"
-                  allowedImagePrefixes={[]}
-                >
-                  {highlightContent?.trim()}
-                </Response>
-              ) : (
-                <p className="text-base leading-relaxed text-foreground/90 whitespace-pre-line">
-                  {highlightContent?.trim()}
-                </p>
-              )}
-              <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
-                <CollapsibleTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs text-muted-foreground hover:text-foreground"
-                  >
-                    <HugeiconsIcon
-                      icon={ArrowDown01Icon}
-                      className={cn(
-                        "mr-1 h-3 w-3 transition-transform",
-                        isExpanded && "rotate-180",
-                      )}
-                    />
-                    {isExpanded ? "Hide" : "View"} full context
-                  </Button>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="mt-2 pt-2 border-t border-muted">
-                  {renderMarkdown ? (
-                    <Response
-                      className="leading-relaxed text-muted-foreground"
-                      allowedImagePrefixes={[]}
-                    >
-                      {chunkContent.trim()}
-                    </Response>
-                  ) : (
-                    <p className="leading-relaxed text-muted-foreground whitespace-pre-line">
-                      {chunkContent.trim()}
-                    </p>
-                  )}
-                </CollapsibleContent>
-              </Collapsible>
-            </div>
-          ) : renderMarkdown ? (
+          {renderMarkdown ? (
             <Response
               className="text-base leading-relaxed text-foreground/90"
               allowedImagePrefixes={[]}

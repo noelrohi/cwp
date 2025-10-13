@@ -1447,17 +1447,12 @@ Content: ${content}
                       durationSec: signal.episode.durationSec ?? undefined,
                     }
                   : undefined;
-                const highlightContent =
-                  signal.excerpt &&
-                  signal.excerpt.trim() !== signal.chunk.content.trim()
-                    ? signal.excerpt
-                    : null;
+
                 return (
                   <SignalCard
                     key={signal.id}
                     className="rounded-2xl"
                     chunkContent={signal.chunk.content}
-                    highlightContent={highlightContent}
                     speakerLabel={speakerDisplay}
                     startTimeSec={signal.chunk.startTimeSec ?? null}
                     endTimeSec={signal.chunk.endTimeSec ?? null}
@@ -1466,7 +1461,7 @@ Content: ${content}
                     snipButton={
                       <SnipDialog
                         signalId={signal.id}
-                        defaultBack={highlightContent || signal.chunk.content}
+                        defaultBack={signal.chunk.content}
                         trigger={
                           <Button
                             variant="outline"

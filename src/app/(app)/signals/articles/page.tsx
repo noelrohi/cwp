@@ -465,7 +465,6 @@ function SavedArticleSignalsTab() {
                 key={signal.id}
                 className="border-border bg-background/70"
                 chunkContent={signal.content}
-                highlightContent={signal.highlightQuote}
                 speakerLabel={null}
                 startTimeSec={null}
                 endTimeSec={null}
