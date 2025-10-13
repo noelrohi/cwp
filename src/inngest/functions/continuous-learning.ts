@@ -1,6 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { generateText } from "ai";
 import { and, eq, isNull, lt, sql } from "drizzle-orm";
 import { db } from "@/server/db";
 import {
@@ -12,10 +10,6 @@ import {
   userPreferences,
 } from "@/server/db/schema";
 import { inngest } from "../client";
-
-const openrouter = createOpenRouter({
-  apiKey: process.env.OPENROUTER_API_KEY,
-});
 
 /**
  * Update user preferences when they save or skip a signal
@@ -95,27 +89,6 @@ export const updateUserPreferences = inngest.createFunction(
 
         if (existingChunk?.highlightExtractedQuote) {
           return;
-        }
-
-        try {
-          const highlightQuote = await extractImpactfulQuote({
-            content: signalData.content,
-            speaker: signalData.speaker,
-            podcastTitle: signalData.podcastTitle,
-            episodeTitle: signalData.episodeTitle,
-          });
-
-          if (highlightQuote) {
-            await db
-              .update(savedChunk)
-              .set({
-                highlightExtractedQuote: highlightQuote,
-                highlightExtractedAt: new Date(),
-              })
-              .where(eq(savedChunk.id, savedChunkId));
-          }
-        } catch (error) {
-          console.error("Failed to extract highlight:", error);
         }
       });
     }
@@ -296,49 +269,6 @@ async function ensureUserPreferencesRow(userId: string) {
   }
 
   return created;
-}
-
-async function extractImpactfulQuote(context: {
-  content: string;
-  speaker: string | null;
-  podcastTitle: string;
-  episodeTitle: string;
-}): Promise<string | null> {
-  const prompt = `You are an expert at extracting impactful, quotable insights from podcast transcripts.
-
-Context:
-- Podcast: ${context.podcastTitle}
-- Episode: ${context.episodeTitle}
-${context.speaker ? `- Speaker: ${context.speaker}` : ""}
-
-Transcript chunk:
-"""
-${context.content}
-"""
-
-Extract a 1-3 sentence quote that is:
-- Highly impactful and memorable
-- Perfect for sharing in a newsletter or social media
-- Captures a key insight, surprising fact, or actionable advice
-- Stands alone without needing additional context
-- Avoids filler words or rambling
-
-If the chunk contains no quotable insight, respond with "NO_QUOTE".
-
-Return ONLY the extracted quote, nothing else.`;
-
-  const result = await generateText({
-    model: openrouter("x-ai/grok-4-fast:free"),
-    prompt,
-  });
-
-  const quote = result.text.trim();
-
-  if (quote === "NO_QUOTE" || quote.length < 20) {
-    return null;
-  }
-
-  return quote;
 }
 
 /**
