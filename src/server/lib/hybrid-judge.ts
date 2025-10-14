@@ -1,10 +1,10 @@
-import { createOpenAI } from "@ai-sdk/openai";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { generateObject } from "ai";
 import { z } from "zod";
 import type { JudgeResult } from "./hybrid-types";
 
-const openai = createOpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+const openrouter = createOpenRouter({
+  apiKey: process.env.OPENROUTER_API_KEY,
 });
 
 const judgementSchema = z.object({
@@ -88,7 +88,7 @@ Score each dimension 0-100, then provide overall score.`;
 export async function judgeHybrid(content: string): Promise<JudgeResult> {
   try {
     const result = await generateObject({
-      model: openai("gpt-4.1-mini"),
+      model: openrouter("moonshotai/kimi-k2-0905"),
       schema: judgementSchema,
       prompt: `${HYBRID_PROMPT}\nCHUNK:\n${content}`,
     });
@@ -104,17 +104,8 @@ export async function judgeHybrid(content: string): Promise<JudgeResult> {
             .filter(Boolean)
         : [];
 
-    // Use weighted formula emphasizing analytical depth
-    // Usman values: frameworks, novelty, and DEPTH over tactics
-    const weightedScore = Math.round(
-      object.frameworkClarity * 0.25 +
-        object.insightNovelty * 0.25 +
-        object.reasoningDepth * 0.35 + // Emphasize depth
-        object.tacticalSpecificity * 0.15,
-    );
-
     return {
-      score: weightedScore, // Use weighted instead of overallScore
+      score: object.overallScore, // Use LLM's overall judgment
       buckets: {
         frameworkClarity: object.frameworkClarity,
         insightNovelty: object.insightNovelty,

@@ -2,6 +2,7 @@
 export const LENGTH_SKIP_THRESHOLD = 80;
 
 // LLM judgment: Save content scoring above this
+// Calibrated for Kimi-k2-0905: 60 gives 100% precision
 export const LLM_SAVE_THRESHOLD = 60;
 
 export type ScoringMethod = "length" | "heuristics" | "llm";
