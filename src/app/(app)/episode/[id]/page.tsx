@@ -853,14 +853,14 @@ Content: ${content}
                           </p>
                           <ul className="list-disc list-inside space-y-1 ml-2">
                             <li>
+                              Delete all pending signals from this episode
+                            </li>
+                            <li>
                               Re-score all chunks using your latest preferences
                             </li>
                             <li>
-                              Add new signals from previously unselected chunks
-                            </li>
-                            <li>
-                              Apply current stratified sampling (top 30 across
-                              0-100% distribution)
+                              Generate fresh top 30 signals with stratified
+                              sampling (0-100% distribution)
                             </li>
                           </ul>
 
@@ -896,12 +896,12 @@ Content: ${content}
                               signals won't be changed
                             </p>
                             <p className="text-amber-600 dark:text-amber-400">
-                              <strong>Updated:</strong> Pending signals will be
-                              re-scored with your latest preferences
+                              <strong>Deleted:</strong> All pending signals will
+                              be removed
                             </p>
                             <p className="text-blue-600 dark:text-blue-400">
-                              <strong>Added:</strong> New signals may be added
-                              from previously unselected chunks
+                              <strong>Regenerated:</strong> Fresh set of 30
+                              signals will be created from scratch
                             </p>
                           </div>
                         </div>

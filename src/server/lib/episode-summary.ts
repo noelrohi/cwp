@@ -4,7 +4,7 @@ import * as z from "zod/v4";
 import type { TranscriptData } from "@/types/transcript";
 import { openrouter } from "../../ai/models";
 
-const model = openrouter("google/gemini-2.5-flash");
+const model = openrouter("openai/gpt-4.1-mini");
 
 export async function generateEpisodeSummary(
   transcript: TranscriptData,

@@ -659,6 +659,27 @@ async function generateUserSignals({
 }: GenerateUserSignalsParams): Promise<SignalGenerationDiagnostics> {
   const targetSignalCount = maxSignals ?? PIPELINE_SETTINGS.maxDailySignals;
   const preferences = await getOrCreateUserPreferences(userId);
+
+  if (forceRegenerate && episodeId) {
+    const deletedCount = await db
+      .delete(dailySignal)
+      .where(
+        and(
+          eq(dailySignal.userId, userId),
+          sql`${dailySignal.userAction} IS NULL`,
+          sql`${dailySignal.chunkId} IN (
+            SELECT id FROM ${transcriptChunk}
+            WHERE ${transcriptChunk.episodeId} = ${episodeId}
+          )`,
+        ),
+      )
+      .returning({ id: dailySignal.id });
+
+    console.log(
+      `User ${userId}: Deleted ${deletedCount.length} pending signals for episode ${episodeId} before regeneration`,
+    );
+  }
+
   const candidateChunks = await getNewChunksForUser(
     userId,
     episodeId,
