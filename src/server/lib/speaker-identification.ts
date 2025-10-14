@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { openrouter } from "@openrouter/ai-sdk-provider";
+import { openai } from "@ai-sdk/openai";
 import { generateText } from "ai";
 import { eq } from "drizzle-orm";
 import { episodeSpeakerMapping } from "@/server/db/schema";
@@ -207,7 +207,7 @@ export async function identifyEpisodeSpeakers({
 
   try {
     const result = await generateText({
-      model: openrouter("openai/gpt-4.1-mini"),
+      model: openai("gpt-4.1-mini"),
       system: `You are an expert at identifying podcast speakers from episode descriptions.
 
 Your task is to extract speaker names and map them to speaker numbers (0, 1, 2, etc.) based on the episode context.

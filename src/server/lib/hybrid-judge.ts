@@ -1,10 +1,10 @@
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { createBaseten } from "@ai-sdk/baseten";
 import { generateObject } from "ai";
 import { z } from "zod";
 import type { JudgeResult } from "./hybrid-types";
 
-const openrouter = createOpenRouter({
-  apiKey: process.env.OPENROUTER_API_KEY,
+const baseten = createBaseten({
+  apiKey: process.env.BASETEN_API_KEY ?? "",
 });
 
 const judgementSchema = z.object({
@@ -88,7 +88,7 @@ Score each dimension 0-100, then provide overall score.`;
 export async function judgeHybrid(content: string): Promise<JudgeResult> {
   try {
     const result = await generateObject({
-      model: openrouter("moonshotai/kimi-k2-0905"),
+      model: baseten("moonshotai/Kimi-K2-Instruct-0905"),
       schema: judgementSchema,
       prompt: `${HYBRID_PROMPT}\nCHUNK:\n${content}`,
     });

@@ -1,4 +1,4 @@
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { openai } from "@ai-sdk/openai";
 import {
   convertToModelMessages,
   createUIMessageStream,
@@ -44,13 +44,6 @@ export type ChatUIMessage = UIMessage<
   }
 >;
 
-const openrouter = createOpenRouter({
-  apiKey: process.env.OPENROUTER_API_KEY,
-  headers: {
-    "X-Title": "cwp",
-  },
-});
-
 // Allow streaming responses up to 30 seconds
 export const maxDuration = 30;
 
@@ -94,7 +87,7 @@ export async function POST(req: Request) {
       console.log("📡 [Chat API] Streaming response...\n");
 
       const result = streamText({
-        model: openrouter("openai/gpt-4.1-mini"),
+        model: openai("gpt-4.1-mini"),
         messages: convertToModelMessages(messages),
         system: `You are a helpful AI assistant that helps users discover and understand insights from their saved podcast content.
 
