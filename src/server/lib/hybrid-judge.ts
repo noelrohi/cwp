@@ -24,7 +24,7 @@ WHAT HE SAVES (with examples from his actual saves):
 
 2. Counter-intuitive insights that flip conventional wisdom
    - "Ego makes entrepreneurs overcomplicate products" (not obvious)
-   - "Philosophers are epiphenomenal - they capture vs cause culture" (flips causality)
+   - "Simplification is the biggest hack in entrepreneurship" (flips common belief)
 
 3. Specific tactics with deep reasoning
    - "Walk the aisles, look for sea of sameness, spot culture shifts" (concrete + conceptual)
@@ -47,7 +47,6 @@ WHAT HE SKIPS (even if topically relevant):
 3. Academic density without practical frameworks
    - Dense philosophical references without actionable takeaways
    - Continental philosophy name-dropping without synthesis
-   - Inscrutable jargon without clarity
 
 4. Meta-defensive rambling
    - "You don't need to know this"
@@ -58,28 +57,24 @@ WHAT HE SKIPS (even if topically relevant):
    - "Here are the problems: A, B, C..." without deeper pattern
    - Enumeration without insight
 
-SCORING GUIDANCE (calibrated to Usman's actual behavior):
-- Generic/obvious: 10-25 (everyone knows this)
-- Topically relevant but shallow: 30-45 (interesting but not actionable)
-- Good insight but incomplete: 50-60 (useful but not exceptional)
-- SAVE-WORTHY THRESHOLD: 60-75 (must meet criteria below)
-- Exceptional: 75-85 (multiple frameworks + deep reasoning)
-- Groundbreaking: 85+ (rare - transforms thinking)
+SCORING GUIDANCE:
+- Generic/obvious: 10-30
+- Topically relevant but shallow: 35-50
+- Useful pattern or insight: 55-70 (SAVE THRESHOLD: 60)
+- Multiple frameworks + deep reasoning: 70-85
+- Groundbreaking: 85+
 
-CRITICAL: Only score 60+ if content includes:
+CRITICAL: Score 60+ if content includes:
 ✓ Named framework with explanation ("we call this X"), OR
 ✓ Counter-intuitive insight with reasoning (flips conventional wisdom), OR
 ✓ Specific tactic with deep "why" (not just "what"), OR
 ✓ Clear assessment criteria (how to judge X)
 
-Red flags that indicate LOW score (20-40):
+Red flags for LOW score (20-40):
 ✗ Biographical details without generalizable lessons
 ✗ "Incentives matter" type obvious observations
 ✗ Meta-commentary ("I'm simplifying but...")
 ✗ Lists without synthesis or deeper pattern
-✗ Academic jargon without practical application
-
-When in doubt: Default to 40. Usman's bar is HIGH.
 
 Score each dimension 0-100, then provide overall score.`;
 

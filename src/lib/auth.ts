@@ -23,5 +23,10 @@ export const auth = betterAuth({
       clientSecret: process.env.LINKEDIN_CLIENT_SECRET as string,
     },
   },
+  trustedOrigins: [
+    "chrome-extension://*",
+    "http://localhost:3000",
+    "https://framebreak-intelligence.vercel.app",
+  ],
   plugins: [lastLoginMethod(), autumn(), admin()],
 });
