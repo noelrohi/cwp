@@ -24,6 +24,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { parseAsStringEnum, useQueryState } from "nuqs";
 import { use, useState } from "react";
 import { toast } from "sonner";
@@ -85,6 +86,7 @@ export default function EpisodeDetailPage(props: {
 }) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
+  const router = useRouter();
   const params = use(props.params);
   const [transcript, setTranscript] = useState<TranscriptData | null>(null);
   const [activeTab, setActiveTab] = useQueryState(
@@ -395,13 +397,14 @@ Content: ${content}
   if (episode.error) {
     return (
       <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
-        <Link
-          href="/podcasts"
+        <button
+          type="button"
+          onClick={() => router.back()}
           className="inline-flex items-center gap-2 text-base text-muted-foreground hover:text-foreground"
         >
           <HugeiconsIcon icon={ArrowLeft01Icon} size={16} />
-          Back to Podcasts
-        </Link>
+          Go back
+        </button>
         <div className="text-center py-8 sm:py-12">
           <div className="text-base sm:text-lg font-semibold text-destructive mb-3 sm:mb-4">
             Episode not found
@@ -557,17 +560,14 @@ Content: ${content}
     <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
       {/* Back Navigation */}
       <div className="flex items-center justify-between">
-        <Link
-          href={
-            episodeData?.podcast
-              ? `/podcast/${episodeData.podcast.id}`
-              : "/podcasts"
-          }
+        <button
+          type="button"
+          onClick={() => router.back()}
           className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
         >
           <HugeiconsIcon icon={ArrowLeft01Icon} size={16} />
-          Back to {episodeData?.podcast?.title || "Podcasts"}
-        </Link>
+          Go back
+        </button>
 
         {process.env.NODE_ENV === "development" && (
           <Tooltip>
@@ -1178,7 +1178,9 @@ Content: ${content}
                   className="absolute top-2 right-2 z-10"
                   onClick={() => {
                     if (summary.data?.markdownContent) {
-                      navigator.clipboard.writeText(summary.data.markdownContent);
+                      navigator.clipboard.writeText(
+                        summary.data.markdownContent,
+                      );
                       toast.success("Summary copied to clipboard");
                     }
                   }}

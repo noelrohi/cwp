@@ -55,13 +55,31 @@ function SignalCountIndicator({
   signalCounts: { total: number; pending: number };
   status: "pending" | "processing" | "processed" | "failed" | "retrying";
 }) {
-  // Show processing/failed states when no signals yet
-  if (signalCounts.total === 0) {
+  // Unprocessed - not yet actioned (pending status, no processing started)
+  if (status === "pending" && signalCounts.total === 0) {
+    return (
+      <div
+        className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted text-muted-foreground"
+        title="Not yet processed"
+      >
+        <HugeiconsIcon icon={TimeQuarterPassIcon} size={16} />
+        <span className="text-xs font-medium">Unprocessed</span>
+      </div>
+    );
+  }
+
+  // Summarized - episode processed but no signals generated yet
+  if (
+    (status === "processing" ||
+      status === "retrying" ||
+      status === "processed") &&
+    signalCounts.total === 0
+  ) {
     if (status === "processing" || status === "retrying") {
       return (
         <div
           className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400"
-          title="Processing"
+          title="Processing signals"
         >
           <HugeiconsIcon
             icon={Loading03Icon}
@@ -72,51 +90,67 @@ function SignalCountIndicator({
         </div>
       );
     }
-    if (status === "failed") {
-      return (
-        <div
-          className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400"
-          title="Failed"
-        >
-          <HugeiconsIcon icon={AlertCircleIcon} size={16} />
-          <span className="text-xs font-medium">Failed</span>
-        </div>
-      );
-    }
-    // Not yet processed - no signals yet
     return (
       <div
-        className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted text-muted-foreground"
-        title="Click to process"
+        className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400"
+        title="Episode summarized"
       >
-        <HugeiconsIcon icon={TimeQuarterPassIcon} size={16} />
-        <span className="text-xs font-medium">Unprocessed</span>
+        <HugeiconsIcon icon={TickDouble02Icon} size={16} />
+        <span className="text-xs font-medium">Summarized</span>
       </div>
     );
   }
 
-  // Show signal counts - the ground truth of what's available
-  const hasPending = signalCounts.pending > 0;
+  // Failed state
+  if (status === "failed") {
+    return (
+      <div
+        className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400"
+        title="Processing failed"
+      >
+        <HugeiconsIcon icon={AlertCircleIcon} size={16} />
+        <span className="text-xs font-medium">Failed</span>
+      </div>
+    );
+  }
 
+  // Pending (signals) - signals generated but none reviewed
+  if (signalCounts.total > 0 && signalCounts.pending === signalCounts.total) {
+    return (
+      <div
+        className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400"
+        title={`${signalCounts.pending} signals pending review`}
+      >
+        <HugeiconsIcon icon={AlertCircleIcon} size={16} />
+        <span className="text-xs font-medium">
+          Pending ({signalCounts.pending})
+        </span>
+      </div>
+    );
+  }
+
+  // Done - all signals reviewed
+  if (signalCounts.total > 0 && signalCounts.pending === 0) {
+    return (
+      <div
+        className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400"
+        title={`All ${signalCounts.total} signals reviewed`}
+      >
+        <HugeiconsIcon icon={TickDouble02Icon} size={16} />
+        <span className="text-xs font-medium">Done</span>
+      </div>
+    );
+  }
+
+  // Partial completion - some signals reviewed
   return (
     <div
-      className={`flex items-center gap-1.5 px-2 py-1 rounded-md ${
-        hasPending
-          ? "bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400"
-          : "bg-muted text-muted-foreground"
-      }`}
-      title={`${signalCounts.pending} pending review, ${signalCounts.total - signalCounts.pending} actioned`}
+      className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400"
+      title={`${signalCounts.pending} pending, ${signalCounts.total - signalCounts.pending} reviewed`}
     >
-      <HugeiconsIcon
-        icon={hasPending ? AlertCircleIcon : TickDouble02Icon}
-        size={16}
-      />
+      <HugeiconsIcon icon={AlertCircleIcon} size={16} />
       <span className="text-xs font-medium">
-        {signalCounts.pending > 0 ? (
-          <>{signalCounts.pending} pending</>
-        ) : (
-          <>{signalCounts.total} done</>
-        )}
+        {signalCounts.pending} pending
       </span>
     </div>
   );

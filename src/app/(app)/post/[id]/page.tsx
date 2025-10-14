@@ -21,6 +21,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { parseAsStringEnum, useQueryState } from "nuqs";
 import { use, useState } from "react";
 import { toast } from "sonner";
@@ -34,6 +35,7 @@ import {
 } from "@/blocks/signals/signal-card";
 import { FavoriteButton } from "@/components/favorite-button";
 import { SnipDialog } from "@/components/snip-dialog";
+import { StreamdownWithSnip } from "@/components/streamdown-with-snip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
@@ -79,6 +81,7 @@ export default function PostDetailPage(props: {
 }) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
+  const router = useRouter();
   const params = use(props.params);
   const [activeTab, setActiveTab] = useQueryState(
     "tab",
@@ -364,13 +367,14 @@ Content: ${content}
   if (article.error) {
     return (
       <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
-        <Link
-          href="/articles"
+        <button
+          type="button"
+          onClick={() => router.back()}
           className="inline-flex items-center gap-2 text-base text-muted-foreground hover:text-foreground"
         >
           <HugeiconsIcon icon={ArrowLeft01Icon} size={16} />
-          Back to Articles
-        </Link>
+          Go back
+        </button>
         <div className="text-center py-8 sm:py-12">
           <div className="text-base sm:text-lg font-semibold text-destructive mb-3 sm:mb-4">
             Article not found
@@ -516,13 +520,14 @@ Content: ${content}
   return (
     <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
       <div className="flex items-center justify-between">
-        <Link
-          href="/articles"
+        <button
+          type="button"
+          onClick={() => router.back()}
           className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
         >
           <HugeiconsIcon icon={ArrowLeft01Icon} size={16} />
-          Back to Articles
-        </Link>
+          Go back
+        </button>
 
         {process.env.NODE_ENV === "development" && (
           <Tooltip>
@@ -1008,7 +1013,9 @@ Content: ${content}
                   className="absolute top-2 right-2 z-10"
                   onClick={() => {
                     if (summary.data?.markdownContent) {
-                      navigator.clipboard.writeText(summary.data.markdownContent);
+                      navigator.clipboard.writeText(
+                        summary.data.markdownContent,
+                      );
                       toast.success("Summary copied to clipboard");
                     }
                   }}
@@ -1105,9 +1112,12 @@ Content: ${content}
             <LoadingState />
           ) : rawContent.data?.rawContent ? (
             <Item className="space-y-6" variant="muted">
-              <Streamdown className="text-base prose prose-neutral dark:prose-invert max-w-none">
-                {rawContent.data.rawContent}
-              </Streamdown>
+              <StreamdownWithSnip
+                content={rawContent.data.rawContent}
+                className="text-base prose prose-neutral dark:prose-invert max-w-none"
+                articleId={params.id}
+                selectionSource="article"
+              />
             </Item>
           ) : (
             <Empty>
