@@ -332,6 +332,112 @@ export const flashcardsRouter = createTRPCRouter({
 
       return { success: true };
     }),
+
+  createStandalone: protectedProcedure
+    .input(
+      z.object({
+        front: z
+          .string()
+          .min(1, "Question/Statement is required")
+          .max(500, "Question must be 500 characters or less"),
+        back: z
+          .string()
+          .min(1, "Answer is required")
+          .max(5000, "Answer must be 5000 characters or less"),
+        tags: z.array(z.string()).optional(),
+        source: z
+          .string()
+          .min(1, "Source is required")
+          .max(500, "Source must be 500 characters or less"),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const trimmedBack = input.back.trim();
+      const trimmedFront = input.front.trim();
+      const trimmedSource = input.source.trim();
+
+      if (trimmedBack.length === 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Answer cannot be empty",
+        });
+      }
+
+      if (trimmedFront.length === 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Question/Statement cannot be empty",
+        });
+      }
+
+      if (trimmedSource.length === 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Source cannot be empty",
+        });
+      }
+
+      const chunkId = nanoid();
+      const wordCount = trimmedBack.split(/\s+/).filter(Boolean).length;
+
+      await ctx.db.insert(transcriptChunk).values({
+        id: chunkId,
+        content: trimmedBack,
+        wordCount,
+      });
+
+      const signalId = nanoid();
+      const now = new Date();
+      const summary = buildSummary(trimmedBack, trimmedFront);
+      const excerpt = buildExcerpt(trimmedBack);
+
+      await ctx.db.insert(dailySignal).values({
+        id: signalId,
+        chunkId,
+        userId: ctx.user.id,
+        signalDate: now,
+        relevanceScore: 1,
+        title: trimmedFront,
+        summary,
+        excerpt,
+        userAction: "saved",
+        presentedAt: now,
+        actionedAt: now,
+        scoringMethod: "manual-standalone",
+      });
+
+      const savedChunkId = nanoid();
+      await ctx.db.insert(savedChunk).values({
+        id: savedChunkId,
+        chunkId,
+        userId: ctx.user.id,
+        tags: input.tags?.length ? input.tags.join(",") : null,
+        highlightExtractedQuote: trimmedBack,
+        highlightExtractedAt: now,
+        savedAt: now,
+      });
+
+      await inngest.send({
+        name: "signal/actioned",
+        data: {
+          signalId,
+          action: "saved",
+        },
+      });
+
+      const flashcardId = nanoid();
+      await ctx.db.insert(flashcard).values({
+        id: flashcardId,
+        userId: ctx.user.id,
+        signalId,
+        front: trimmedFront,
+        back: trimmedBack,
+        tags: input.tags ?? [],
+        source: trimmedSource,
+      });
+
+      return { id: flashcardId, signalId };
+    }),
 });
 
 function buildSummary(back: string, front: string): string {

@@ -90,7 +90,14 @@ export function SnipDialog({
   const createMutation = useMutation(
     trpc.flashcards.create.mutationOptions({
       onSuccess: async () => {
-        toast.success("Flashcard created");
+        toast.success("Flashcard created", {
+          action: {
+            label: "View Snips",
+            onClick: () => {
+              window.location.href = "/snips";
+            },
+          },
+        });
         await Promise.all([
           queryClient.invalidateQueries({
             queryKey: trpc.flashcards.list.queryKey(),
@@ -126,7 +133,14 @@ export function SnipDialog({
   const createFromSelectionMutation = useMutation(
     trpc.flashcards.createFromSelection.mutationOptions({
       onSuccess: async () => {
-        toast.success("Flashcard created");
+        toast.success("Flashcard created", {
+          action: {
+            label: "View Snips",
+            onClick: () => {
+              window.location.href = "/snips";
+            },
+          },
+        });
         await Promise.all([
           queryClient.invalidateQueries({
             queryKey: trpc.flashcards.list.queryKey(),

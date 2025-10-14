@@ -54,9 +54,10 @@ export function FlashcardItem({
   const [isFlipped, setIsFlipped] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const [showExpandDialog, setShowExpandDialog] = useState(false);
-  const episode = flashcard.signal.chunk.episode;
-  const article = flashcard.signal.chunk.article;
+  const episode = flashcard.signal.chunk?.episode;
+  const article = flashcard.signal.chunk?.article;
   const podcast = episode?.podcast;
+  const isStandalone = !episode && !article && flashcard.source;
 
   return (
     <article className="relative group">
@@ -125,7 +126,25 @@ export function FlashcardItem({
                     onClick={(e) => e.stopPropagation()}
                   >
                     <div className="space-y-2 text-xs">
-                      {episode ? (
+                      {isStandalone ? (
+                        <>
+                          {flashcard.source && (
+                            <div className="flex items-center gap-2">
+                              <HugeiconsIcon
+                                icon={FileAttachmentIcon}
+                                size={12}
+                              />
+                              <span className="truncate">
+                                {flashcard.source}
+                              </span>
+                            </div>
+                          )}
+                          <div className="flex items-center gap-2">
+                            <HugeiconsIcon icon={Calendar03Icon} size={12} />
+                            <span>{formatDate(flashcard.createdAt)}</span>
+                          </div>
+                        </>
+                      ) : episode ? (
                         <>
                           {episode.title && (
                             <div className="flex items-center gap-2">
@@ -287,7 +306,20 @@ export function FlashcardItem({
           <CredenzaHeader className="shrink-0">
             <CredenzaTitle className="sr-only">Flashcard Details</CredenzaTitle>
             <div className="space-y-2 text-sm">
-              {episode ? (
+              {isStandalone ? (
+                <>
+                  {flashcard.source && (
+                    <div className="flex items-center gap-2">
+                      <HugeiconsIcon icon={FileAttachmentIcon} size={16} />
+                      <span className="truncate">{flashcard.source}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <HugeiconsIcon icon={Calendar03Icon} size={16} />
+                    <span>{formatDate(flashcard.createdAt)}</span>
+                  </div>
+                </>
+              ) : episode ? (
                 <>
                   {episode.title && (
                     <div className="flex items-center gap-2">

@@ -191,12 +191,13 @@ export const transcriptChunk = pgTable(
     index().on(table.episodeId),
     index().on(table.articleId),
     index().using("hnsw", table.embedding.op("vector_cosine_ops")),
-    // Ensure exactly one source is set (either episodeId OR articleId, not both, not neither)
+    // Ensure at most one source is set (can be standalone with neither)
     check(
       "chunk_source_check",
       sql`(
         (episode_id IS NOT NULL AND article_id IS NULL) OR
-        (episode_id IS NULL AND article_id IS NOT NULL)
+        (episode_id IS NULL AND article_id IS NOT NULL) OR
+        (episode_id IS NULL AND article_id IS NULL)
       )`,
     ),
   ],
@@ -355,6 +356,7 @@ export const flashcard = pgTable(
     front: text("front").notNull(),
     back: text("back").notNull(),
     tags: jsonb("tags").$type<string[]>(),
+    source: text("source"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

@@ -5,6 +5,10 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { useTRPC } from "@/server/trpc/client";
 import { FlashcardItem } from "../../../components/blocks/snips/flashcard-item";
+import { StandaloneSnipDialog } from "@/components/standalone-snip-dialog";
+import { Button } from "@/components/ui/button";
+import { Add01Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 
 export default function SnipsPage() {
   const trpc = useTRPC();
@@ -43,7 +47,7 @@ export default function SnipsPage() {
             Your flashcards from saved signals
           </p>
         </div>
-        <div className="flex gap-3 text-sm">
+        <div className="flex flex-col items-end gap-2">
           <div className="flex flex-col items-end gap-0.5">
             <div className="font-bold font-serif text-base md:text-3xl">
               {flashcards.length}
@@ -52,6 +56,14 @@ export default function SnipsPage() {
               Total
             </div>
           </div>
+          <StandaloneSnipDialog
+            trigger={
+              <Button size="sm" className="gap-2">
+                <HugeiconsIcon icon={Add01Icon} size={16} />
+                <span className="hidden sm:inline">Create Snip</span>
+              </Button>
+            }
+          />
         </div>
       </header>
 
