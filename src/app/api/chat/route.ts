@@ -7,12 +7,12 @@ import {
   streamText,
   type UIMessage,
 } from "ai";
+import { openrouter } from "@/ai/models";
 import { createTools } from "@/ai/tools";
 import { auth } from "@/lib/auth";
 import { db } from "@/server/db";
 import { createCallerFactory } from "@/server/trpc/init";
 import { appRouter } from "@/server/trpc/root";
-import { openrouter } from "../../../ai/models";
 
 // Define custom message type with data parts
 export type ChatUIMessage = UIMessage<
@@ -50,9 +50,6 @@ export type ChatUIMessage = UIMessage<
     };
   }
 >;
-
-// Allow streaming responses up to 30 seconds
-export const maxDuration = 30;
 
 export async function POST(req: Request) {
   console.log("\n🚀 [Chat API] POST request received");
