@@ -299,7 +299,10 @@ export function SnipDialog({
         </CredenzaHeader>
         <CredenzaBody className="overflow-y-auto">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            <form
+              onSubmit={form.handleSubmit(onSubmit)}
+              className="space-y-6 [&_input]:font-medium [&_textarea]:font-medium [&_input::placeholder]:font-normal [&_textarea::placeholder]:font-normal [&_input::placeholder]:italic [&_textarea::placeholder]:italic [&_input::placeholder]:opacity-60 [&_textarea::placeholder]:opacity-60"
+            >
               {/* Mobile: Vertical (Front → Back → Tags), Desktop: Horizontal (Back left, Front+Tags right) */}
 
               {/* Front field - always first on mobile, right side on desktop */}
