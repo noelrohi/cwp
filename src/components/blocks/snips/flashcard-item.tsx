@@ -222,16 +222,20 @@ export function FlashcardItem({
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <SnipDialog
-                      signalId={flashcard.signalId ?? undefined}
-                      defaultBack={flashcard.back}
-                      trigger={
-                        <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                          <HugeiconsIcon icon={Edit02Icon} size={16} />
-                          Edit
-                        </DropdownMenuItem>
-                      }
-                    />
+                    {!isStandalone && (
+                      <SnipDialog
+                        signalId={flashcard.signalId ?? undefined}
+                        defaultBack={flashcard.back}
+                        trigger={
+                          <DropdownMenuItem
+                            onSelect={(e) => e.preventDefault()}
+                          >
+                            <HugeiconsIcon icon={Edit02Icon} size={16} />
+                            Edit
+                          </DropdownMenuItem>
+                        }
+                      />
+                    )}
                     <DropdownMenuItem
                       onClick={() => onDelete(flashcard.id)}
                       disabled={isDeleting}
