@@ -4,7 +4,7 @@ import * as z from "zod/v4";
 import type { TranscriptData } from "@/types/transcript";
 import { openrouter } from "../../ai/models";
 
-const model = openrouter("openai/gpt-4.1-mini");
+const model = openrouter("qwen/qwen3-next-80b-a3b-instruct");
 
 export async function generateEpisodeSummary(
   transcript: TranscriptData,

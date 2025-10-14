@@ -199,7 +199,7 @@ export function SignalCard(props: SignalCardProps) {
           {renderMarkdown ? (
             <Response
               className="text-base leading-relaxed text-foreground/90"
-              allowedImagePrefixes={[]}
+              disallowedElements={["img"]}
             >
               {chunkContent.trim()}
             </Response>
