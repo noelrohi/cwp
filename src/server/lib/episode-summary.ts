@@ -1,21 +1,16 @@
-import { createBaseten } from "@ai-sdk/baseten";
 import { openai } from "@ai-sdk/openai";
 import { generateObject } from "ai";
 import { jsonrepair } from "jsonrepair";
 import * as z from "zod/v4";
 import type { TranscriptData } from "@/types/transcript";
 
-const baseten = createBaseten({
-  apiKey: process.env.BASETEN_API_KEY ?? "",
-});
+const model = openai("gpt-4.1-mini");
 
 export async function generateEpisodeSummary(
   transcript: TranscriptData,
   episodeTitle: string,
 ): Promise<string> {
   const transcriptText = formatTranscriptForSummary(transcript);
-
-  const model = openai("gpt-4.1-mini");
 
   const prompt = `I want a quick overview summary of this episode, which outlines the key takeaways, examples and lessons in bite sized form. Also cherry pick the most impactful quotes from the episode.
 
@@ -44,8 +39,6 @@ export async function generateArticleSummary(
   content: string,
   articleTitle: string,
 ): Promise<string> {
-  const model = baseten("moonshotai/Kimi-K2-Instruct-0905");
-
   const prompt = `I want a quick overview summary of this article, which outlines the key takeaways, examples and lessons in bite sized form. Also cherry pick the most impactful quotes from the article.
 
 Article: "${articleTitle}"

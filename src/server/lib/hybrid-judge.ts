@@ -1,11 +1,7 @@
-import { createBaseten } from "@ai-sdk/baseten";
 import { generateObject } from "ai";
 import { z } from "zod";
+import { baseten } from "@/ai/models";
 import type { JudgeResult } from "./hybrid-types";
-
-const baseten = createBaseten({
-  apiKey: process.env.BASETEN_API_KEY ?? "",
-});
 
 const judgementSchema = z.object({
   frameworkClarity: z.number().min(0).max(100),
@@ -15,6 +11,8 @@ const judgementSchema = z.object({
   overallScore: z.number().min(0).max(100),
   reasoning: z.string(),
 });
+
+const model = baseten("moonshotai/Kimi-K2-Instruct-0905");
 
 const HYBRID_PROMPT = `You are evaluating podcast transcript chunks for Usman, an investor/founder.
 
@@ -88,7 +86,7 @@ Score each dimension 0-100, then provide overall score.`;
 export async function judgeHybrid(content: string): Promise<JudgeResult> {
   try {
     const result = await generateObject({
-      model: baseten("moonshotai/Kimi-K2-Instruct-0905"),
+      model,
       schema: judgementSchema,
       prompt: `${HYBRID_PROMPT}\nCHUNK:\n${content}`,
     });

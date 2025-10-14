@@ -21,9 +21,9 @@
     "ui": "pnpm dlx shadcn@latest"
   },
   "dependencies": {
-    "@ai-sdk/baseten": "^0.0.4",
     "@ai-sdk/deepgram": "^1.0.10",
     "@ai-sdk/openai": "^2.0.32",
+    "@ai-sdk/openai-compatible": "^1.0.22",
     "@ai-sdk/react": "^2.0.60",
     "@deepgram/sdk": "^4.11.2",
     "@electric-sql/pglite": "^0.3.8",
