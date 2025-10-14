@@ -283,6 +283,7 @@ export const flashcardsRouter = createTRPCRouter({
           .min(1, "Back is required")
           .max(5000, "Back must be 5000 characters or less"),
         tags: z.array(z.string()).optional(),
+        source: z.string().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -306,6 +307,7 @@ export const flashcardsRouter = createTRPCRouter({
           front: input.front,
           back: input.back,
           tags: input.tags ?? [],
+          source: input.source,
           updatedAt: new Date(),
         })
         .where(eq(flashcard.id, input.id));

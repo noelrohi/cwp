@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -38,6 +38,7 @@ const flashcardSchema = z.object({
     .min(1, "Back is required")
     .max(5000, "Back must be 5000 characters or less"),
   tags: z.string().optional(),
+  source: z.string().optional(),
 });
 
 type FlashcardFormData = z.infer<typeof flashcardSchema>;
@@ -45,7 +46,11 @@ type FlashcardFormData = z.infer<typeof flashcardSchema>;
 type SnipDialogProps = {
   signalId?: string;
   articleId?: string;
+  flashcardId?: string;
   defaultBack?: string;
+  defaultFront?: string;
+  defaultTags?: string[];
+  defaultSource?: string;
   trigger?: React.ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -55,7 +60,11 @@ type SnipDialogProps = {
 export function SnipDialog({
   signalId,
   articleId,
+  flashcardId,
   defaultBack,
+  defaultFront,
+  defaultTags,
+  defaultSource,
   trigger,
   open: controlledOpen,
   onOpenChange,
@@ -65,8 +74,10 @@ export function SnipDialog({
   const queryClient = useQueryClient();
   const [internalOpen, setInternalOpen] = useState(false);
 
-  if (!signalId && !articleId) {
-    throw new Error("SnipDialog requires either a signalId or articleId");
+  if (!signalId && !articleId && !flashcardId) {
+    throw new Error(
+      "SnipDialog requires either a signalId, articleId, or flashcardId",
+    );
   }
 
   const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
@@ -78,14 +89,8 @@ export function SnipDialog({
     }
   };
 
+  const isEditMode = Boolean(flashcardId);
   const isSignalMode = Boolean(signalId);
-
-  const existingFlashcard = useQuery({
-    ...trpc.flashcards.getBySignal.queryOptions({
-      signalId: signalId ?? "",
-    }),
-    enabled: open && isSignalMode && Boolean(signalId),
-  });
 
   const createMutation = useMutation(
     trpc.flashcards.create.mutationOptions({
@@ -219,19 +224,11 @@ export function SnipDialog({
 
   const form = useForm<FlashcardFormData>({
     resolver: zodResolver(flashcardSchema),
-    values: existingFlashcard.data
-      ? {
-          front: existingFlashcard.data.front,
-          back: existingFlashcard.data.back,
-          tags: existingFlashcard.data.tags
-            ? existingFlashcard.data.tags.join(",")
-            : "",
-        }
-      : undefined,
     defaultValues: {
-      front: "",
+      front: defaultFront || "",
       back: defaultBack || "",
-      tags: "",
+      tags: defaultTags?.join(",") || "",
+      source: defaultSource || "",
     },
   });
 
@@ -240,23 +237,14 @@ export function SnipDialog({
       return;
     }
 
-    if (existingFlashcard.data) {
-      form.reset({
-        front: existingFlashcard.data.front,
-        back: existingFlashcard.data.back,
-        tags: existingFlashcard.data.tags
-          ? existingFlashcard.data.tags.join(",")
-          : "",
-      });
-      return;
-    }
-
+    // Reset form with default values when dialog opens
     form.reset({
-      front: "",
+      front: defaultFront || "",
       back: defaultBack || "",
-      tags: "",
+      tags: defaultTags?.join(",") || "",
+      source: defaultSource || "",
     });
-  }, [existingFlashcard.data, open, defaultBack, form]);
+  }, [open, defaultFront, defaultBack, defaultTags, defaultSource, form]);
 
   const onSubmit = (data: FlashcardFormData) => {
     const tags = data.tags
@@ -266,14 +254,17 @@ export function SnipDialog({
           .filter(Boolean)
       : [];
 
-    if (existingFlashcard.data && isSignalMode && signalId) {
+    if (isEditMode && flashcardId) {
+      // Edit mode - update existing flashcard
       updateMutation.mutate({
-        id: existingFlashcard.data.id,
+        id: flashcardId,
         front: data.front,
         back: data.back,
         tags,
+        source: data.source,
       });
     } else if (isSignalMode && signalId) {
+      // Create mode - from signal
       createMutation.mutate({
         signalId,
         front: data.front,
@@ -281,6 +272,7 @@ export function SnipDialog({
         tags,
       });
     } else if (articleId) {
+      // Create mode - from article selection
       createFromSelectionMutation.mutate({
         articleId,
         front: data.front,
@@ -302,7 +294,7 @@ export function SnipDialog({
       <CredenzaContent className="sm:max-w-5xl">
         <CredenzaHeader className="text-left">
           <CredenzaTitle className="text-left text-2xl">
-            {existingFlashcard.data ? "Edit Flashcard" : "Create Flashcard"}
+            {isEditMode ? "Edit Snip" : "Create Snip"}
           </CredenzaTitle>
         </CredenzaHeader>
         <CredenzaBody className="overflow-y-auto">
@@ -409,11 +401,30 @@ export function SnipDialog({
                       </FormItem>
                     )}
                   />
+                  {(isEditMode || defaultSource) && (
+                    <FormField
+                      control={form.control}
+                      name="source"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Source</FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="e.g. Book: Deep Work, https://example.com/article"
+                              maxLength={500}
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
                 </div>
               </div>
 
-              {/* Tags - third on mobile only */}
-              <div className="md:hidden">
+              {/* Tags and Source - third on mobile only */}
+              <div className="md:hidden space-y-4">
                 <FormField
                   control={form.control}
                   name="tags"
@@ -433,6 +444,25 @@ export function SnipDialog({
                     </FormItem>
                   )}
                 />
+                {(isEditMode || defaultSource) && (
+                  <FormField
+                    control={form.control}
+                    name="source"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Source</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="e.g. Book: Deep Work, https://example.com/article"
+                            maxLength={500}
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
               </div>
             </form>
           </Form>
@@ -452,11 +482,7 @@ export function SnipDialog({
               disabled={isLoading}
               onClick={form.handleSubmit(onSubmit)}
             >
-              {isLoading
-                ? "Saving..."
-                : existingFlashcard.data
-                  ? "Update"
-                  : "Create"}
+              {isLoading ? "Saving..." : isEditMode ? "Update" : "Create"}
             </Button>
           </div>
         </CredenzaFooter>
