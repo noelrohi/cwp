@@ -103,7 +103,6 @@ export function StreamdownWithSnip({
         <Streamdown
           className={className}
           disallowedElements={disallowedElements}
-          allowedImagePrefixes={[]}
         >
           {content}
         </Streamdown>
