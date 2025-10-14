@@ -47,6 +47,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { ShimmeringText } from "@/components/ui/shimmering-text";
 import { useSidebar } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { useTRPC } from "@/server/trpc/client";
@@ -146,6 +147,16 @@ export default function ChatPage() {
   const { messages, sendMessage, status } = useChat<ChatUIMessage>({
     transport: new DefaultChatTransport({
       api: "/api/chat",
+      prepareSendMessagesRequest: ({ messages, id }) => {
+        return {
+          body: {
+            messages,
+            id,
+            articleId,
+            episodeId,
+          },
+        };
+      },
     }),
   });
 
@@ -227,6 +238,29 @@ export default function ChatPage() {
                             chunks={part.data.chunks}
                           />
                         );
+                      case "data-retrievedContent":
+                        return (
+                          <div
+                            key={`${message.id}-content-${i}`}
+                            className="mb-4 p-4 rounded-lg bg-muted/50 border"
+                          >
+                            <div className="flex items-center gap-2">
+                              {part.data.status === "loading" ? (
+                                <ShimmeringText
+                                  text={`Retrieving ${part.data.type} content...`}
+                                  className="text-sm font-medium"
+                                  duration={1.5}
+                                />
+                              ) : (
+                                <ShimmeringText
+                                  text={`Retrieved ${part.data.type} content...`}
+                                  className="text-sm font-medium"
+                                  duration={1.5}
+                                />
+                              )}
+                            </div>
+                          </div>
+                        );
                       case "text":
                         return (
                           <Response key={`${message.id}-${i}`}>
@@ -246,8 +280,8 @@ export default function ChatPage() {
       </Conversation>
 
       {/* Sticky prompt input at bottom */}
-      <div className="sticky bottom-0 inset-x-0 z-20 mt-auto">
-        <div className="mx-auto w-full max-w-3xl px-4 pb-4 pt-3">
+      <div className="sticky bottom-0 inset-x-0 z-20 mt-auto bg-background">
+        <div className="mx-auto w-full max-w-3xl m-2">
           {contextTitle && contextType && (
             <div className="mb-0 text-xs sm:text-sm text-muted-foreground bg-muted border border-b-0 rounded-t-lg px-3 py-2 w-[calc(100%-0.5rem)] mx-auto flex items-center gap-2">
               <Badge
@@ -266,7 +300,10 @@ export default function ChatPage() {
               <span>{contextTitle}</span>
             </div>
           )}
-          <PromptInput onSubmit={handleSubmit} className="backdrop-blur-md">
+          <PromptInput
+            onSubmit={handleSubmit}
+            className="backdrop-blur-md dark:bg-[#30302E]"
+          >
             <PromptInputBody className="border-none">
               <PromptInputAttachments>
                 {(attachment) => <PromptInputAttachment data={attachment} />}

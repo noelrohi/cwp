@@ -23,6 +23,8 @@ type TRPCCaller = any;
 export function createTools(
   trpc: TRPCCaller,
   writer?: UIMessageStreamWriter<ChatUIMessage>,
+  episodeId?: string,
+  articleId?: string,
 ) {
   const baseTools = {
     search_saved_content: {
@@ -296,6 +298,75 @@ export function createTools(
               type: "data-status",
               data: {
                 message: `Search failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+                type: "error",
+              },
+              transient: true,
+            });
+          }
+
+          throw error;
+        }
+      },
+    },
+    get_content: {
+      description: episodeId
+        ? "Retrieve the full transcript content of the current episode. Use this when the user wants to analyze, search within, or ask questions about the specific episode they're viewing."
+        : "Retrieve the full markdown content of the current article. Use this when the user wants to analyze, search within, or ask questions about the specific article they're viewing.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        console.log(
+          `\n📄 [Tool: get_content] Executing for ${episodeId ? "episode" : "article"}...`,
+        );
+
+        try {
+          if (writer) {
+            writer.write({
+              type: "data-retrievedContent",
+              id: "content-1",
+              data: {
+                content: "",
+                type: episodeId ? "episode" : "article",
+                title: "",
+                status: "loading",
+              },
+            });
+          }
+
+          const startTime = Date.now();
+          const result = episodeId
+            ? await trpc.episodes.getContent({ episodeId })
+            : await trpc.articles.getContent({ articleId });
+          const duration = Date.now() - startTime;
+
+          console.log(
+            `✅ [Tool: get_content] Retrieved content (${result.content.length} chars) in ${duration}ms`,
+          );
+
+          if (writer) {
+            writer.write({
+              type: "data-retrievedContent",
+              id: "content-1",
+              data: {
+                content: result.content,
+                type: episodeId ? "episode" : "article",
+                title: result.title,
+                status: "complete",
+              },
+            });
+          }
+
+          return {
+            content: result.content,
+            length: result.content.length,
+          };
+        } catch (error) {
+          console.error("❌ [Tool: get_content] ERROR:", error);
+
+          if (writer) {
+            writer.write({
+              type: "data-status",
+              data: {
+                message: `Failed to retrieve content: ${error instanceof Error ? error.message : "Unknown error"}`,
                 type: "error",
               },
               transient: true,

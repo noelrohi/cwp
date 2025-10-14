@@ -417,6 +417,42 @@ export const episodesRouter = createTRPCRouter({
       return summaryRecord;
     }),
 
+  getContent: protectedProcedure
+    .input(z.object({ episodeId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const episodeRecord = await ctx.db.query.episode.findFirst({
+        where: and(
+          eq(episode.id, input.episodeId),
+          eq(episode.userId, ctx.user.id),
+        ),
+        with: {
+          transcriptChunks: {
+            orderBy: (chunks, { asc }) => [asc(chunks.startTimeSec)],
+          },
+        },
+      });
+
+      if (!episodeRecord) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Episode not found",
+        });
+      }
+
+      if (
+        !episodeRecord.transcriptChunks ||
+        episodeRecord.transcriptChunks.length === 0
+      ) {
+        return { content: "" };
+      }
+
+      const content = episodeRecord.transcriptChunks
+        .map((chunk) => chunk.content)
+        .join("\n\n");
+
+      return { content };
+    }),
+
   generateSummary: protectedProcedure
     .input(z.object({ episodeId: z.string(), force: z.boolean().optional() }))
     .mutation(async ({ ctx, input }) => {

@@ -2,6 +2,7 @@ import {
   convertToModelMessages,
   createUIMessageStream,
   createUIMessageStreamResponse,
+  smoothStream,
   stepCountIs,
   streamText,
   type UIMessage,
@@ -41,6 +42,12 @@ export type ChatUIMessage = UIMessage<
         episodeAudioUrl?: string;
       }>;
     };
+    retrievedContent: {
+      content: string;
+      type: "episode" | "article";
+      title?: string;
+      status: "loading" | "complete";
+    };
   }
 >;
 
@@ -62,8 +69,19 @@ export async function POST(req: Request) {
 
   console.log(`✅ [Chat API] Authenticated user: ${session.user.id}`);
 
-  const { messages }: { messages: UIMessage[] } = await req.json();
+  const {
+    messages,
+    episodeId,
+    articleId,
+  }: { messages: UIMessage[]; episodeId?: string; articleId?: string } =
+    await req.json();
   console.log(`📨 [Chat API] Received ${messages.length} messages`);
+  if (episodeId) {
+    console.log(`🎧 [Chat API] Episode context: ${episodeId}`);
+  }
+  if (articleId) {
+    console.log(`📰 [Chat API] Article context: ${articleId}`);
+  }
   if (messages.length > 0) {
     const lastMsg = messages[messages.length - 1];
     console.log(
@@ -82,14 +100,11 @@ export async function POST(req: Request) {
 
   console.log("🤖 [Chat API] Initializing UI message stream...");
 
-  const stream = createUIMessageStream<ChatUIMessage>({
-    execute: ({ writer }) => {
-      console.log("📡 [Chat API] Streaming response...\n");
+  // Build dynamic system prompt based on context
+  const hasContext = Boolean(episodeId || articleId);
+  const contextType = episodeId ? "episode" : articleId ? "article" : null;
 
-      const result = streamText({
-        model: openrouter("x-ai/grok-4-fast"),
-        messages: convertToModelMessages(messages),
-        system: `You are a helpful AI assistant that helps users discover and understand insights from their saved podcast content.
+  const baseSystemPrompt = `You are a helpful AI assistant that helps users discover and understand insights from their saved podcast content.
 
 Core identity:
 - You have access to the user's personally curated podcast library
@@ -102,18 +117,65 @@ Behavioral guidelines:
 - Use direct quotes from transcripts when available
 - If no relevant content is found, say so clearly and suggest what the user might save next
 - Keep responses concise — users want insights, not essays
-- Never fabricate content or timestamps
+- Never fabricate content or timestamps`;
 
+  const contextSystemPrompt = `You are a helpful AI assistant analyzing a specific ${contextType} for the user.
+
+Context awareness:
+- The user is currently viewing a specific ${contextType}
+- You have access to the full ${contextType === "episode" ? "transcript" : "content"} via the get_content tool
+- Focus your responses on this specific ${contextType} unless the user explicitly asks about other content
+
+Behavioral guidelines:
+- ALWAYS use the get_content tool first to retrieve the full ${contextType === "episode" ? "transcript" : "content"}
+- After retrieving content, answer questions based on what's actually in the ${contextType}
+- Cite specific sections with ${contextType === "episode" ? "timestamps [mm:ss] or [h:mm:ss]" : "direct quotes"}
+- You can still use search_saved_content if the user asks to compare with other saved content
+- Keep responses concise — users want insights, not essays
+- Never fabricate content or timestamps`;
+
+  const toolUsageInstructions = hasContext
+    ? `
+Tool usage:
+- get_content: Use this FIRST to retrieve the full ${contextType} content before answering any questions
+- search_saved_content: Use this if the user asks to find similar content or compare with other saved items
+- search_all_content: Use this when user asks to search beyond their saved content
+${contextType === "episode" ? "- Always include timestamps in [mm:ss] or [h:mm:ss] format" : ""}`
+    : `
 Tool usage:
 - search_saved_content: Use this for most queries about podcast topics
 - search_all_content: Use this when user asks to search beyond their saved content
-- Always include timestamps in [mm:ss] or [h:mm:ss] format
+- Always include timestamps in [mm:ss] or [h:mm:ss] format`;
+
+  const systemPrompt =
+    (hasContext ? contextSystemPrompt : baseSystemPrompt) +
+    toolUsageInstructions +
+    `
 
 Tone:
 - Direct and practical
 - Conversational but not chatty
-- Emphasize what was actually said over your interpretations`,
-        tools: createTools(trpc, writer),
+- Emphasize what was actually said over your interpretations`;
+
+  const stream = createUIMessageStream<ChatUIMessage>({
+    execute: ({ writer }) => {
+      console.log("📡 [Chat API] Streaming response...\n");
+
+      const result = streamText({
+        model: openrouter("x-ai/grok-4-fast"),
+        messages: convertToModelMessages(messages),
+        system: systemPrompt,
+        tools: createTools(trpc, writer, episodeId, articleId),
+        prepareStep: ({ model }) => {
+          if (hasContext) {
+            console.log("Step skipping search tool as we have context");
+            return {
+              model,
+              activeTools: ["get_content"],
+            };
+          }
+        },
+        experimental_transform: smoothStream({ chunking: "word" }),
         stopWhen: stepCountIs(10),
         onFinish: ({ text, toolCalls, finishReason, usage }) => {
           console.log({ text });

@@ -5,7 +5,7 @@ import { AudioPlayerProvider } from "@/components/audio-player/audio-player-prov
 import { BottomNav } from "@/components/bottom-nav";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 
-export default function AppLayout({ children }: { children: ReactNode }) {
+export default function ChatLayout({ children }: { children: ReactNode }) {
   return (
     <SidebarProvider
       style={
@@ -21,7 +21,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           {/* <div className="fixed top-4 right-4 z-50 md:hidden">
             <ModeToggle />
           </div> */}
-          <SidebarInset className="flex-1 pb-16 md:pb-0 md:peer-data-[variant=inset]:mb-0 md:peer-data-[variant=inset]:rounded-b-none">
+          <SidebarInset className="flex-1 md:peer-data-[variant=inset]:mb-0 md:peer-data-[variant=inset]:rounded-b-none">
             {children}
           </SidebarInset>
           <AudioPlayerBar />
