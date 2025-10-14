@@ -11,15 +11,21 @@ console.log("=== REAL WORLD COMPARISON ===\n");
 console.log("HIGH-SCORE SKIP (Usman skipped at 68% score):");
 const resultSkip = extractHeuristicBuckets(highScoreSkip);
 console.log(`Score: ${Math.round(resultSkip.overallScore * 100)}`);
-console.log(`Buckets: F:${resultSkip.frameworkScore.toFixed(2)} I:${resultSkip.insightScore.toFixed(2)} S:${resultSkip.specificityScore.toFixed(2)} Q:${resultSkip.qualityScore.toFixed(2)}`);
+console.log(
+  `Buckets: F:${resultSkip.frameworkScore.toFixed(2)} I:${resultSkip.insightScore.toFixed(2)} S:${resultSkip.specificityScore.toFixed(2)} Q:${resultSkip.qualityScore.toFixed(2)}`,
+);
 console.log(`Top reasons:`, resultSkip.reasons.slice(0, 3).join(" | "));
 
 console.log("\n\nACTUAL SAVE (Usman saved with flashcard at 62%):");
 const resultSave = extractHeuristicBuckets(actualSave);
 console.log(`Score: ${Math.round(resultSave.overallScore * 100)}`);
-console.log(`Buckets: F:${resultSave.frameworkScore.toFixed(2)} I:${resultSave.insightScore.toFixed(2)} S:${resultSave.specificityScore.toFixed(2)} Q:${resultSave.qualityScore.toFixed(2)}`);
+console.log(
+  `Buckets: F:${resultSave.frameworkScore.toFixed(2)} I:${resultSave.insightScore.toFixed(2)} S:${resultSave.specificityScore.toFixed(2)} Q:${resultSave.qualityScore.toFixed(2)}`,
+);
 console.log(`Top reasons:`, resultSave.reasons.slice(0, 3).join(" | "));
 
 console.log("\n\n=== ANALYSIS ===");
-console.log(`Skip should score LOWER than save. Current: Skip=${Math.round(resultSkip.overallScore * 100)} vs Save=${Math.round(resultSave.overallScore * 100)}`);
+console.log(
+  `Skip should score LOWER than save. Current: Skip=${Math.round(resultSkip.overallScore * 100)} vs Save=${Math.round(resultSave.overallScore * 100)}`,
+);
 console.log(`Target: Skip ~40-50, Save ~60-70`);

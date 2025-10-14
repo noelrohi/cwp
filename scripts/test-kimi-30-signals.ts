@@ -30,12 +30,12 @@ async function main() {
     `High-score skips (>=0.6): ${highScoreSkips.length} ← Label noise\n`,
   );
 
-  // Test 1: Flashcard saves vs low-score skips (clean labels)
-  const saves = flashcardSaves.slice(0, 10);
-  const skips = lowScoreSkips.slice(0, 10);
+  // Test on original 30 signals: 15 saves + 15 skips
+  const saves = usmanData.saves.slice(0, 15) as Signal[];
+  const skips = usmanData.skips.slice(0, 15) as Signal[];
 
   console.log("\n" + "=".repeat(80));
-  console.log("Testing with CLEAN LABELS: Flashcard saves vs Low-score skips");
+  console.log("Testing 30 signals: 15 saves + 15 skips (threshold: 60)");
   console.log("=".repeat(80));
 
   // Batch process all signals
@@ -53,9 +53,9 @@ async function main() {
   // Analyze results
   let saveCorrect = 0;
   let skipCorrect = 0;
-  const threshold = 65;
+  const threshold = 60; // Production threshold
 
-  console.log("\n📊 FLASHCARD SAVES (S-tier, should score >= 65):");
+  console.log("\n📊 SAVES (should score >= 60):");
   console.log("=".repeat(80));
   saves.forEach((signal, i) => {
     const result = results[i];
@@ -70,7 +70,7 @@ async function main() {
     console.log(`   Content: ${signal.content.substring(0, 100)}...`);
   });
 
-  console.log("\n\n📊 LOW-SCORE SKIPS (relevance < 0.5, should score < 65):");
+  console.log("\n\n📊 SKIPS (should score < 60):");
   console.log("=".repeat(80));
   skips.forEach((signal, i) => {
     const result = results[15 + i];
@@ -118,8 +118,12 @@ async function main() {
 
   console.log("\n🎯 ERROR ANALYSIS");
   console.log("=".repeat(80));
-  console.log(`False positives (skips scored >= 65): ${falsePositives}/15`);
-  console.log(`False negatives (saves scored < 65): ${falseNegatives}/15`);
+  console.log(
+    `False positives (skips scored >= ${threshold}): ${falsePositives}/15`,
+  );
+  console.log(
+    `False negatives (saves scored < ${threshold}): ${falseNegatives}/15`,
+  );
   console.log(`Precision: ${(((15 - falsePositives) / 15) * 100).toFixed(1)}%`);
   console.log(`Recall: ${(((15 - falseNegatives) / 15) * 100).toFixed(1)}%`);
 }
