@@ -27,13 +27,13 @@ import { toast } from "sonner";
 
 type SignalAction = "saved" | "skipped";
 
+import { Streamdown } from "streamdown";
 import {
   SignalCard,
   type SignalCardMetadataItem,
 } from "@/blocks/signals/signal-card";
 import { FavoriteButton } from "@/components/favorite-button";
 import { SnipDialog } from "@/components/snip-dialog";
-import { StreamdownWithSnip } from "@/components/streamdown-with-snip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
@@ -1001,13 +1001,24 @@ Content: ${content}
             <LoadingState />
           ) : summary.data ? (
             <Item className="space-y-6" variant="muted">
-              <StreamdownWithSnip
-                content={summary.data.markdownContent}
-                className="text-base"
-                articleId={params.id}
-                disallowedElements={["img"]}
-                selectionSource="summary"
-              />
+              <div className="relative">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="absolute top-2 right-2 z-10"
+                  onClick={() => {
+                    if (summary.data?.markdownContent) {
+                      navigator.clipboard.writeText(summary.data.markdownContent);
+                      toast.success("Summary copied to clipboard");
+                    }
+                  }}
+                >
+                  <HugeiconsIcon icon={Copy01Icon} size={16} />
+                </Button>
+                <Streamdown className="text-base">
+                  {summary.data.markdownContent}
+                </Streamdown>
+              </div>
               <ItemFooter className="pt-6 border-t flex gap-3 justify-start">
                 <Button
                   variant="outline"
@@ -1094,13 +1105,9 @@ Content: ${content}
             <LoadingState />
           ) : rawContent.data?.rawContent ? (
             <Item className="space-y-6" variant="muted">
-              <StreamdownWithSnip
-                content={rawContent.data.rawContent}
-                className="text-base prose prose-neutral dark:prose-invert max-w-none"
-                disallowedElements={["img"]}
-                articleId={params.id}
-                selectionSource="article"
-              />
+              <Streamdown className="text-base prose prose-neutral dark:prose-invert max-w-none">
+                {rawContent.data.rawContent}
+              </Streamdown>
             </Item>
           ) : (
             <Empty>

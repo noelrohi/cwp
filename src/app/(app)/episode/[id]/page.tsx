@@ -1171,9 +1171,24 @@ Content: ${content}
             <LoadingState />
           ) : summary.data ? (
             <Item className="space-y-6" variant="muted">
-              <Streamdown className="text-base">
-                {summary.data.markdownContent}
-              </Streamdown>
+              <div className="relative">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="absolute top-2 right-2 z-10"
+                  onClick={() => {
+                    if (summary.data?.markdownContent) {
+                      navigator.clipboard.writeText(summary.data.markdownContent);
+                      toast.success("Summary copied to clipboard");
+                    }
+                  }}
+                >
+                  <HugeiconsIcon icon={Copy01Icon} size={16} />
+                </Button>
+                <Streamdown className="text-base">
+                  {summary.data.markdownContent}
+                </Streamdown>
+              </div>
               <ItemFooter className="pt-6 border-t flex gap-3 justify-start">
                 <Button
                   variant="outline"
