@@ -1,4 +1,3 @@
-import { openai } from "@ai-sdk/openai";
 import {
   convertToModelMessages,
   createUIMessageStream,
@@ -12,6 +11,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/server/db";
 import { createCallerFactory } from "@/server/trpc/init";
 import { appRouter } from "@/server/trpc/root";
+import { openrouter } from "../../../ai/models";
 
 // Define custom message type with data parts
 export type ChatUIMessage = UIMessage<
@@ -87,7 +87,7 @@ export async function POST(req: Request) {
       console.log("📡 [Chat API] Streaming response...\n");
 
       const result = streamText({
-        model: openai("gpt-4.1-mini"),
+        model: openrouter("x-ai/grok-4-fast"),
         messages: convertToModelMessages(messages),
         system: `You are a helpful AI assistant that helps users discover and understand insights from their saved podcast content.
 

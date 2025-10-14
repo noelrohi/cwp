@@ -1,10 +1,10 @@
-import { openai } from "@ai-sdk/openai";
 import { generateObject } from "ai";
 import { jsonrepair } from "jsonrepair";
 import * as z from "zod/v4";
 import type { TranscriptData } from "@/types/transcript";
+import { openrouter } from "../../ai/models";
 
-const model = openai("gpt-4.1-mini");
+const model = openrouter("x-ai/grok-4-fast");
 
 export async function generateEpisodeSummary(
   transcript: TranscriptData,

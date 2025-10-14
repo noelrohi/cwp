@@ -1,8 +1,8 @@
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 
-export const baseten = createOpenAICompatible({
-  name: "baseten",
-  apiKey: process.env.BASETEN_API_KEY,
-  baseURL: "https://inference.baseten.co/v1",
-  includeUsage: true, // Include usage information in streaming responses
+export const openrouter = createOpenRouter({
+  apiKey: process.env.OPENROUTER_API_KEY,
+  headers: {
+    "X-Title": "cwp",
+  },
 });

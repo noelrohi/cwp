@@ -1,6 +1,6 @@
 import { generateObject } from "ai";
 import { z } from "zod";
-import { baseten } from "@/ai/models";
+import { openrouter } from "@/ai/models";
 import type { JudgeResult } from "./hybrid-types";
 
 const judgementSchema = z.object({
@@ -12,7 +12,7 @@ const judgementSchema = z.object({
   reasoning: z.string(),
 });
 
-const model = baseten("moonshotai/Kimi-K2-Instruct-0905");
+const model = openrouter("moonshotai/Kimi-K2-Instruct-0905");
 
 const HYBRID_PROMPT = `You are evaluating podcast transcript chunks for Usman, an investor/founder.
 

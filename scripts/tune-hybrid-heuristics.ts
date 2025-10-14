@@ -11,18 +11,14 @@
  */
 /** biome-ignore-all lint/correctness/useParseIntRadix: ** */
 
-import { createOpenAI } from "@ai-sdk/openai";
 import { generateObject } from "ai";
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/server/db";
 import { dailySignal, savedChunk, transcriptChunk } from "@/server/db/schema";
+import { openrouter } from "../src/ai/models";
 
 const USMAN_USER_ID = "50MVpUIZfdsAAA9Qpl6Z42NuGYbyma2G";
-
-const openai = createOpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
 
 // ============================================================================
 // IMPROVED HEURISTIC SCORING
@@ -330,7 +326,7 @@ async function llmScore(content: string): Promise<{
 }> {
   try {
     const result = await generateObject({
-      model: openai("gpt-4.1-mini"),
+      model: openrouter("x-ai/grok-4-fast"),
       schema: llmScoreSchema,
       prompt: `You are evaluating podcast transcript chunks for Usman, an investor/founder who values:
 - Named frameworks ("idea maze", "operating rails", "sea of sameness")
