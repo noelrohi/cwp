@@ -259,13 +259,15 @@ export const flashcardsRouter = createTRPCRouter({
           ),
         );
 
-      return cards.reduce(
-        (acc, card) => {
-          acc[card.signalId] = true;
-          return acc;
-        },
-        {} as Record<string, boolean>,
-      );
+      return cards
+        .filter((card): card is { signalId: string } => card.signalId !== null)
+        .reduce(
+          (acc, card) => {
+            acc[card.signalId] = true;
+            return acc;
+          },
+          {} as Record<string, boolean>,
+        );
     }),
 
   update: protectedProcedure
@@ -377,66 +379,18 @@ export const flashcardsRouter = createTRPCRouter({
         });
       }
 
-      const chunkId = nanoid();
-      const wordCount = trimmedBack.split(/\s+/).filter(Boolean).length;
-
-      await ctx.db.insert(transcriptChunk).values({
-        id: chunkId,
-        content: trimmedBack,
-        wordCount,
-      });
-
-      const signalId = nanoid();
-      const now = new Date();
-      const summary = buildSummary(trimmedBack, trimmedFront);
-      const excerpt = buildExcerpt(trimmedBack);
-
-      await ctx.db.insert(dailySignal).values({
-        id: signalId,
-        chunkId,
-        userId: ctx.user.id,
-        signalDate: now,
-        relevanceScore: 1,
-        title: trimmedFront,
-        summary,
-        excerpt,
-        userAction: "saved",
-        presentedAt: now,
-        actionedAt: now,
-        scoringMethod: "manual-standalone",
-      });
-
-      const savedChunkId = nanoid();
-      await ctx.db.insert(savedChunk).values({
-        id: savedChunkId,
-        chunkId,
-        userId: ctx.user.id,
-        tags: input.tags?.length ? input.tags.join(",") : null,
-        highlightExtractedQuote: trimmedBack,
-        highlightExtractedAt: now,
-        savedAt: now,
-      });
-
-      await inngest.send({
-        name: "signal/actioned",
-        data: {
-          signalId,
-          action: "saved",
-        },
-      });
-
+      // Create standalone flashcard without transcript chunk or daily signal
       const flashcardId = nanoid();
       await ctx.db.insert(flashcard).values({
         id: flashcardId,
         userId: ctx.user.id,
-        signalId,
         front: trimmedFront,
         back: trimmedBack,
         tags: input.tags ?? [],
         source: trimmedSource,
       });
 
-      return { id: flashcardId, signalId };
+      return { id: flashcardId };
     }),
 });
 

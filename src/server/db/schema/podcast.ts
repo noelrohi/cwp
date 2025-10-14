@@ -170,19 +170,23 @@ export const transcriptChunk = pgTable(
   {
     id: text("id").primaryKey(),
     // Make episodeId nullable to support articles
-    episodeId: text("episode_id").references(() => episode.id, {
-      onDelete: "cascade",
-    }),
+    episodeId: text("episode_id")
+      .references(() => episode.id, {
+        onDelete: "cascade",
+      })
+      .default(sql`NULL`),
     // Add articleId for article chunks
-    articleId: text("article_id").references(() => article.id, {
-      onDelete: "cascade",
-    }),
-    speaker: text("speaker"),
+    articleId: text("article_id")
+      .references(() => article.id, {
+        onDelete: "cascade",
+      })
+      .default(sql`NULL`),
+    speaker: text("speaker").default(sql`NULL`),
     content: text("content").notNull(),
-    startTimeSec: integer("start_time_sec"),
-    endTimeSec: integer("end_time_sec"),
+    startTimeSec: integer("start_time_sec").default(sql`NULL`),
+    endTimeSec: integer("end_time_sec").default(sql`NULL`),
     wordCount: integer("word_count"),
-    embedding: vector("embedding", { dimensions: 1536 }),
+    embedding: vector("embedding", { dimensions: 1536 }).default(sql`NULL`),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -350,9 +354,9 @@ export const flashcard = pgTable(
   {
     id: text("id").primaryKey(),
     userId: text("user_id").notNull(),
-    signalId: text("signal_id")
-      .references(() => dailySignal.id, { onDelete: "cascade" })
-      .notNull(),
+    signalId: text("signal_id").references(() => dailySignal.id, {
+      onDelete: "cascade",
+    }),
     front: text("front").notNull(),
     back: text("back").notNull(),
     tags: jsonb("tags").$type<string[]>(),

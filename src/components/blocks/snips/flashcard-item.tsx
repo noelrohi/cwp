@@ -54,8 +54,8 @@ export function FlashcardItem({
   const [isFlipped, setIsFlipped] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const [showExpandDialog, setShowExpandDialog] = useState(false);
-  const episode = flashcard.signal.chunk?.episode;
-  const article = flashcard.signal.chunk?.article;
+  const episode = flashcard.signal?.chunk?.episode;
+  const article = flashcard.signal?.chunk?.article;
   const podcast = episode?.podcast;
   const isStandalone = !episode && !article && flashcard.source;
 
@@ -150,7 +150,7 @@ export function FlashcardItem({
                             <div className="flex items-center gap-2">
                               <HugeiconsIcon icon={AiMicIcon} size={12} />
                               <Link
-                                href={`/episode/${episode.id}?filter=actioned&action=saved`}
+                                href={`/episode/${episode.id}?tab=signals&filter=actioned&action=saved`}
                                 className="hover:underline truncate"
                               >
                                 {episode.title}
@@ -161,7 +161,7 @@ export function FlashcardItem({
                             <div className="flex items-center gap-2">
                               <HugeiconsIcon icon={PodcastIcon} size={12} />
                               <Link
-                                href={`/podcast/${podcast.id}?filter=actioned&action=saved`}
+                                href={`/podcast/${podcast.id}?tab=signals&filter=actioned&action=saved`}
                                 className="hover:underline truncate"
                               >
                                 {podcast.title}
@@ -184,7 +184,7 @@ export function FlashcardItem({
                                 size={12}
                               />
                               <Link
-                                href={`/post/${article.id}?filter=actioned&action=saved`}
+                                href={`/post/${article.id}?tab=signals&filter=actioned&action=saved`}
                                 className="hover:underline truncate"
                               >
                                 {article.title}
@@ -223,7 +223,7 @@ export function FlashcardItem({
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <SnipDialog
-                      signalId={flashcard.signalId}
+                      signalId={flashcard.signalId ?? undefined}
                       defaultBack={flashcard.back}
                       trigger={
                         <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
@@ -325,7 +325,7 @@ export function FlashcardItem({
                     <div className="flex items-center gap-2">
                       <HugeiconsIcon icon={AiMicIcon} size={16} />
                       <Link
-                        href={`/episode/${episode.id}?filter=actioned&action=saved`}
+                        href={`/episode/${episode.id}?tab=signals&filter=actioned&action=saved`}
                         className="hover:underline truncate"
                       >
                         {episode.title}
@@ -336,7 +336,7 @@ export function FlashcardItem({
                     <div className="flex items-center gap-2">
                       <HugeiconsIcon icon={PodcastIcon} size={16} />
                       <Link
-                        href={`/podcast/${podcast.id}?filter=actioned&action=saved`}
+                        href={`/podcast/${podcast.id}?tab=signals&filter=actioned&action=saved`}
                         className="hover:underline truncate"
                       >
                         {podcast.title}
@@ -356,7 +356,7 @@ export function FlashcardItem({
                     <div className="flex items-center gap-2">
                       <HugeiconsIcon icon={FileAttachmentIcon} size={16} />
                       <Link
-                        href={`/post/${article.id}?filter=actioned&action=saved`}
+                        href={`/post/${article.id}?tab=signals&filter=actioned&action=saved`}
                         className="hover:underline truncate"
                       >
                         {article.title}
