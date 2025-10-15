@@ -24,9 +24,14 @@ export const auth = betterAuth({
     },
   },
   trustedOrigins: [
-    "chrome-extension://*",
+    "chrome-extension://hmnkhpbcddnagbgabkphpknokjffhlie",
     "http://localhost:3000",
     "https://framebreak-intelligence.vercel.app",
   ],
+  advanced: {
+    crossSubDomainCookies: {
+      enabled: true,
+    },
+  },
   plugins: [lastLoginMethod(), autumn(), admin()],
 });
