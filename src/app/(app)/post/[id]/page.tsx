@@ -187,6 +187,28 @@ export default function PostDetailPage(props: {
     }),
   );
 
+  const processArticleWithSignals = useMutation(
+    trpc.articles.processArticleWithSignals.mutationOptions({
+      onSuccess: () => {
+        toast.success("Article processing started with signal generation");
+        queryClient.invalidateQueries({
+          queryKey: trpc.articles.getById.queryKey({ id: params.id }),
+        });
+        queryClient.invalidateQueries({
+          queryKey: trpc.signals.byArticle.queryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: trpc.signals.articleStats.queryKey(),
+        });
+        setShowProcessDialog(false);
+      },
+      onError: (error) => {
+        toast.error(`Failed to process article: ${error.message}`);
+        setShowProcessDialog(false);
+      },
+    }),
+  );
+
   const reprocessArticle = useMutation(
     trpc.articles.reprocessArticle.mutationOptions({
       onSuccess: () => {
@@ -676,25 +698,23 @@ Content: ${content}
                   <div className="space-y-4">
                     <div className="space-y-2 text-sm text-muted-foreground">
                       <p className="font-medium text-foreground">
-                        This will process the article:
+                        This will fully process the article:
                       </p>
                       <ul className="list-disc list-inside space-y-1 ml-2">
                         <li>Fetch article content from URL</li>
                         <li>Generate AI summary (key takeaways & lessons)</li>
                         <li>Split into semantic chunks (~100-800 words)</li>
                         <li>Generate embeddings for search</li>
+                        <li>Generate up to 30 personalized signals</li>
                       </ul>
                       <p className="mt-3 p-3 bg-muted rounded-lg">
-                        <strong className="text-foreground">📝 Summary:</strong>{" "}
-                        Auto-generated for quick triage
-                        <br />
-                        <strong className="text-foreground">🔔 Signals:</strong>{" "}
-                        Click "Generate Signals" button after processing
-                        (optional)
+                        <strong className="text-foreground">💡 Tip:</strong> If
+                        you only want a summary preview, use the "Summarize
+                        Article" button in the Summary tab.
                       </p>
                       <p className="mt-3">
-                        <strong>Duration:</strong> Usually 1-2.5 minutes
-                        depending on article length
+                        <strong>Duration:</strong> Usually 2-4 minutes depending
+                        on article length
                       </p>
                     </div>
                     <div className="flex justify-end gap-2">
@@ -706,7 +726,9 @@ Content: ${content}
                       </Button>
                       <Button
                         onClick={() =>
-                          processArticle.mutate({ articleId: params.id })
+                          processArticleWithSignals.mutate({
+                            articleId: params.id,
+                          })
                         }
                         disabled={isProcessing}
                       >
@@ -1055,9 +1077,8 @@ Content: ${content}
                 </EmptyMedia>
                 <EmptyTitle>Quick Overview Summary</EmptyTitle>
                 <EmptyDescription>
-                  {!articleData?.transcriptChunks?.length
-                    ? "Process this article first to generate a bite-sized summary with key takeaways, examples, lessons, and impactful quotes."
-                    : "Generate a bite-sized summary with key takeaways, examples, lessons, and impactful quotes from this article."}
+                  Summarize this article to get key takeaways, examples,
+                  lessons, and quotes. Perfect for quick triage.
                 </EmptyDescription>
               </EmptyHeader>
 
@@ -1065,9 +1086,7 @@ Content: ${content}
                 <Button
                   size="lg"
                   onClick={() =>
-                    !articleData?.transcriptChunks?.length
-                      ? processArticle.mutate({ articleId: params.id })
-                      : generateSummary.mutate({ articleId: params.id })
+                    processArticle.mutate({ articleId: params.id })
                   }
                   disabled={generateSummary.isPending || isProcessing}
                 >
@@ -1078,28 +1097,19 @@ Content: ${content}
                         size={16}
                         className="animate-spin"
                       />
-                      {!articleData?.transcriptChunks?.length
-                        ? "Processing & Generating..."
-                        : "Generating Summary..."}
+                      Summarizing...
                     </>
                   ) : (
                     <>
                       <HugeiconsIcon icon={SparklesIcon} size={16} />
-                      {!articleData?.transcriptChunks?.length
-                        ? "Process & Generate Summary"
-                        : "Generate Summary"}
+                      Summarize Article
                     </>
                   )}
                 </Button>
-
-                {(generateSummary.isPending || isProcessing) && (
-                  <p className="text-sm text-muted-foreground">
-                    This usually takes{" "}
-                    {!articleData?.transcriptChunks?.length
-                      ? "1-3 minutes"
-                      : "10-30 seconds"}
-                  </p>
-                )}
+                <p className="text-sm text-muted-foreground mt-3">
+                  Want full processing with signals? Use the "Process Article"
+                  button at the top.
+                </p>
               </EmptyContent>
             </Empty>
           )}
@@ -1302,15 +1312,68 @@ Content: ${content}
               Unable to load related signals.
             </div>
           ) : relatedSignals.length === 0 ? (
-            <div className="rounded-xl border border-border/50 bg-muted/30 p-6 text-base text-muted-foreground">
-              {signalFilter === "pending" && articleStats.data?.total === 0
-                ? "No signals yet. Start processing above and check back after the pipeline finishes."
-                : signalFilter === "pending"
+            signalFilter === "pending" && articleStats.data?.total === 0 ? (
+              isProcessed ? (
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <HugeiconsIcon icon={SparklesIcon} size={20} />
+                    </EmptyMedia>
+                    <EmptyTitle>Generate Personalized Signals</EmptyTitle>
+                    <EmptyDescription>
+                      Article is processed and ready! Generate up to 30 insights
+                      ranked by your preferences.
+                    </EmptyDescription>
+                  </EmptyHeader>
+                  <EmptyContent>
+                    <Button
+                      size="lg"
+                      onClick={() =>
+                        generateSignals.mutate({ articleId: params.id })
+                      }
+                      disabled={isGenerating}
+                    >
+                      {isGenerating ? (
+                        <>
+                          <HugeiconsIcon
+                            icon={Loading03Icon}
+                            size={16}
+                            className="animate-spin"
+                          />
+                          Generating Signals...
+                        </>
+                      ) : (
+                        <>
+                          <HugeiconsIcon icon={SparklesIcon} size={16} />
+                          Generate Signals
+                        </>
+                      )}
+                    </Button>
+                  </EmptyContent>
+                </Empty>
+              ) : (
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <HugeiconsIcon icon={SparklesIcon} size={20} />
+                    </EmptyMedia>
+                    <EmptyTitle>No Signals Yet</EmptyTitle>
+                    <EmptyDescription>
+                      Process this article to get signals. Use the "Process
+                      Article" button at the top.
+                    </EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              )
+            ) : (
+              <div className="rounded-xl border border-border/50 bg-muted/30 p-6 text-base text-muted-foreground">
+                {signalFilter === "pending"
                   ? "No pending signals. All signals have been processed."
                   : signalFilter === "actioned"
                     ? "No processed signals yet. Start reviewing signals to see them here."
                     : "No signals found for this article."}
-            </div>
+              </div>
+            )
           ) : (
             <div className="space-y-4">
               {relatedSignals.map((signal) => {

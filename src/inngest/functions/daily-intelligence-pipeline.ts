@@ -35,6 +35,8 @@ const DAILY_INTELLIGENCE_EPISODE_REPROCESS_EVENT =
   "app/daily-intelligence.episode.reprocess" as const;
 const DAILY_INTELLIGENCE_GENERATE_SIGNALS_EVENT =
   "app/daily-intelligence.user.generate-signals" as const;
+const DAILY_INTELLIGENCE_EPISODE_PROCESS_WITH_SIGNALS_EVENT =
+  "app/daily-intelligence.episode.process-with-signals" as const;
 
 const CHUNK_SETTINGS = {
   minWords: 100,
@@ -583,8 +585,6 @@ export const dailyIntelligenceGenerateSignals = inngest.createFunction(
         maxSignals,
       });
 
-      // Mark episode signals as generated IMMEDIATELY after signals are stored
-      // This happens in the same step to prevent race conditions
       if (episodeId) {
         await db
           .update(episode)
@@ -603,7 +603,6 @@ export const dailyIntelligenceGenerateSignals = inngest.createFunction(
       return diagnostics;
     });
 
-    // Log comprehensive diagnostics
     logger.info(
       `Pipeline run ${pipelineRunId}: Signal Generation Complete for user ${userId}${episodeId ? ` (episode: ${episodeId})` : ""}`,
     );
@@ -632,6 +631,232 @@ export const dailyIntelligenceGenerateSignals = inngest.createFunction(
     return result;
   },
 );
+
+export const dailyIntelligenceProcessEpisodeWithSignals =
+  inngest.createFunction(
+    { id: "daily-intelligence-process-episode-with-signals" },
+    { event: DAILY_INTELLIGENCE_EPISODE_PROCESS_WITH_SIGNALS_EVENT },
+    async ({ event, step, logger }) => {
+      const { pipelineRunId, userId, episodeId } =
+        event.data as DailyIntelligenceEpisodeEvent;
+
+      logger.info(
+        `Pipeline run ${pipelineRunId}: processing episode ${episodeId} WITH SIGNALS for user ${userId}`,
+      );
+
+      const episodeData = await step.run("load-episode", async () => {
+        const result = await db.query.episode.findFirst({
+          where: eq(episode.id, episodeId),
+          with: {
+            podcast: true,
+          },
+        });
+        return result ?? null;
+      });
+
+      if (!episodeData) {
+        logger.error(
+          `Pipeline run ${pipelineRunId}: episode ${episodeId} not found`,
+        );
+        return { status: "missing" } as const;
+      }
+
+      if (
+        episodeData.status === "processed" &&
+        episodeData.signalsGeneratedAt !== null
+      ) {
+        logger.info(
+          `Pipeline run ${pipelineRunId}: episode ${episodeId} already fully processed with signals, skipping`,
+        );
+        return { status: "already-processed" } as const;
+      }
+
+      try {
+        const normalisedEpisode = {
+          ...episodeData,
+          createdAt: new Date(episodeData.createdAt),
+          updatedAt: new Date(episodeData.updatedAt),
+          publishedAt: episodeData.publishedAt
+            ? new Date(episodeData.publishedAt)
+            : null,
+          lastProcessedAt: episodeData.lastProcessedAt
+            ? new Date(episodeData.lastProcessedAt)
+            : null,
+          processingStartedAt: episodeData.processingStartedAt
+            ? new Date(episodeData.processingStartedAt)
+            : null,
+          signalsGeneratedAt: episodeData.signalsGeneratedAt
+            ? new Date(episodeData.signalsGeneratedAt)
+            : null,
+        };
+
+        const transcriptResult = await step.run(
+          "ensure-transcript",
+          async () => {
+            return await ensureEpisodeTranscript({
+              db,
+              episode: normalisedEpisode,
+              force: episodeData.status !== "processed",
+            });
+          },
+        );
+
+        normalisedEpisode.transcriptUrl = transcriptResult.transcriptUrl;
+
+        await step.run("generate-summary", async () => {
+          const existingSummary = await db.query.episodeSummary.findFirst({
+            where: eq(episodeSummary.episodeId, episodeId),
+          });
+
+          if (existingSummary) {
+            logger.info(
+              `Pipeline run ${pipelineRunId}: episode ${episodeId} already has summary, skipping generation`,
+            );
+            return { summaryGenerated: false };
+          }
+
+          if (!normalisedEpisode.transcriptUrl) {
+            logger.warn(
+              `Pipeline run ${pipelineRunId}: episode ${episodeId} has no transcript URL, skipping summary generation`,
+            );
+            return { summaryGenerated: false };
+          }
+
+          const transcriptResponse = await fetch(
+            normalisedEpisode.transcriptUrl,
+          );
+          if (!transcriptResponse.ok) {
+            logger.warn(
+              `Pipeline run ${pipelineRunId}: failed to fetch transcript for summary generation`,
+            );
+            return { summaryGenerated: false };
+          }
+
+          const transcript: TranscriptData = await transcriptResponse.json();
+          const markdownContent = await generateEpisodeSummary(
+            transcript,
+            episodeData.title,
+          );
+
+          await db.insert(episodeSummary).values({
+            id: randomUUID(),
+            episodeId,
+            markdownContent,
+          });
+
+          logger.info(
+            `Pipeline run ${pipelineRunId}: episode ${episodeId} summary generated`,
+          );
+          return { summaryGenerated: true };
+        });
+
+        await step.run("chunk-transcript", async () => {
+          const { chunkCount } = await chunkEpisodeTranscript({
+            db,
+            episode: normalisedEpisode,
+            minTokens: CHUNK_SETTINGS.minWords,
+            maxTokens: CHUNK_SETTINGS.maxWords,
+            skipEmbeddings: true,
+          });
+          return { chunkCount };
+        });
+
+        await step.run("identify-speakers", async () => {
+          if (!episodeData.podcast) {
+            logger.warn(
+              `Episode ${episodeId} has no podcast info, skipping speaker identification`,
+            );
+            return { identified: false };
+          }
+
+          const speakerResult = await identifyEpisodeSpeakers({
+            db,
+            episodeId: episodeData.id,
+            episodeTitle: episodeData.title,
+            episodeDescription: episodeData.description,
+            itunesSummary: episodeData.itunesSummary,
+            contentEncoded: episodeData.contentEncoded,
+            creator: episodeData.creator,
+            podcastTitle: episodeData.podcast.title,
+            podcastDescription: episodeData.podcast.description,
+          });
+
+          return {
+            identified: speakerResult !== null,
+            confidence: speakerResult?.confidence,
+          };
+        });
+
+        await step.run("generate-embeddings", async () => {
+          const { embeddingsGenerated } = await generateMissingEmbeddings({
+            db,
+            episode: normalisedEpisode,
+          });
+          return { embeddingsGenerated };
+        });
+
+        await step.run("mark-processed", async () => {
+          await db
+            .update(episode)
+            .set({
+              status: "processed",
+              lastProcessedAt: new Date(),
+            })
+            .where(eq(episode.id, episodeId));
+        });
+
+        const signalResult = await step.run("generate-signals", async () => {
+          const diagnostics = await generateUserSignals({
+            userId,
+            episodeId,
+            forceRegenerate: false,
+            maxSignals: PIPELINE_SETTINGS.maxDailySignals,
+          });
+
+          await db
+            .update(episode)
+            .set({
+              signalsGeneratedAt: new Date(),
+            })
+            .where(eq(episode.id, episodeId));
+
+          logger.info(
+            `Pipeline run ${pipelineRunId}: episode ${episodeId} signals generated (${diagnostics.signalsGenerated} signals)`,
+          );
+
+          return diagnostics;
+        });
+
+        logger.info(
+          `Pipeline run ${pipelineRunId}: episode ${episodeId} FULLY PROCESSED WITH SIGNALS`,
+        );
+        logger.info(`📊 Signals Generated: ${signalResult.signalsGenerated}`);
+
+        return { status: "processed-with-signals" } as const;
+      } catch (error) {
+        const err =
+          error instanceof Error
+            ? error
+            : new Error(
+                typeof error === "string" ? error : JSON.stringify(error),
+              );
+        logger.error(
+          `Pipeline run ${pipelineRunId}: failed to process episode ${episodeId}`,
+          {
+            error: err.message,
+            stack: err.stack,
+          },
+        );
+        await step.run("mark-failed", async () => {
+          await db
+            .update(episode)
+            .set({ status: "failed" })
+            .where(eq(episode.id, episodeId));
+        });
+        throw err;
+      }
+    },
+  );
 
 /**
  * Generate signals for a user via the hybrid scoring pipeline:

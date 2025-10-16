@@ -144,7 +144,7 @@ export function extractArticleBody(jinaMarkdown: string): string {
  * Clean markdown content to improve chunk quality
  * Removes formatting noise while preserving semantic meaning
  */
-function cleanMarkdownContent(content: string): string {
+export function cleanMarkdownContent(content: string): string {
   let cleaned = content;
 
   // Remove horizontal rules (---, ===, etc.)

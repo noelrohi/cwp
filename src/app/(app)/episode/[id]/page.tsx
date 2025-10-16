@@ -193,6 +193,28 @@ export default function EpisodeDetailPage(props: {
     }),
   );
 
+  const processEpisodeWithSignals = useMutation(
+    trpc.episodes.processEpisodeWithSignals.mutationOptions({
+      onSuccess: () => {
+        toast.success("Episode processing started with signal generation");
+        queryClient.invalidateQueries({
+          queryKey: trpc.episodes.get.queryKey({ episodeId: params.id }),
+        });
+        queryClient.invalidateQueries({
+          queryKey: trpc.signals.byEpisode.queryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: trpc.signals.episodeStats.queryKey(),
+        });
+        setShowProcessDialog(false);
+      },
+      onError: (error) => {
+        toast.error(`Failed to process episode: ${error.message}`);
+        setShowProcessDialog(false);
+      },
+    }),
+  );
+
   const generateSignals = useMutation(
     trpc.episodes.generateSignals.mutationOptions({
       onSuccess: () => {
@@ -706,7 +728,7 @@ Content: ${content}
                     <div className="space-y-4">
                       <div className="space-y-2 text-sm text-muted-foreground">
                         <p className="font-medium text-foreground">
-                          This will process the episode:
+                          This will fully process the episode:
                         </p>
                         <ul className="list-disc list-inside space-y-1 ml-2">
                           <li>Fetch transcript from audio</li>
@@ -714,21 +736,15 @@ Content: ${content}
                           <li>Split into semantic chunks (~100-800 words)</li>
                           <li>Identify speakers using AI</li>
                           <li>Generate embeddings for search</li>
+                          <li>Generate up to 30 personalized signals</li>
                         </ul>
                         <p className="mt-3 p-3 bg-muted rounded-lg">
-                          <strong className="text-foreground">
-                            📝 Summary:
-                          </strong>{" "}
-                          Auto-generated for quick triage
-                          <br />
-                          <strong className="text-foreground">
-                            🔔 Signals:
-                          </strong>{" "}
-                          Click "Generate Signals" button after processing
-                          (optional)
+                          <strong className="text-foreground">💡 Tip:</strong>{" "}
+                          If you only want a summary preview, use the "Summarize
+                          Episode" button in the Summary tab.
                         </p>
                         <p className="mt-3">
-                          <strong>Duration:</strong> Usually 2.5-5.5 minutes
+                          <strong>Duration:</strong> Usually 3-6 minutes
                           depending on episode length
                         </p>
                       </div>
@@ -741,7 +757,9 @@ Content: ${content}
                         </Button>
                         <Button
                           onClick={() =>
-                            processEpisode.mutate({ episodeId: params.id })
+                            processEpisodeWithSignals.mutate({
+                              episodeId: params.id,
+                            })
                           }
                           disabled={isProcessing}
                         >
@@ -1222,9 +1240,8 @@ Content: ${content}
                 </EmptyMedia>
                 <EmptyTitle>Quick Overview Summary</EmptyTitle>
                 <EmptyDescription>
-                  {!episodeData?.transcriptUrl
-                    ? "Process this episode first to generate a bite-sized summary with key takeaways, examples, lessons, and impactful quotes."
-                    : "Generate a bite-sized summary with key takeaways, examples, lessons, and impactful quotes from this episode."}
+                  Summarize this episode to get key takeaways, examples,
+                  lessons, and quotes. Perfect for quick triage.
                 </EmptyDescription>
               </EmptyHeader>
 
@@ -1232,9 +1249,7 @@ Content: ${content}
                 <Button
                   size="lg"
                   onClick={() =>
-                    !episodeData?.transcriptUrl
-                      ? processEpisode.mutate({ episodeId: params.id })
-                      : generateSummary.mutate({ episodeId: params.id })
+                    processEpisode.mutate({ episodeId: params.id })
                   }
                   disabled={generateSummary.isPending || isProcessing}
                 >
@@ -1245,19 +1260,19 @@ Content: ${content}
                         size={16}
                         className="animate-spin"
                       />
-                      {!episodeData?.transcriptUrl
-                        ? "Processing & Generating..."
-                        : "Generating Summary..."}
+                      Summarizing...
                     </>
                   ) : (
                     <>
                       <HugeiconsIcon icon={SparklesIcon} size={16} />
-                      {!episodeData?.transcriptUrl
-                        ? "Process & Generate Summary"
-                        : "Generate Summary"}
+                      Summarize Episode
                     </>
                   )}
                 </Button>
+                <p className="text-sm text-muted-foreground mt-3">
+                  Want full processing with signals? Use the "Process Episode"
+                  button at the top.
+                </p>
 
                 {(generateSummary.isPending || isProcessing) && (
                   <p className="text-sm text-muted-foreground">
@@ -1415,15 +1430,68 @@ Content: ${content}
               Unable to load related signals.
             </div>
           ) : relatedSignals.length === 0 ? (
-            <div className="rounded-xl border border-border/50 bg-muted/30 p-6 text-base text-muted-foreground">
-              {signalFilter === "pending" && episodeStats.data?.total === 0
-                ? "No signals yet. Start processing above and check back after the pipeline finishes."
-                : signalFilter === "pending"
+            signalFilter === "pending" && episodeStats.data?.total === 0 ? (
+              isProcessed ? (
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <HugeiconsIcon icon={SparklesIcon} size={20} />
+                    </EmptyMedia>
+                    <EmptyTitle>Generate Personalized Signals</EmptyTitle>
+                    <EmptyDescription>
+                      Episode is processed and ready! Generate up to 30 insights
+                      ranked by your preferences.
+                    </EmptyDescription>
+                  </EmptyHeader>
+                  <EmptyContent>
+                    <Button
+                      size="lg"
+                      onClick={() =>
+                        generateSignals.mutate({ episodeId: params.id })
+                      }
+                      disabled={isGenerating}
+                    >
+                      {isGenerating ? (
+                        <>
+                          <HugeiconsIcon
+                            icon={Loading03Icon}
+                            size={16}
+                            className="animate-spin"
+                          />
+                          Generating Signals...
+                        </>
+                      ) : (
+                        <>
+                          <HugeiconsIcon icon={SparklesIcon} size={16} />
+                          Generate Signals
+                        </>
+                      )}
+                    </Button>
+                  </EmptyContent>
+                </Empty>
+              ) : (
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <HugeiconsIcon icon={SparklesIcon} size={20} />
+                    </EmptyMedia>
+                    <EmptyTitle>No Signals Yet</EmptyTitle>
+                    <EmptyDescription>
+                      Process this episode to get signals. Use the "Process
+                      Episode" button at the top.
+                    </EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              )
+            ) : (
+              <div className="rounded-xl border border-border/50 bg-muted/30 p-6 text-base text-muted-foreground">
+                {signalFilter === "pending"
                   ? "No pending signals. All signals have been processed."
                   : signalFilter === "actioned"
                     ? "No processed signals yet. Start reviewing signals to see them here."
                     : "No signals found for this episode."}
-            </div>
+              </div>
+            )
           ) : (
             <div className="space-y-4">
               {relatedSignals.map((signal) => {

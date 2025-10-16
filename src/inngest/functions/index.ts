@@ -8,6 +8,7 @@ export {
 export {
   generateArticleSignalsFunction,
   processArticle,
+  processArticleWithSignals,
   regenerateArticleSignals,
   reprocessArticle,
 } from "./article-processing";
@@ -19,6 +20,7 @@ export {
 export {
   dailyIntelligenceGenerateSignals,
   dailyIntelligenceProcessEpisode,
+  dailyIntelligenceProcessEpisodeWithSignals,
   dailyIntelligenceProcessUser,
   dailyIntelligenceReprocessEpisode,
 } from "./daily-intelligence-pipeline";

@@ -5,6 +5,8 @@ import { db } from "@/server/db";
 import { article as articleSchema, episodeSummary } from "@/server/db/schema";
 import {
   chunkArticleContent,
+  cleanMarkdownContent,
+  extractArticleBody,
   extractArticleContent,
   generateArticleSignals,
 } from "@/server/lib/article-processing";
@@ -37,28 +39,59 @@ export const processArticle = inngest.createFunction(
     // Step 2: Extract article content
     const extractedContent = await step.run("extract-content", async () => {
       try {
-        const extracted = await extractArticleContent(url);
+        const existingArticle = await db.query.article.findFirst({
+          where: eq(articleSchema.id, articleId),
+        });
 
-        if (!extracted.content || extracted.content.trim().length < 100) {
-          throw new NonRetriableError("Article content too short or empty");
+        if (!existingArticle) {
+          throw new NonRetriableError("Article not found");
         }
 
-        // Update article with extracted metadata
-        await db
-          .update(articleSchema)
-          .set({
-            title: extracted.title,
-            author: extracted.author,
-            publishedAt: extracted.publishedAt,
-            siteName: extracted.siteName,
-            excerpt: extracted.excerpt,
-          })
-          .where(eq(articleSchema.id, articleId));
+        let content: string;
+        let title = existingArticle.title;
+
+        if (existingArticle.rawContent) {
+          const rawBodyContent = extractArticleBody(existingArticle.rawContent);
+          content = cleanMarkdownContent(rawBodyContent);
+
+          if (!content || content.trim().length < 100) {
+            throw new NonRetriableError(
+              "Stored article content too short or empty",
+            );
+          }
+        } else if (
+          existingArticle.source === "email" ||
+          existingArticle.source === "readwise"
+        ) {
+          throw new NonRetriableError(
+            `Article source is '${existingArticle.source}' but rawContent is missing. Email and Readwise articles must have content pre-populated.`,
+          );
+        } else {
+          const extracted = await extractArticleContent(url);
+
+          if (!extracted.content || extracted.content.trim().length < 100) {
+            throw new NonRetriableError("Article content too short or empty");
+          }
+
+          content = extracted.content;
+          title = extracted.title;
+
+          await db
+            .update(articleSchema)
+            .set({
+              title: extracted.title,
+              author: extracted.author,
+              publishedAt: extracted.publishedAt,
+              siteName: extracted.siteName,
+              excerpt: extracted.excerpt,
+            })
+            .where(eq(articleSchema.id, articleId));
+        }
 
         return {
-          content: extracted.content,
-          title: extracted.title,
-          wordCount: extracted.content.split(/\s+/).length,
+          content,
+          title,
+          wordCount: content.split(/\s+/).length,
         };
       } catch (error) {
         const errorMessage =
@@ -310,7 +343,6 @@ export const generateArticleSignalsFunction = inngest.createFunction(
   async ({ event, step }) => {
     const { articleId, userId } = event.data;
 
-    // Step 1: Verify article has chunks
     await step.run("verify-chunks", async () => {
       const { transcriptChunk } = await import("@/server/db/schema");
 
@@ -328,7 +360,6 @@ export const generateArticleSignalsFunction = inngest.createFunction(
       return { hasChunks: true };
     });
 
-    // Step 2: Generate signals
     const result = await step.run("generate-signals", async () => {
       const signalResult = await generateArticleSignals({
         db,
@@ -336,7 +367,6 @@ export const generateArticleSignalsFunction = inngest.createFunction(
         userId,
       });
 
-      // Mark article signals as generated
       await db
         .update(articleSchema)
         .set({
@@ -350,5 +380,188 @@ export const generateArticleSignalsFunction = inngest.createFunction(
     });
 
     return result;
+  },
+);
+
+/**
+ * Process article with signals: extract, chunk, embed, and generate signals in one go
+ */
+export const processArticleWithSignals = inngest.createFunction(
+  {
+    id: "article-processing-with-signals",
+    name: "Process Article With Signals",
+    retries: 2,
+  },
+  { event: "article/process-with-signals.requested" },
+  async ({ event, step }) => {
+    const { articleId, userId, url } = event.data;
+
+    await step.run("mark-processing", async () => {
+      await db
+        .update(articleSchema)
+        .set({ status: "processing" })
+        .where(eq(articleSchema.id, articleId));
+
+      return { articleId, status: "processing" };
+    });
+
+    const extractedContent = await step.run("extract-content", async () => {
+      try {
+        const existingArticle = await db.query.article.findFirst({
+          where: eq(articleSchema.id, articleId),
+        });
+
+        if (!existingArticle) {
+          throw new NonRetriableError("Article not found");
+        }
+
+        let content: string;
+        let title = existingArticle.title;
+
+        if (existingArticle.rawContent) {
+          const rawBodyContent = extractArticleBody(existingArticle.rawContent);
+          content = cleanMarkdownContent(rawBodyContent);
+
+          if (!content || content.trim().length < 100) {
+            throw new NonRetriableError(
+              "Stored article content too short or empty",
+            );
+          }
+        } else if (
+          existingArticle.source === "email" ||
+          existingArticle.source === "readwise"
+        ) {
+          throw new NonRetriableError(
+            `Article source is '${existingArticle.source}' but rawContent is missing. Email and Readwise articles must have content pre-populated.`,
+          );
+        } else {
+          const extracted = await extractArticleContent(url);
+
+          if (!extracted.content || extracted.content.trim().length < 100) {
+            throw new NonRetriableError("Article content too short or empty");
+          }
+
+          content = extracted.content;
+          title = extracted.title;
+
+          await db
+            .update(articleSchema)
+            .set({
+              title: extracted.title,
+              author: extracted.author,
+              publishedAt: extracted.publishedAt,
+              siteName: extracted.siteName,
+              excerpt: extracted.excerpt,
+            })
+            .where(eq(articleSchema.id, articleId));
+        }
+
+        return {
+          content,
+          title,
+          wordCount: content.split(/\s+/).length,
+        };
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Failed to extract content";
+
+        await db
+          .update(articleSchema)
+          .set({
+            status: "failed",
+            errorMessage,
+          })
+          .where(eq(articleSchema.id, articleId));
+
+        throw error;
+      }
+    });
+
+    await step.run("generate-summary", async () => {
+      try {
+        const markdownContent = await generateArticleSummary(
+          extractedContent.content,
+          extractedContent.title,
+        );
+
+        await db.insert(episodeSummary).values({
+          id: randomUUID(),
+          articleId,
+          markdownContent,
+        });
+
+        return { summaryGenerated: true };
+      } catch (error) {
+        console.error("Failed to generate article summary:", error);
+        return { summaryGenerated: false };
+      }
+    });
+
+    const chunkResult = await step.run("chunk-and-embed", async () => {
+      try {
+        const result = await chunkArticleContent({
+          db,
+          articleId,
+          content: extractedContent.content,
+        });
+
+        return {
+          chunkCount: result.chunkCount,
+        };
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Failed to chunk content";
+
+        await db
+          .update(articleSchema)
+          .set({
+            status: "failed",
+            errorMessage,
+          })
+          .where(eq(articleSchema.id, articleId));
+
+        throw error;
+      }
+    });
+
+    await step.run("mark-processed", async () => {
+      await db
+        .update(articleSchema)
+        .set({ status: "processed" })
+        .where(eq(articleSchema.id, articleId));
+
+      return {
+        articleId,
+        status: "processed",
+        chunkCount: chunkResult.chunkCount,
+      };
+    });
+
+    const signalResult = await step.run("generate-signals", async () => {
+      const result = await generateArticleSignals({
+        db,
+        articleId,
+        userId,
+      });
+
+      await db
+        .update(articleSchema)
+        .set({
+          signalsGeneratedAt: new Date(),
+        })
+        .where(eq(articleSchema.id, articleId));
+
+      return {
+        signalCount: result.signalCount,
+      };
+    });
+
+    return {
+      articleId,
+      title: extractedContent.title,
+      wordCount: extractedContent.wordCount,
+      chunkCount: chunkResult.chunkCount,
+      signalCount: signalResult.signalCount,
+    };
   },
 );

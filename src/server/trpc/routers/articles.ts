@@ -515,9 +515,64 @@ export const articlesRouter = createTRPCRouter({
         throw new Error("Article is currently being processed");
       }
 
-      // Trigger Inngest function for background processing
       await inngest.send({
         name: "article/process.requested",
+        data: {
+          articleId: input.articleId,
+          userId: ctx.user.id,
+          url: articleRecord.url,
+        },
+      });
+
+      return { success: true, status: "processing" };
+    }),
+
+  processArticleWithSignals: protectedProcedure
+    .input(
+      z.object({
+        articleId: z.string(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const articleRecord = await ctx.db.query.article.findFirst({
+        where: and(
+          eq(article.id, input.articleId),
+          eq(article.userId, ctx.user.id),
+        ),
+        columns: {
+          id: true,
+          url: true,
+          status: true,
+          signalsGeneratedAt: true,
+        },
+      });
+
+      if (!articleRecord) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Article not found",
+        });
+      }
+
+      if (
+        articleRecord.status === "processed" &&
+        articleRecord.signalsGeneratedAt !== null
+      ) {
+        return {
+          success: false,
+          message: "Article already fully processed with signals",
+        };
+      }
+
+      if (articleRecord.status === "processing") {
+        return {
+          success: false,
+          message: "Article is currently being processed",
+        };
+      }
+
+      await inngest.send({
+        name: "article/process-with-signals.requested",
         data: {
           articleId: input.articleId,
           userId: ctx.user.id,
