@@ -49,6 +49,11 @@ const items: NavItem[] = [
     url: "/dashboard",
   },
   {
+    title: "Readwise",
+    icon: LinkSquare02Icon,
+    url: "/readwise",
+  },
+  {
     title: "Chat",
     icon: MessageMultiple01Icon,
     url: "/chat",

@@ -7,6 +7,7 @@ import { flashcardsRouter } from "./routers/flashcards";
 import { integrationsRouter } from "./routers/integrations";
 import { podcastsRouter } from "./routers/podcasts";
 import { ragRouter } from "./routers/rag";
+import { readwiseRouter } from "./routers/readwise";
 import { signalsRouter } from "./routers/signals";
 import { usersRouter } from "./routers/users";
 
@@ -21,6 +22,7 @@ export const appRouter = createTRPCRouter({
   favorites: favoritesRouter,
   admin: adminRouter,
   integrations: integrationsRouter,
+  readwise: readwiseRouter,
 });
 
 export type AppRouter = typeof appRouter;
