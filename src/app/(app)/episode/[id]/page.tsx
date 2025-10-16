@@ -570,6 +570,7 @@ Content: ${content}
   const isBusy = isProcessing || isGenerating || isRegenerating;
   const processButtonLabel = (() => {
     if (isProcessing) return "Processing...";
+    if (currentStatus === "failed") return "Reprocess Episode";
     return "Process Episode";
   })();
 

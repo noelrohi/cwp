@@ -563,6 +563,7 @@ Content: ${content}
   })();
   const processButtonLabel = (() => {
     if (isProcessing) return "Processing...";
+    if (currentStatus === "failed") return "Reprocess Article";
     return "Process Article";
   })();
 
@@ -1113,7 +1114,7 @@ Content: ${content}
                 <Button
                   size="lg"
                   onClick={() =>
-                    processArticle.mutate({ articleId: params.id })
+                    generateSummary.mutate({ articleId: params.id })
                   }
                   disabled={generateSummary.isPending || isProcessing}
                 >

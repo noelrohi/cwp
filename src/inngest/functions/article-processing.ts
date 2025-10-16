@@ -30,7 +30,7 @@ export const processArticle = inngest.createFunction(
     await step.run("mark-processing", async () => {
       await db
         .update(articleSchema)
-        .set({ status: "processing" })
+        .set({ status: "processing", errorMessage: null })
         .where(eq(articleSchema.id, articleId));
 
       return { articleId, status: "processing" };
@@ -399,7 +399,7 @@ export const processArticleWithSignals = inngest.createFunction(
     await step.run("mark-processing", async () => {
       await db
         .update(articleSchema)
-        .set({ status: "processing" })
+        .set({ status: "processing", errorMessage: null })
         .where(eq(articleSchema.id, articleId));
 
       return { articleId, status: "processing" };

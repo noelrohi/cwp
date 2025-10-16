@@ -848,11 +848,25 @@ export const articlesRouter = createTRPCRouter({
         !articleRecord.transcriptChunks ||
         articleRecord.transcriptChunks.length === 0
       ) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message:
-            "Article has no processed content. Process the article first.",
+        if (articleRecord.status === "processing") {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Article is currently being processed. Please wait.",
+          });
+        }
+
+        await inngest.send({
+          name: "article/process.requested",
+          data: {
+            articleId: input.articleId,
+            userId: ctx.user.id,
+            url: articleRecord.url,
+          },
         });
+
+        return {
+          status: "processing" as const,
+        };
       }
 
       const pipelineRunId = randomUUID();
