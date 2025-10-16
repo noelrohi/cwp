@@ -113,6 +113,7 @@ export default function PostDetailPage(props: {
   const [showRegenerateDialog, setShowRegenerateDialog] = useState(false);
   const [pendingSignalId, setPendingSignalId] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<SignalAction | null>(null);
+  const [isSkippingAll, setIsSkippingAll] = useState(false);
   const [selectedConfidence, setSelectedConfidence] = useState<
     "all" | "high" | "medium" | "low"
   >("all");
@@ -276,6 +277,7 @@ export default function PostDetailPage(props: {
 
   const actionMutation = useMutation(trpc.signals.action.mutationOptions());
   const undoMutation = useMutation(trpc.signals.undo.mutationOptions());
+  const skipAllMutation = useMutation(trpc.signals.skipAll.mutationOptions());
 
   const handleAction = async (signalId: string, action: SignalAction) => {
     setPendingSignalId(signalId);
@@ -364,6 +366,31 @@ Content: ${content}
     toast.success(
       `Copied ${relatedSignals.length} signal${relatedSignals.length !== 1 ? "s" : ""} to clipboard`,
     );
+  };
+
+  const handleSkipAll = async () => {
+    setIsSkippingAll(true);
+    try {
+      const result = await skipAllMutation.mutateAsync({
+        articleId: params.id,
+        confidenceFilter:
+          selectedConfidence !== "all" ? selectedConfidence : undefined,
+      });
+
+      queryClient.invalidateQueries({
+        queryKey: trpc.signals.byArticle.queryKey(),
+      });
+      queryClient.invalidateQueries({
+        queryKey: trpc.signals.articleStats.queryKey(),
+      });
+      toast.success(`Skipped ${result.skippedCount} signals`);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to skip signals.";
+      toast.error(message);
+    } finally {
+      setIsSkippingAll(false);
+    }
   };
 
   const handleCopyArticleId = () => {
@@ -1208,6 +1235,27 @@ Content: ${content}
                   </TabsList>
                 </Tabs>
 
+                {signalFilter === "pending" && relatedSignals.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    onClick={handleSkipAll}
+                    disabled={isSkippingAll}
+                    className="sm:hidden"
+                  >
+                    {isSkippingAll ? (
+                      <HugeiconsIcon
+                        icon={Loading03Icon}
+                        size={16}
+                        className="animate-spin"
+                      />
+                    ) : (
+                      <HugeiconsIcon icon={BookmarkRemove01Icon} size={16} />
+                    )}
+                    <span className="sr-only">Skip All</span>
+                  </Button>
+                )}
+
                 {relatedSignals.length > 0 && (
                   <Button
                     variant="outline"
@@ -1270,6 +1318,25 @@ Content: ${content}
                   >
                     <HugeiconsIcon icon={Copy01Icon} size={16} />
                     <span className="hidden sm:inline">Copy Signals</span>
+                  </Button>
+                )}
+                {signalFilter === "pending" && relatedSignals.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSkipAll}
+                    disabled={isSkippingAll}
+                  >
+                    {isSkippingAll ? (
+                      <HugeiconsIcon
+                        icon={Loading03Icon}
+                        size={16}
+                        className="animate-spin"
+                      />
+                    ) : (
+                      <HugeiconsIcon icon={BookmarkRemove01Icon} size={16} />
+                    )}
+                    Skip All ({articleStats.data?.pending ?? 0})
                   </Button>
                 )}
                 <Select

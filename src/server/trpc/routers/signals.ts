@@ -906,12 +906,14 @@ export const signalsRouter = createTRPCRouter({
       z
         .object({
           episodeId: z.string().optional(),
+          articleId: z.string().optional(),
           confidenceFilter: z.enum(["all", "high", "medium", "low"]).optional(),
         })
         .optional(),
     )
     .mutation(async ({ ctx, input }) => {
       const episodeId = input?.episodeId;
+      const articleId = input?.articleId;
       const confidenceFilter = input?.confidenceFilter ?? "all";
 
       // Build where conditions
@@ -931,13 +933,24 @@ export const signalsRouter = createTRPCRouter({
         whereConditions.push(sql`${dailySignal.relevanceScore} < 0.4`);
       }
 
-      // If episodeId is provided, only skip signals from that episode
+      // If episodeId or articleId is provided, filter by those
       // biome-ignore lint/suspicious/noImplicitAnyLet: **
       let pendingSignalsQuery;
 
       if (episodeId) {
         // Need to join with transcript_chunk to filter by episode
         whereConditions.push(eq(transcriptChunk.episodeId, episodeId));
+        pendingSignalsQuery = ctx.db
+          .select({ id: dailySignal.id })
+          .from(dailySignal)
+          .innerJoin(
+            transcriptChunk,
+            eq(dailySignal.chunkId, transcriptChunk.id),
+          )
+          .where(and(...whereConditions));
+      } else if (articleId) {
+        // Need to join with transcript_chunk to filter by article
+        whereConditions.push(eq(transcriptChunk.articleId, articleId));
         pendingSignalsQuery = ctx.db
           .select({ id: dailySignal.id })
           .from(dailySignal)
@@ -977,6 +990,7 @@ export const signalsRouter = createTRPCRouter({
           userId: ctx.user.id,
           count: pendingSignals.length,
           episodeId: episodeId || null,
+          articleId: articleId || null,
           confidenceFilter: confidenceFilter,
         },
       });
