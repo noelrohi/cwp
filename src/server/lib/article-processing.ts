@@ -352,7 +352,7 @@ export async function chunkArticleContent({
     embedding: embeddings[index],
   }));
 
-  await db.insert(transcriptChunk).values(chunksToInsert);
+  await db.insert(transcriptChunk).values(chunksToInsert).onConflictDoNothing();
 
   console.log(
     `Created ${chunks.length} chunks for article ${articleId}, avg words: ${Math.round(chunks.reduce((sum, c) => sum + c.wordCount, 0) / chunks.length)}`,
