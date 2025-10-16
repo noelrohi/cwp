@@ -14,7 +14,7 @@ const judgementSchema = z.object({
 
 const model = openrouter("moonshotai/kimi-k2-0905");
 
-const HYBRID_PROMPT = `You are evaluating podcast transcript chunks for Usman, an investor/founder.
+const HYBRID_PROMPT = `You are evaluating podcast transcript chunks for Usman, who has read 400+ entrepreneur biographies.
 
 WHAT HE SAVES (with examples from his actual saves):
 1. Named frameworks with specific labels
@@ -22,9 +22,10 @@ WHAT HE SAVES (with examples from his actual saves):
    - "Idea maze" - specific conceptual framework
    - "Sea of sameness" - vivid, actionable concept
 
-2. Counter-intuitive insights that flip conventional wisdom
+2. Counter-intuitive insights that flip conventional wisdom (NOT startup canon)
    - "Ego makes entrepreneurs overcomplicate products" (not obvious)
    - "Simplification is the biggest hack in entrepreneurship" (flips common belief)
+   - Must be genuinely surprising, not "experts bad, iteration good" type clichés
 
 3. Specific tactics with deep reasoning
    - "Walk the aisles, look for sea of sameness, spot culture shifts" (concrete + conceptual)
@@ -34,47 +35,71 @@ WHAT HE SAVES (with examples from his actual saves):
    - "Look for insatiable curiosity + drive + heart of gold" (specific character traits)
    - "Founders don't accommodate - they see problems and fix them" (behavioral pattern)
 
+5. **Memorable articulations that crystallize fuzzy concepts**
+   - "Founder is guardian of company's soul" (makes abstract concrete)
+   - "Can't get to the end of their curiosity - infinite cup" (vivid metaphor)
+   - Language that turns intuition into explicit knowledge
+
 WHAT HE SKIPS (even if topically relevant):
-1. Generic observations without specificity
+1. **Entrepreneurship canon** - advice that appears in 50+ business books:
+   - Henry Ford quotes about experts vs iteration
+   - Carnegie steel investment stories
+   - Generic "iterate quickly", "focus on customers", "technology compounds"
+   - Startup tropes everyone with 5+ books knows
+
+2. Generic observations without specificity
    - "Incentives aren't always financial" (too obvious)
    - "People have different motivations" (surface-level)
+   - "Relationships matter" (everyone knows this)
 
-2. Biographical details without lessons
+3. Biographical details without lessons
    - Career trajectories and personal journeys
    - "You've had interesting experiences" type content
    - Unless it reveals a generalizable pattern
 
-3. Academic density without practical frameworks
+4. Academic density without practical frameworks
    - Dense philosophical references without actionable takeaways
    - Continental philosophy name-dropping without synthesis
 
-4. Meta-defensive rambling
+5. Meta-defensive rambling
    - "You don't need to know this"
    - "I'm being reductionist but..."
    - Excessive caveats and disclaimers
 
-5. Lists without synthesis
+6. Lists without synthesis
    - "Here are the problems: A, B, C..." without deeper pattern
    - Enumeration without insight
 
 SCORING GUIDANCE:
-- Generic/obvious: 10-30
-- Topically relevant but shallow: 35-50
+- Entrepreneurship canon (even if "good"): 20-40
+- Generic/obvious observations: 30-45
+- Topically relevant but shallow: 45-55
 - Useful pattern or insight: 55-70 (SAVE THRESHOLD: 60)
 - Multiple frameworks + deep reasoning: 70-85
 - Groundbreaking: 85+
 
 CRITICAL: Score 60+ if content includes:
 ✓ Named framework with explanation ("we call this X"), OR
-✓ Counter-intuitive insight with reasoning (flips conventional wisdom), OR
+✓ Counter-intuitive insight NOT in startup canon (genuinely surprising), OR
 ✓ Specific tactic with deep "why" (not just "what"), OR
-✓ Clear assessment criteria (how to judge X)
+✓ Clear assessment criteria (how to judge X), OR
+✓ Memorable articulation that crystallizes fuzzy concept (powerful metaphor)
 
-Red flags for LOW score (20-40):
+Red flags for LOW score (20-45):
+✗ Well-known entrepreneur quotes (Ford, Carnegie, Bezos, etc.)
+✗ "Invest in technology" / "iterate quickly" / "experts bad" tropes
 ✗ Biographical details without generalizable lessons
-✗ "Incentives matter" type obvious observations
+✗ "Incentives matter" / "relationships matter" obvious observations
 ✗ Meta-commentary ("I'm simplifying but...")
 ✗ Lists without synthesis or deeper pattern
+
+ASK YOURSELF:
+- "Would Paul Graham roll his eyes at this, or find it interesting?"
+- "Is this in every Y Combinator essay / startup book?"
+- "Does this articulate something hard to put into words?"
+- "Is this genuinely novel, or have I heard it 50 times?"
+
+When in doubt: Default to 40-45. Bar is HIGH for well-read founders.
 
 Score each dimension 0-100, then provide overall score.`;
 

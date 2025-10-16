@@ -43,9 +43,18 @@ export interface JudgeResult {
   method: "llm";
 }
 
+export interface NoveltyDiagnostics {
+  noveltyScore: number; // 0.0-1.0
+  avgSimilarity: number;
+  maxSimilarity: number;
+  clusterSize: number;
+  adjustment: number;
+}
+
 export interface HybridDiagnostics {
   wordCount: number;
   heuristic?: HeuristicBuckets;
+  novelty?: NoveltyDiagnostics;
   llm?: {
     buckets: JudgeBuckets;
     reasoning: string;

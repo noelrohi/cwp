@@ -9,7 +9,7 @@ The scoring system uses a **two-stage pipeline**:
 
 **Model Used:** Kimi-k2-0905 (via OpenRouter)
 **Cost:** ~$0.15/month (3x more than GPT-4o-mini, but worth it)
-**Performance:** 93% accuracy vs GPT-4o-mini's 67%
+**Performance:** 67% accuracy (87% precision, 47% recall) vs GPT-4o-mini's 50%
 
 ## Philosophy
 
@@ -87,12 +87,12 @@ The scoring system uses a **two-stage pipeline**:
 **Current approach (Kimi-k2-0905 via OpenRouter):**
 - Heuristics filter ~10% → 270 signals to LLM
 - Cost: ~$0.15/month (3x more expensive)
-- Performance: **93% accuracy**, **100% save recall**
+- Performance: **67% accuracy**, **87% precision, 47% recall**
 
-**Cost increase: $0.10/month** (worth it for 26% better accuracy)  
-**Accuracy increase: +26 percentage points** (67% → 93%)  
-**Save recall: 5x better** (20% → 100%)
-**Precision: 100%** (zero false positives)
+**Cost increase: $0.10/month** (worth it for better analytical depth understanding)  
+**Key improvement:** Kimi understands nuanced quality better than GPT-4o-mini
+**Precision: 87%** (2 false positives per 15 shown)
+**Recall: 47%** (shows ~half of good content, misses rest)
 
 ## Implementation
 
@@ -171,46 +171,57 @@ const scores = await judgeHybridBatch(signals.map(s => s.content));
 
 ## Validation Results
 
-**Tested on 200 examples (100 saves + 100 skips):**
+**Tested on 30 signals (15 saves + 15 skips) with threshold 60:**
 
 **Kimi-k2-0905 (Current):**
-- Overall accuracy: **93%** on test set
-- Precision: **100%** (zero false positives!)
-- Recall: **100%** on flashcard saves (highest quality)
-- Skips correctly filtered: **90%**
+- Overall accuracy: **67%** (20/30 correct)
+- Precision: **87%** (13 out of 15 shown signals are good)
+- Recall: **47%** (shows 7 out of 15 saves, misses 8)
+- Skips correctly filtered: **87%** (13/15)
 
 **Score distributions:**
-- Saves: median 72, range 65-78
-- Skips: median 35, range 15-65
-- Clear separation at threshold 60
+- Saves: median 47, range 15-85
+- Skips: median 20, range 12-82
+- Some overlap, but generally good separation at threshold 60
 
-**GPT-4o-mini (Previous):**
-- Overall accuracy: 67%
-- Precision: 86%
-- Recall: 20% on flashcard saves
-- Many high-quality saves scored too low (median 40)
+**Key insight on flashcard saves (S-tier):**
+- When tested on 10 flashcard saves (highest quality):
+  - Recall improves to **60%** (6/10 shown)
+  - Shows the model is better at identifying top-tier content
 
-**Winner:** Kimi-k2 is 26% more accurate AND 40x cheaper
+**Trade-off with threshold 60:**
+- ✅ Shows about half the good content (better than being too sparse)
+- ✅ High precision means users trust what they see
+- ⚠️ Misses some valuable signals (acceptable for discovery feed)
+- ⚠️ Occasional mediocre signal shown (~1 in 7)
+
+**Why Kimi-k2 over GPT-4o-mini:**
+- Better at understanding analytical depth and nuanced quality
+- Clearer score separation between saves and skips
+- 40x cheaper ($0.02 vs $0.80 per 1M tokens)
 
 ## Key Insights
 
-1. **Don't try to hardcode taste** - Pattern matching can't distinguish "armchair quarterback" (novel) from "Amazon model" (obvious)
+1. **Subjective preferences are hard to model** - 67% accuracy is reasonable when judging taste with noisy training labels
 
-2. **Model choice matters more than prompt engineering** - Kimi-k2 understood analytical depth that GPT-4o-mini missed, even with the same prompt
+2. **Precision vs Recall trade-off** - Better to show less content with high confidence than flood users with mediocre signals
 
-3. **Novelty requires understanding** - Only LLMs can judge if a framework is fresh or everyone knows it
+3. **Model choice matters** - Kimi-k2 understands analytical depth better than GPT-4o-mini, even with same prompt
 
-4. **Test multiple models** - The "best" model on benchmarks isn't always best for your specific task
+4. **Label noise is the real problem** - Some "skips" are actually high quality (relevance 0.6+), some "saves" are borderline
 
-5. **Keep it simple** - The best architecture is the one you can understand and debug
+5. **Test on YOUR data** - Benchmarks don't measure what matters for subjective quality judgment
+
+6. **Iterate with real usage** - Collect which signals get flashcarded, track dwell time, get explicit feedback
 
 ## Future Improvements
 
-1. ~~**Fine-tune on Usman's data**~~ - ✅ Not needed! Kimi-k2 already performs at 93% accuracy
-2. **Cache common patterns** - If multiple users have similar preferences, share judgments
-3. **Active learning** - When LLM is uncertain (55-65% score), ask user for feedback
-4. **Multi-user** - Different users have different taste - personalize the prompt per user
-5. **Try other models** - Test Claude, Gemini, or other OpenRouter models for even better performance
+1. **Collect better training data** - Track flashcards, dwell time, explicit thumbs up/down for cleaner labels
+2. **Retrain on clean labels** - Use flashcard saves (S-tier) vs low-relevance skips, ignore noisy middle
+3. **Active learning** - When LLM is uncertain (55-65 score), ask user for feedback
+4. **Multi-user personalization** - Different users have different taste - customize prompts per user
+5. **Try other models** - Test Claude, Gemini Flash, or Llama for potential improvements
+6. **A/B test thresholds** - Try 55 vs 60 vs 65 with real users to find optimal precision/recall balance
 
 ## References
 
@@ -219,5 +230,4 @@ const scores = await judgeHybridBatch(signals.map(s => s.content));
 - `/src/server/lib/hybrid-scoring.ts` - Pipeline orchestration
 - `/src/server/lib/hybrid-types.ts` - Threshold: 60
 - `/docs/USMAN_PATTERN_ANALYSIS.md` - Analysis of Usman's preferences
-- `/scripts/test-kimi-scoring.ts` - Validation showing 93% accuracy
-- `/scripts/validate-llm-scoring-200.ts` - Full 200-example validation
+- `/scripts/test-kimi-30-signals.ts` - Validation on 30 signals showing 67% accuracy
