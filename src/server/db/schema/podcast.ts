@@ -137,13 +137,16 @@ export const article = pgTable(
     feedId: text("feed_id").references(() => articleFeed.id, {
       onDelete: "set null",
     }),
-    url: text("url").notNull(),
+    url: text("url"),
     title: text("title").notNull(),
     author: text("author"),
     publishedAt: timestamp("published_at", { withTimezone: true }),
     siteName: text("site_name"),
     excerpt: text("excerpt"),
     rawContent: text("raw_content"),
+    source: text("source").default("rss").notNull(),
+    emailFrom: text("email_from"),
+    readwiseId: text("readwise_id"),
     status: episodeStatusEnum("status").default("pending").notNull(),
     errorMessage: text("error_message"),
     signalsGeneratedAt: timestamp("signals_generated_at", {
@@ -161,7 +164,8 @@ export const article = pgTable(
     index().on(table.userId),
     index().on(table.status),
     index().on(table.feedId),
-    unique().on(table.userId, table.url),
+    index().on(table.source),
+    index().on(table.readwiseId),
   ],
 );
 

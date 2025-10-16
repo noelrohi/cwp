@@ -15,6 +15,7 @@ import { IconArrowRight } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
+import { useQueryState } from "nuqs";
 import { useMemo } from "react";
 import { AddPodcastDialog } from "@/components/blocks/podcasts/add-podcast-dialog";
 import { Button } from "@/components/ui/button";
@@ -265,23 +266,33 @@ type ContentItem = {
 
 export default function Dashboard() {
   const trpc = useTRPC();
+  const [sourceFilter] = useQueryState("source");
+
   const { data: episodes, isLoading: episodesLoading } = useQuery(
     trpc.episodes.getEpisodes.queryOptions({ limit: 50 }),
   );
   const { data: articles, isLoading: articlesLoading } = useQuery(
-    trpc.articles.list.queryOptions(),
+    trpc.articles.list.queryOptions(
+      sourceFilter &&
+        (sourceFilter === "rss" ||
+          sourceFilter === "email" ||
+          sourceFilter === "readwise")
+        ? { source: sourceFilter }
+        : undefined,
+    ),
   );
 
   const allContent = useMemo(() => {
-    const episodeItems: ContentItem[] =
-      episodes?.map((ep) => ({
-        id: ep.id,
-        title: ep.title,
-        publishedAt: ep.publishedAt,
-        status: ep.status,
-        type: "episode" as const,
-        episode: ep,
-      })) || [];
+    const episodeItems: ContentItem[] = sourceFilter
+      ? []
+      : episodes?.map((ep) => ({
+          id: ep.id,
+          title: ep.title,
+          publishedAt: ep.publishedAt,
+          status: ep.status,
+          type: "episode" as const,
+          episode: ep,
+        })) || [];
 
     const articleItems: ContentItem[] =
       articles?.map((art) => ({
@@ -294,7 +305,7 @@ export default function Dashboard() {
       })) || [];
 
     return [...episodeItems, ...articleItems];
-  }, [episodes, articles]);
+  }, [episodes, articles, sourceFilter]);
 
   const groupedContent = useMemo(() => {
     if (allContent.length === 0) return {};

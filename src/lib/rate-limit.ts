@@ -56,4 +56,8 @@ export const RATE_LIMITS = {
     limit: 10,
     windowMs: 60 * 60 * 1000,
   },
+  READWISE_SYNC: {
+    limit: 10,
+    windowMs: 60 * 60 * 1000,
+  },
 } as const;

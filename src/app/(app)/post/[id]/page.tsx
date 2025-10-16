@@ -1117,6 +1117,7 @@ Content: ${content}
                 className="text-base prose prose-neutral dark:prose-invert max-w-none"
                 articleId={params.id}
                 selectionSource="article"
+                disallowedElements={["img"]}
               />
             </Item>
           ) : (

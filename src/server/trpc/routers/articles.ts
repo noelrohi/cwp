@@ -71,54 +71,68 @@ export const articlesRouter = createTRPCRouter({
       };
     }),
 
-  list: protectedProcedure.query(async ({ ctx }) => {
-    const articles = await ctx.db.query.article.findMany({
-      where: eq(article.userId, ctx.user.id),
-      orderBy: [desc(article.createdAt)],
-      limit: 50,
-      with: {
-        feed: true,
-      },
-    });
+  list: protectedProcedure
+    .input(
+      z
+        .object({
+          source: z.enum(["rss", "email", "readwise"]).optional(),
+        })
+        .optional(),
+    )
+    .query(async ({ ctx, input }) => {
+      const whereConditions = [eq(article.userId, ctx.user.id)];
 
-    // Fetch signal counts for all articles in a single query
-    const articleIds = articles.map((art) => art.id);
+      if (input?.source) {
+        whereConditions.push(eq(article.source, input.source));
+      }
 
-    if (articleIds.length === 0) {
+      const articles = await ctx.db.query.article.findMany({
+        where: and(...whereConditions),
+        orderBy: [desc(article.createdAt)],
+        limit: 50,
+        with: {
+          feed: true,
+        },
+      });
+
+      // Fetch signal counts for all articles in a single query
+      const articleIds = articles.map((art) => art.id);
+
+      if (articleIds.length === 0) {
+        return articles.map((art) => ({
+          ...art,
+          signalCounts: { total: 0, pending: 0 },
+        }));
+      }
+
+      const signalCounts = await ctx.db
+        .select({
+          articleId: transcriptChunk.articleId,
+          total: count(dailySignal.id),
+          pending: sql<number>`SUM(CASE WHEN ${dailySignal.userAction} IS NULL THEN 1 ELSE 0 END)`,
+        })
+        .from(dailySignal)
+        .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
+        .where(
+          and(
+            eq(dailySignal.userId, ctx.user.id),
+            inArray(transcriptChunk.articleId, articleIds),
+          ),
+        )
+        .groupBy(transcriptChunk.articleId);
+
+      const signalCountMap = new Map(
+        signalCounts.map((sc) => [
+          sc.articleId,
+          { total: Number(sc.total), pending: Number(sc.pending) },
+        ]),
+      );
+
       return articles.map((art) => ({
         ...art,
-        signalCounts: { total: 0, pending: 0 },
+        signalCounts: signalCountMap.get(art.id) ?? { total: 0, pending: 0 },
       }));
-    }
-
-    const signalCounts = await ctx.db
-      .select({
-        articleId: transcriptChunk.articleId,
-        total: count(dailySignal.id),
-        pending: sql<number>`SUM(CASE WHEN ${dailySignal.userAction} IS NULL THEN 1 ELSE 0 END)`,
-      })
-      .from(dailySignal)
-      .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
-      .where(
-        and(
-          eq(dailySignal.userId, ctx.user.id),
-          inArray(transcriptChunk.articleId, articleIds),
-        ),
-      )
-      .groupBy(transcriptChunk.articleId);
-
-    const signalCountMap = new Map(
-      signalCounts.map((sc) => [
-        sc.articleId,
-        { total: Number(sc.total), pending: Number(sc.pending) },
-      ]),
-    );
-
-    return articles.map((art) => ({
-      ...art,
-      signalCounts: signalCountMap.get(art.id) ?? { total: 0, pending: 0 },
-    }));
-  }),
+    }),
 
   getById: protectedProcedure
     .input(z.object({ id: z.string() }))

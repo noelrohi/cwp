@@ -8,6 +8,7 @@ import {
   FileAttachmentIcon,
   HierarchySquare01Icon,
   Idea01Icon,
+  LinkSquare02Icon,
   MessageMultiple01Icon,
   Scissor01Icon,
 } from "@hugeicons/core-free-icons";
@@ -85,6 +86,11 @@ const items: NavItem[] = [
 ];
 
 const secondaryItems: NavItem[] = [
+  {
+    title: "Integrations",
+    icon: LinkSquare02Icon,
+    items: [{ title: "Readwise", url: "/integrations/readwise" }],
+  },
   {
     title: "Favorites",
     icon: FavouriteIcon,
@@ -213,6 +219,63 @@ export function NavMain() {
         <SidebarGroupContent className="flex flex-col gap-2">
           <SidebarMenu>
             {secondaryItems.map((item) => {
+              // Handle collapsible items (with sub-items)
+              if (item.items && item.items.length > 0) {
+                const isAnySubItemActive = item.items.some((subItem) =>
+                  pathname.startsWith(subItem.url),
+                );
+                return (
+                  <Collapsible
+                    key={item.title}
+                    asChild
+                    defaultOpen={isAnySubItemActive}
+                  >
+                    <SidebarMenuItem className="group/collapsible">
+                      <CollapsibleTrigger asChild>
+                        <SidebarMenuButton
+                          tooltip={item.title}
+                          isActive={isAnySubItemActive}
+                        >
+                          {item.icon && (
+                            <HugeiconsIcon icon={item.icon} size={20} />
+                          )}
+                          <span className="text-base">{item.title}</span>
+                          <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                        </SidebarMenuButton>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <SidebarMenuSub className="border-border">
+                          {item.items.map((subItem) => {
+                            const isActive = pathname === subItem.url;
+                            return (
+                              <SidebarMenuSubItem key={subItem.title}>
+                                <SidebarMenuSubButton
+                                  asChild
+                                  isActive={isActive}
+                                >
+                                  <Link href={subItem.url}>
+                                    <span>{subItem.title}</span>
+                                    {subItem.badge && (
+                                      <Badge
+                                        variant="secondary"
+                                        className="ml-auto text-xs"
+                                      >
+                                        {subItem.badge}
+                                      </Badge>
+                                    )}
+                                  </Link>
+                                </SidebarMenuSubButton>
+                              </SidebarMenuSubItem>
+                            );
+                          })}
+                        </SidebarMenuSub>
+                      </CollapsibleContent>
+                    </SidebarMenuItem>
+                  </Collapsible>
+                );
+              }
+
+              // Handle regular items
               const isActive = pathname === item.url;
               return (
                 <SidebarMenuItem key={item.title}>
