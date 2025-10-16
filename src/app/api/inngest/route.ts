@@ -8,15 +8,10 @@ import {
   dailyIntelligenceProcessEpisodeWithSignals,
   dailyIntelligenceProcessUser,
   dailyIntelligenceReprocessEpisode,
-  episodeStatusMonitor,
-  feedHealthChecker,
   generateArticleSignalsFunction,
   generateArticleSummaryFunction,
   generateEpisodeSummaryFunction,
   handleBulkSkip,
-  healthCheck,
-  helloWorld,
-  monthlyCleanup,
   processArticle,
   processArticleWithSignals,
   refreshArticleFeed,
@@ -24,7 +19,6 @@ import {
   regenerateArticleSignals,
   reprocessArticle,
   updateUserPreferences,
-  userEngagementAnalyzer,
 } from "@/inngest/functions/index";
 
 export const { GET, POST, PUT } = serve({
@@ -51,13 +45,13 @@ export const { GET, POST, PUT } = serve({
     generateEpisodeSummaryFunction,
     // User preferences & cleanup
     updateUserPreferences,
-    monthlyCleanup,
+    // monthlyCleanup,
     handleBulkSkip,
-    // Monitoring & Health
-    episodeStatusMonitor,
-    userEngagementAnalyzer,
-    feedHealthChecker,
-    healthCheck,
-    helloWorld,
+    // // Monitoring & Health
+    // episodeStatusMonitor,
+    // userEngagementAnalyzer,
+    // feedHealthChecker,
+    // healthCheck,
+    // helloWorld,
   ],
 });
