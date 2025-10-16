@@ -444,7 +444,7 @@ Content: ${content}
   const currentStatus = episodeData?.status;
   const currentErrorMessage = episodeData?.errorMessage;
   const isProcessing =
-    currentStatus === "processing" ||
+    (currentStatus === "processing" && !generateSummary.isPending) ||
     processEpisode.isPending ||
     reprocessEpisode.isPending;
   const isGenerating = generateSignals.isPending;
@@ -526,6 +526,16 @@ Content: ${content}
     return items;
   })();
   const activeOperation = (() => {
+    if (generateSummary.isPending) {
+      return {
+        title: "Generating summary",
+        description:
+          "Fetching the transcript and creating a concise recap. This usually takes a few minutes depending on length.",
+        icon: Loading03Icon,
+        spinning: true,
+        showProgress: true,
+      } as const;
+    }
     if (isProcessing) {
       return {
         title: "Processing episode",
@@ -556,18 +566,10 @@ Content: ${content}
         showProgress: false,
       } as const;
     }
-    if (generateSummary.isPending) {
-      return {
-        title: "Generating summary",
-        description: "Creating a concise recap tailored to your preferences.",
-        icon: Loading03Icon,
-        spinning: true,
-        showProgress: false,
-      } as const;
-    }
     return null;
   })();
-  const isBusy = isProcessing || isGenerating || isRegenerating;
+  const isBusy =
+    isProcessing || isGenerating || isRegenerating || generateSummary.isPending;
   const processButtonLabel = (() => {
     if (isProcessing) return "Processing...";
     if (currentStatus === "failed") return "Reprocess Episode";
@@ -709,8 +711,11 @@ Content: ${content}
                   onOpenChange={setShowProcessDialog}
                 >
                   <DialogTrigger asChild>
-                    <Button disabled={isProcessing} size="sm">
-                      {isProcessing ? (
+                    <Button
+                      disabled={isProcessing || generateSummary.isPending}
+                      size="sm"
+                    >
+                      {isProcessing || generateSummary.isPending ? (
                         <HugeiconsIcon
                           icon={Loading03Icon}
                           size={16}
@@ -762,9 +767,11 @@ Content: ${content}
                               episodeId: params.id,
                             })
                           }
-                          disabled={isProcessing}
+                          disabled={isProcessing || generateSummary.isPending}
                         >
-                          {isProcessing ? "Processing..." : "Start Processing"}
+                          {isProcessing || generateSummary.isPending
+                            ? "Processing..."
+                            : "Start Processing"}
                         </Button>
                       </div>
                     </div>
@@ -778,8 +785,17 @@ Content: ${content}
                   onOpenChange={setShowGenerateDialog}
                 >
                   <DialogTrigger asChild>
-                    <Button disabled={isGenerating || isProcessing} size="sm">
-                      {isGenerating || isProcessing ? (
+                    <Button
+                      disabled={
+                        isGenerating ||
+                        isProcessing ||
+                        generateSummary.isPending
+                      }
+                      size="sm"
+                    >
+                      {isGenerating ||
+                      isProcessing ||
+                      generateSummary.isPending ? (
                         <HugeiconsIcon
                           icon={Loading03Icon}
                           size={16}
@@ -825,9 +841,15 @@ Content: ${content}
                           onClick={() =>
                             generateSignals.mutate({ episodeId: params.id })
                           }
-                          disabled={isGenerating || isProcessing}
+                          disabled={
+                            isGenerating ||
+                            isProcessing ||
+                            generateSummary.isPending
+                          }
                         >
-                          {isGenerating || isProcessing
+                          {isGenerating ||
+                          isProcessing ||
+                          generateSummary.isPending
                             ? "Generating..."
                             : "Generate Signals"}
                         </Button>
@@ -845,7 +867,11 @@ Content: ${content}
                   >
                     <DialogTrigger asChild>
                       <Button
-                        disabled={isRegenerating || isProcessing}
+                        disabled={
+                          isRegenerating ||
+                          isProcessing ||
+                          generateSummary.isPending
+                        }
                         variant="outline"
                         size="sm"
                       >
@@ -935,9 +961,15 @@ Content: ${content}
                             onClick={() =>
                               regenerateSignals.mutate({ episodeId: params.id })
                             }
-                            disabled={isRegenerating || isProcessing}
+                            disabled={
+                              isRegenerating ||
+                              isProcessing ||
+                              generateSummary.isPending
+                            }
                           >
-                            {isRegenerating || isProcessing
+                            {isRegenerating ||
+                            isProcessing ||
+                            generateSummary.isPending
                               ? "Regenerating..."
                               : "Regenerate Signals"}
                           </Button>
