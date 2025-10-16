@@ -13,6 +13,7 @@ import Link from "next/link";
 import { useQueryState } from "nuqs";
 import { useState } from "react";
 import { toast } from "sonner";
+import { SignalBadge } from "@/components/signal-badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -189,6 +190,14 @@ export default function ReadwisePage() {
                     </span>
                   )}
                 </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <SignalBadge
+                  signalCounts={article.signalCounts}
+                  status={article.status}
+                  hasSummary={!!article.summary?.markdownContent}
+                />
               </div>
 
               <DropdownMenu>

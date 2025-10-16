@@ -92,6 +92,7 @@ export const articlesRouter = createTRPCRouter({
         limit: 50,
         with: {
           feed: true,
+          summary: true,
         },
       });
 

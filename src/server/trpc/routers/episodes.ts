@@ -84,6 +84,7 @@ export const episodesRouter = createTRPCRouter({
         orderBy: [desc(episode.publishedAt)],
         with: {
           podcast: true,
+          summary: true,
         },
       });
 
