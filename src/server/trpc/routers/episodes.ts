@@ -295,14 +295,30 @@ export const episodesRouter = createTRPCRouter({
 
       const pipelineRunId = randomUUID();
 
-      await inngest.send({
-        name: "app/daily-intelligence.episode.process-with-signals",
-        data: {
-          pipelineRunId,
-          userId: ctx.user.id,
-          episodeId: input.episodeId,
-        },
-      });
+      // If failed or already processed, trigger reprocess to clean up first
+      const needsCleanup =
+        episodeRecord.status === "failed" ||
+        episodeRecord.status === "processed";
+
+      if (needsCleanup) {
+        await inngest.send({
+          name: "app/daily-intelligence.episode.reprocess",
+          data: {
+            pipelineRunId,
+            userId: ctx.user.id,
+            episodeId: input.episodeId,
+          },
+        });
+      } else {
+        await inngest.send({
+          name: "app/daily-intelligence.episode.process-with-signals",
+          data: {
+            pipelineRunId,
+            userId: ctx.user.id,
+            episodeId: input.episodeId,
+          },
+        });
+      }
 
       return {
         status: "queued" as const,

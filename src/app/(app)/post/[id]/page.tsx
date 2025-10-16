@@ -726,7 +726,11 @@ Content: ${content}
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>Process Article</DialogTitle>
+                    <DialogTitle>
+                      {currentStatus === "failed"
+                        ? "Reprocess Article"
+                        : "Process Article"}
+                    </DialogTitle>
                   </DialogHeader>
                   <div className="space-y-4">
                     <div className="space-y-2 text-sm text-muted-foreground">

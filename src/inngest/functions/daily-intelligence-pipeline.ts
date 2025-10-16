@@ -539,6 +539,39 @@ export const dailyIntelligenceReprocessEpisode = inngest.createFunction(
           })
           .where(eq(episode.id, episodeId));
       });
+
+      const signalResult = await step.run("generate-signals", async () => {
+        const diagnostics = await generateUserSignals({
+          userId,
+          episodeId,
+          forceRegenerate: false,
+          maxSignals: PIPELINE_SETTINGS.maxDailySignals,
+        });
+
+        await db
+          .update(episode)
+          .set({
+            signalsGeneratedAt: new Date(),
+          })
+          .where(eq(episode.id, episodeId));
+
+        logger.info(
+          `Pipeline run ${pipelineRunId}: episode ${episodeId} signals generated (${diagnostics.signalsGenerated} signals)`,
+        );
+
+        return {
+          signalsGenerated: diagnostics.signalsGenerated,
+        };
+      });
+
+      logger.info(
+        `Pipeline run ${pipelineRunId}: episode ${episodeId} FULLY REPROCESSED WITH SIGNALS`,
+      );
+
+      return {
+        status: "reprocessed-with-signals" as const,
+        signalCount: signalResult.signalsGenerated,
+      };
     } catch (error) {
       const err =
         error instanceof Error
@@ -561,12 +594,6 @@ export const dailyIntelligenceReprocessEpisode = inngest.createFunction(
       });
       throw err;
     }
-
-    logger.info(
-      `Pipeline run ${pipelineRunId}: episode ${episodeId} FULLY REPROCESSED and ready for manual signal generation`,
-    );
-
-    return { status: "reprocessed" } as const;
   },
 );
 

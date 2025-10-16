@@ -571,14 +571,30 @@ export const articlesRouter = createTRPCRouter({
         };
       }
 
-      await inngest.send({
-        name: "article/process-with-signals.requested",
-        data: {
-          articleId: input.articleId,
-          userId: ctx.user.id,
-          url: articleRecord.url,
-        },
-      });
+      // If failed or already has chunks, trigger reprocess to clean up first
+      const needsCleanup =
+        articleRecord.status === "failed" ||
+        articleRecord.status === "processed";
+
+      if (needsCleanup) {
+        await inngest.send({
+          name: "article/reprocess.requested",
+          data: {
+            articleId: input.articleId,
+            userId: ctx.user.id,
+            url: articleRecord.url,
+          },
+        });
+      } else {
+        await inngest.send({
+          name: "article/process-with-signals.requested",
+          data: {
+            articleId: input.articleId,
+            userId: ctx.user.id,
+            url: articleRecord.url,
+          },
+        });
+      }
 
       return { success: true, status: "processing" };
     }),

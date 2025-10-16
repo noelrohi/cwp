@@ -240,9 +240,9 @@ export const reprocessArticle = inngest.createFunction(
       return { deletedChunks: true };
     });
 
-    // Step 2: Trigger regular processing (reuse the process function)
-    const result = await step.invoke("process-article", {
-      function: processArticle,
+    // Step 2: Trigger full processing with signals
+    const result = await step.invoke("process-article-with-signals", {
+      function: processArticleWithSignals,
       data: {
         articleId,
         userId,
