@@ -11,6 +11,7 @@ import {
   LinkSquare02Icon,
   MessageMultiple01Icon,
   Scissor01Icon,
+  LibraryIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { ChevronRight } from "lucide-react";
@@ -49,9 +50,9 @@ const items: NavItem[] = [
     url: "/dashboard",
   },
   {
-    title: "Readwise",
-    icon: LinkSquare02Icon,
-    url: "/readwise",
+    title: "Library",
+    icon: LibraryIcon,
+    url: "/library",
   },
   {
     title: "Chat",

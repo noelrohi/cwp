@@ -6,6 +6,7 @@ import {
   Loading03Icon,
   MoreHorizontalCircle01Icon,
   Search01Icon,
+  Book02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -93,7 +94,7 @@ export default function ReadwisePage() {
     <main className="mx-auto w-full container space-y-6 px-4 py-6 sm:px-6 sm:py-8">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-xl sm:text-2xl font-semibold font-serif">
-          Readwise Articles
+          Readwise Library
         </h1>
       </div>
 
@@ -167,6 +168,13 @@ export default function ReadwisePage() {
               href={`/post/${article.id}`}
               className="flex items-center gap-4 rounded-lg border bg-background p-4 hover:bg-muted/50 transition-colors"
             >
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-muted/50">
+                <HugeiconsIcon
+                  icon={Book02Icon}
+                  size={20}
+                  className="text-muted-foreground"
+                />
+              </div>
               <div className="flex-1 min-w-0">
                 <h3 className="font-semibold text-base line-clamp-2">
                   {article.title}
