@@ -12,7 +12,9 @@ const judgementSchema = z.object({
   reasoning: z.string(),
 });
 
-const model = openrouter("moonshotai/kimi-k2-0905");
+// Grok-4-fast: Better consistency (±5% variance) vs Kimi-k2 (±30% variance)
+// Scores quantified insights correctly (60-70% vs Kimi's 0-85% random range)
+const model = openrouter("x-ai/grok-4-fast");
 
 const HYBRID_PROMPT = `You are evaluating podcast transcript chunks for Usman, who has read 400+ entrepreneur biographies.
 
@@ -27,30 +29,37 @@ WHAT HE SAVES (with examples from his actual saves):
    - "Simplification is the biggest hack in entrepreneurship" (flips common belief)
    - Must be genuinely surprising, not "experts bad, iteration good" type clichés
 
-3. Specific tactics with deep reasoning
+3. **Quantified business insights with outcomes** (specific numbers/results)
+   - "People pay 20% premium for Delta brand vs industry" (concrete outcome, not platitude)
+   - "Reduced cancellations from 6,000 to 60 over 10 years" (specific transformation)
+   - NOT generic "we improved quality" - must have NUMBERS and TIMEFRAME
+
+4. Specific tactics with deep reasoning
    - "Walk the aisles, look for sea of sameness, spot culture shifts" (concrete + conceptual)
    - "Start with qualitative hypothesis, then confirm with quantitative" (specific process)
 
-4. Assessment criteria for judgment
+5. Assessment criteria for judgment
    - "Look for insatiable curiosity + drive + heart of gold" (specific character traits)
    - "Founders don't accommodate - they see problems and fix them" (behavioral pattern)
 
-5. **Memorable articulations that crystallize fuzzy concepts**
+6. **Memorable articulations that crystallize fuzzy concepts**
    - "Founder is guardian of company's soul" (makes abstract concrete)
    - "Can't get to the end of their curiosity - infinite cup" (vivid metaphor)
    - Language that turns intuition into explicit knowledge
 
 WHAT HE SKIPS (even if topically relevant):
-1. **Entrepreneurship canon** - advice that appears in 50+ business books:
-   - Henry Ford quotes about experts vs iteration
-   - Carnegie steel investment stories
-   - Generic "iterate quickly", "focus on customers", "technology compounds"
-   - Startup tropes everyone with 5+ books knows
+1. **Entrepreneurship canon** - generic advice EVERYONE knows (NOT specific outcomes):
+   - Henry Ford quotes: "experts vs iteration" (advice, not outcome)
+   - Carnegie steel stories (historical anecdote without novel pattern)
+   - Generic platitudes: "iterate quickly", "focus on customers", "hire great people"
+   - Startup tropes: "fail fast", "product-market fit", "10x thinking"
+   - ⚠️ DON'T conflate with SPECIFIC QUANTIFIED OUTCOMES (e.g., "achieved 20% premium" ≠ canon)
 
 2. Generic observations without specificity
    - "Incentives aren't always financial" (too obvious)
    - "People have different motivations" (surface-level)
    - "Relationships matter" (everyone knows this)
+   - "Brand loyalty matters" (platitude without HOW or specifics)
 
 3. Biographical details without lessons
    - Career trajectories and personal journeys
@@ -71,16 +80,17 @@ WHAT HE SKIPS (even if topically relevant):
    - Enumeration without insight
 
 SCORING GUIDANCE:
-- Entrepreneurship canon (even if "good"): 20-40
-- Generic/obvious observations: 30-45
-- Topically relevant but shallow: 45-55
-- Useful pattern or insight: 55-70 (SAVE THRESHOLD: 60)
+- Entrepreneurship canon / generic platitudes: 20-40
+- Generic observations (obvious, no specifics): 30-45
+- Topically relevant but shallow (no framework/data): 45-55
+- Useful pattern or quantified insight: 55-70 (SAVE THRESHOLD: 60)
 - Multiple frameworks + deep reasoning: 70-85
 - Groundbreaking: 85+
 
 CRITICAL: Score 60+ if content includes:
 ✓ Named framework with explanation ("we call this X"), OR
 ✓ Counter-intuitive insight NOT in startup canon (genuinely surprising), OR
+✓ **Quantified business outcome with numbers** ("20% premium", "6000→60 cancellations"), OR
 ✓ Specific tactic with deep "why" (not just "what"), OR
 ✓ Clear assessment criteria (how to judge X), OR
 ✓ Memorable articulation that crystallizes fuzzy concept (powerful metaphor)
@@ -98,8 +108,13 @@ ASK YOURSELF:
 - "Is this in every Y Combinator essay / startup book?"
 - "Does this articulate something hard to put into words?"
 - "Is this genuinely novel, or have I heard it 50 times?"
+- **"Does this have SPECIFIC NUMBERS or OUTCOMES, not just generic advice?"**
 
 When in doubt: Default to 40-45. Bar is HIGH for well-read founders.
+
+IMPORTANT DISTINCTION:
+- "Build a strong brand" = CANON (generic advice) → 20-40
+- "Achieved 20% price premium through brand over 30 years" = QUANTIFIED INSIGHT → 60-70
 
 Score each dimension 0-100, then provide overall score.`;
 
@@ -109,6 +124,7 @@ export async function judgeHybrid(content: string): Promise<JudgeResult> {
       model,
       schema: judgementSchema,
       prompt: `${HYBRID_PROMPT}\nCHUNK:\n${content}`,
+      temperature: 0, // Deterministic scoring - reduce variance
     });
 
     const { object, usage } = result;

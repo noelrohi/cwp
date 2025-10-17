@@ -257,3 +257,126 @@ export async function hybridScoreWithNovelty(
     },
   });
 }
+
+/**
+ * Batch version of hybridScoreWithNovelty - efficiently scores multiple signals with novelty detection
+ *
+ * Pipeline (per signal):
+ * 1. Length filter (< 80 words → skip)
+ * 2. Heuristic filter (ads, intros → skip)
+ * 3. Novelty filter (semantic clustering → penalty if redundant)
+ * 4. LLM judge (quality scoring with improved canon-aware prompt)
+ *
+ * @param items - Array of {content, embedding} to score
+ * @param userId - User ID to check against their save history
+ */
+export async function hybridScoreBatchWithNovelty(
+  items: Array<{ content: string; embedding: number[] }>,
+  userId: string,
+): Promise<HybridScoreResult[]> {
+  const results: (
+    | HybridScoreResult
+    | {
+        index: number;
+        heuristic: ReturnType<typeof scoreWithHeuristics>;
+        trimmed: string;
+        wordCount: number;
+        embedding: number[];
+      }
+  )[] = [];
+  const llmQueue: {
+    index: number;
+    trimmed: string;
+    heuristic: ReturnType<typeof scoreWithHeuristics>;
+    wordCount: number;
+    embedding: number[];
+  }[] = [];
+
+  // Stage 1 & 2: Length and heuristic filtering
+  for (let i = 0; i < items.length; i++) {
+    const { content, embedding } = items[i];
+    const trimmed = content.trim();
+    const wordCount = trimmed.length === 0 ? 0 : trimmed.split(/\s+/).length;
+
+    if (wordCount < LENGTH_SKIP_THRESHOLD) {
+      results[i] = buildResult({
+        rawScore: 15,
+        pass: false,
+        method: "length",
+        wordCount,
+        borderline: false,
+      });
+      continue;
+    }
+
+    const heuristic = scoreWithHeuristics(trimmed);
+
+    if (heuristic.pass || heuristic.fail) {
+      results[i] = buildResult({
+        rawScore: heuristic.score,
+        pass: heuristic.pass,
+        method: "heuristics",
+        wordCount,
+        borderline: false,
+        diagnostics: {
+          heuristic: heuristic.buckets,
+        },
+      });
+    } else {
+      results[i] = { index: i, heuristic, trimmed, wordCount, embedding };
+      llmQueue.push({ index: i, trimmed, heuristic, wordCount, embedding });
+    }
+  }
+
+  // Stage 3 & 4: Novelty detection + LLM judging (batched)
+  if (llmQueue.length > 0) {
+    // Batch compute novelty scores
+    const noveltyPromises = llmQueue.map((item) =>
+      computeNoveltyScore(item.embedding, userId),
+    );
+    const noveltyResults = await Promise.all(noveltyPromises);
+
+    // Batch LLM judgments
+    const judgedResults = await judgeHybridBatch(
+      llmQueue.map((item) => item.trimmed),
+    );
+
+    // Combine results
+    for (let i = 0; i < llmQueue.length; i++) {
+      const item = llmQueue[i];
+      const novelty = noveltyResults[i];
+      const judged = judgedResults[i];
+
+      // Apply novelty adjustment to LLM score
+      const adjustedScore = judged.score + novelty.adjustment;
+      const finalScore = Math.max(0, Math.min(100, adjustedScore));
+      const pass = finalScore >= LLM_SAVE_THRESHOLD;
+
+      results[item.index] = buildResult({
+        rawScore: finalScore,
+        pass,
+        method: "llm",
+        wordCount: item.wordCount,
+        borderline: true,
+        diagnostics: {
+          heuristic: item.heuristic.buckets,
+          novelty: {
+            noveltyScore: novelty.noveltyScore,
+            avgSimilarity: novelty.avgSimilarity,
+            maxSimilarity: novelty.maxSimilarity,
+            clusterSize: novelty.clusterSize,
+            adjustment: novelty.adjustment,
+          },
+          llm: {
+            buckets: judged.buckets,
+            reasoning: judged.reasoning,
+            reasons: judged.reasons,
+            usage: judged.usage,
+          },
+        },
+      });
+    }
+  }
+
+  return results as HybridScoreResult[];
+}

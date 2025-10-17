@@ -13,7 +13,7 @@ import {
   userPreferences,
 } from "@/server/db/schema";
 import { generateEpisodeSummary } from "@/server/lib/episode-summary";
-import { hybridScoreBatch } from "@/server/lib/hybrid-scoring";
+import { hybridScoreBatchWithNovelty } from "@/server/lib/hybrid-scoring";
 import type {
   HybridDiagnostics,
   ScoringMethod,
@@ -1313,7 +1313,14 @@ async function scoreChunksForRelevance(
   let maxScore = 0;
   let totalScore = 0;
 
-  const results = await hybridScoreBatch(chunks.map((chunk) => chunk.content));
+  // Use novelty-aware scoring with embeddings
+  const results = await hybridScoreBatchWithNovelty(
+    chunks.map((chunk) => ({
+      content: chunk.content,
+      embedding: chunk.embedding ?? [],
+    })),
+    userId,
+  );
 
   const scoredChunks = chunks.map((chunk, i) => {
     const result = results[i];
