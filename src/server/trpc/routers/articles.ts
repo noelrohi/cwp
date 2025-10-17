@@ -658,10 +658,21 @@ export const articlesRouter = createTRPCRouter({
         });
       }
 
-      if (articleRecord.status !== "processed") {
+      const chunksWithEmbeddings = await ctx.db
+        .select({ count: count() })
+        .from(transcriptChunk)
+        .where(
+          and(
+            eq(transcriptChunk.articleId, input.articleId),
+            sql`${transcriptChunk.embedding} IS NOT NULL`,
+          ),
+        );
+
+      if (!chunksWithEmbeddings[0] || chunksWithEmbeddings[0].count === 0) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "Article must be processed before generating signals",
+          message:
+            "Article must be processed with embeddings before generating signals",
         });
       }
 
@@ -695,19 +706,28 @@ export const articlesRouter = createTRPCRouter({
       });
 
       if (!articleRecord) {
-        throw new Error("Article not found");
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Article not found",
+        });
       }
 
-      // Get existing chunks for this article
-      const chunks = await ctx.db.query.transcriptChunk.findMany({
-        where: eq(transcriptChunk.articleId, input.articleId),
-        limit: 1,
-      });
-
-      if (chunks.length === 0) {
-        throw new Error(
-          "No chunks found for this article. Process the article first.",
+      const chunksWithEmbeddings = await ctx.db
+        .select({ count: count() })
+        .from(transcriptChunk)
+        .where(
+          and(
+            eq(transcriptChunk.articleId, input.articleId),
+            sql`${transcriptChunk.embedding} IS NOT NULL`,
+          ),
         );
+
+      if (!chunksWithEmbeddings[0] || chunksWithEmbeddings[0].count === 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Article must be processed with embeddings before regenerating signals",
+        });
       }
 
       // Trigger Inngest function for signal regeneration

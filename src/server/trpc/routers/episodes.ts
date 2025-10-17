@@ -369,10 +369,21 @@ export const episodesRouter = createTRPCRouter({
         });
       }
 
-      if (episodeRecord.status !== "processed") {
+      const chunksWithEmbeddings = await ctx.db
+        .select({ count: count() })
+        .from(transcriptChunk)
+        .where(
+          and(
+            eq(transcriptChunk.episodeId, input.episodeId),
+            sql`${transcriptChunk.embedding} IS NOT NULL`,
+          ),
+        );
+
+      if (!chunksWithEmbeddings[0] || chunksWithEmbeddings[0].count === 0) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "Episode must be processed before generating signals",
+          message:
+            "Episode must be processed with embeddings before generating signals",
         });
       }
 
@@ -429,7 +440,28 @@ export const episodesRouter = createTRPCRouter({
       });
 
       if (!episodeRecord) {
-        throw new Error("Episode not found");
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Episode not found",
+        });
+      }
+
+      const chunksWithEmbeddings = await ctx.db
+        .select({ count: count() })
+        .from(transcriptChunk)
+        .where(
+          and(
+            eq(transcriptChunk.episodeId, input.episodeId),
+            sql`${transcriptChunk.embedding} IS NOT NULL`,
+          ),
+        );
+
+      if (!chunksWithEmbeddings[0] || chunksWithEmbeddings[0].count === 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Episode must be processed with embeddings before regenerating signals",
+        });
       }
 
       const pipelineRunId = randomUUID();

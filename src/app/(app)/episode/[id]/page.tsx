@@ -498,10 +498,11 @@ Content: ${content}
   const isGenerating = generateSignals.isPending;
   const isRegenerating = regenerateSignals.isPending;
   // Don't trust status field - check actual data existence
-  const hasSignalsGenerated = Boolean(episodeData?.signalsGeneratedAt);
+  const hasSignalsGenerated =
+    Boolean(episodeData?.signalsGeneratedAt) ||
+    (episodeStats.data?.total ?? 0) > 0;
   // Check if summary exists - use summary relation from episode data (works on all tabs)
   const hasSummary = Boolean(episodeData?.summary?.markdownContent);
-  const isFullyProcessed = hasSignalsGenerated && hasSummary;
   // For UI logic: consider "processed" if we have a summary (actual work was done)
   const isProcessed = hasSummary || currentStatus === "processed";
   const lastProcessedAt = episodeData?.lastProcessedAt
@@ -758,7 +759,7 @@ Content: ${content}
             </div>
 
             <div className="flex gap-2 flex-wrap">
-              {!isFullyProcessed && (
+              {!hasSummary && (
                 <Dialog
                   open={showProcessDialog}
                   onOpenChange={setShowProcessDialog}
@@ -836,87 +837,90 @@ Content: ${content}
                 </Dialog>
               )}
 
-              {isProcessed && !hasSignalsGenerated && (
-                <Dialog
-                  open={showGenerateDialog}
-                  onOpenChange={setShowGenerateDialog}
-                >
-                  <DialogTrigger asChild>
-                    <Button
-                      disabled={
-                        isGenerating ||
-                        isProcessing ||
-                        generateSummary.isPending
-                      }
-                      size="sm"
-                    >
-                      {isGenerating ||
-                      isProcessing ||
-                      generateSummary.isPending ? (
-                        <HugeiconsIcon
-                          icon={Loading03Icon}
-                          size={16}
-                          className="animate-spin"
-                        />
-                      ) : (
-                        <HugeiconsIcon icon={SparklesIcon} size={16} />
-                      )}
-                      Generate Signals
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>
-                        Generate Signals for This Episode
-                      </DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <div className="space-y-2 text-sm text-muted-foreground">
-                        <p className="font-medium text-foreground">
-                          This will analyze the episode transcript and create
-                          personalized signals:
-                        </p>
-                        <ul className="list-disc list-inside space-y-1 ml-2">
-                          <li>Score all chunks using your preferences</li>
-                          <li>Generate up to 30 signals for review</li>
-                          <li>
-                            Apply stratified sampling across 0-100% distribution
-                          </li>
-                        </ul>
-                        <p className="mt-3">
-                          <strong>Duration:</strong> Usually 30-60 seconds
-                        </p>
-                      </div>
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="outline"
-                          onClick={() => setShowGenerateDialog(false)}
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          onClick={() =>
-                            generateSignals.mutate({ episodeId: params.id })
-                          }
-                          disabled={
-                            isGenerating ||
-                            isProcessing ||
-                            generateSummary.isPending
-                          }
-                        >
-                          {isGenerating ||
+              {hasSummary &&
+                !hasSignalsGenerated &&
+                (episodeStats.data?.total ?? 0) === 0 && (
+                  <Dialog
+                    open={showGenerateDialog}
+                    onOpenChange={setShowGenerateDialog}
+                  >
+                    <DialogTrigger asChild>
+                      <Button
+                        disabled={
+                          isGenerating ||
                           isProcessing ||
                           generateSummary.isPending
-                            ? "Generating..."
-                            : "Generate Signals"}
-                        </Button>
+                        }
+                        size="sm"
+                      >
+                        {isGenerating ||
+                        isProcessing ||
+                        generateSummary.isPending ? (
+                          <HugeiconsIcon
+                            icon={Loading03Icon}
+                            size={16}
+                            className="animate-spin"
+                          />
+                        ) : (
+                          <HugeiconsIcon icon={SparklesIcon} size={16} />
+                        )}
+                        Generate Signals
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>
+                          Generate Signals for This Episode
+                        </DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4">
+                        <div className="space-y-2 text-sm text-muted-foreground">
+                          <p className="font-medium text-foreground">
+                            This will analyze the episode transcript and create
+                            personalized signals:
+                          </p>
+                          <ul className="list-disc list-inside space-y-1 ml-2">
+                            <li>Score all chunks using your preferences</li>
+                            <li>Generate up to 30 signals for review</li>
+                            <li>
+                              Apply stratified sampling across 0-100%
+                              distribution
+                            </li>
+                          </ul>
+                          <p className="mt-3">
+                            <strong>Duration:</strong> Usually 30-60 seconds
+                          </p>
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            onClick={() => setShowGenerateDialog(false)}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            onClick={() =>
+                              generateSignals.mutate({ episodeId: params.id })
+                            }
+                            disabled={
+                              isGenerating ||
+                              isProcessing ||
+                              generateSummary.isPending
+                            }
+                          >
+                            {isGenerating ||
+                            isProcessing ||
+                            generateSummary.isPending
+                              ? "Generating..."
+                              : "Generate Signals"}
+                          </Button>
+                        </div>
                       </div>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              )}
+                    </DialogContent>
+                  </Dialog>
+                )}
 
-              {isFullyProcessed && (
+              {hasSummary && hasSignalsGenerated && (
                 <>
                   <Dialog
                     open={showRegenerateDialog}
@@ -1016,7 +1020,9 @@ Content: ${content}
                           </Button>
                           <Button
                             onClick={() =>
-                              regenerateSignals.mutate({ episodeId: params.id })
+                              regenerateSignals.mutate({
+                                episodeId: params.id,
+                              })
                             }
                             disabled={
                               isRegenerating ||
@@ -1120,7 +1126,9 @@ Content: ${content}
                           <Button
                             variant="destructive"
                             onClick={() =>
-                              reprocessEpisode.mutate({ episodeId: params.id })
+                              reprocessEpisode.mutate({
+                                episodeId: params.id,
+                              })
                             }
                             disabled={isBusy}
                           >
