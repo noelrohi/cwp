@@ -1,14 +1,14 @@
 "use client";
 
+import { Add01Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
-import { useTRPC } from "@/server/trpc/client";
-import { FlashcardItem } from "../../../components/blocks/snips/flashcard-item";
 import { StandaloneSnipDialog } from "@/components/standalone-snip-dialog";
 import { Button } from "@/components/ui/button";
-import { Add01Icon } from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
+import { useTRPC } from "@/server/trpc/client";
+import { FlashcardItem } from "../../../components/blocks/snips/flashcard-item";
 
 export default function SnipsPage() {
   const trpc = useTRPC();

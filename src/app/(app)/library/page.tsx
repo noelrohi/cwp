@@ -2,11 +2,12 @@
 
 import {
   Alert01Icon,
+  Book02Icon,
+  DatabaseSync01Icon,
   Delete01Icon,
   Loading03Icon,
   MoreHorizontalCircle01Icon,
   Search01Icon,
-  Book02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -14,6 +15,7 @@ import Link from "next/link";
 import { useQueryState } from "nuqs";
 import { useState } from "react";
 import { toast } from "sonner";
+import { ReadwiseSyncDialog } from "@/blocks/integrations";
 import { SignalBadge } from "@/components/signal-badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -71,6 +73,13 @@ export default function ReadwisePage() {
     }),
   );
 
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    if (page !== 1) {
+      setPage(1);
+    }
+  };
+
   const deleteArticle = useMutation(
     trpc.readwise.deleteArticle.mutationOptions(),
   );
@@ -96,6 +105,12 @@ export default function ReadwisePage() {
         <h1 className="text-xl sm:text-2xl font-semibold font-serif">
           Readwise Library
         </h1>
+        <ReadwiseSyncDialog>
+          <Button>
+            <HugeiconsIcon icon={DatabaseSync01Icon} size={16} />
+            Resync Documents
+          </Button>
+        </ReadwiseSyncDialog>
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
@@ -109,7 +124,7 @@ export default function ReadwisePage() {
             type="text"
             placeholder="Search articles..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-10"
           />
         </div>

@@ -82,6 +82,17 @@ export type ReadwiseBooksResponse = {
   results: ReadwiseBook[];
 };
 
+export type ReadwiseTag = {
+  key: string;
+  name: string;
+};
+
+export type ReadwiseTagsResponse = {
+  count: number;
+  nextPageCursor: string | null;
+  results: ReadwiseTag[];
+};
+
 export async function verifyReadwiseToken(
   token: string,
 ): Promise<{ valid: boolean; error?: string }> {
@@ -113,6 +124,17 @@ export async function fetchReadwiseDocuments(
   options?: {
     updatedAfter?: Date;
     location?: "new" | "later" | "archive" | "feed";
+    category?:
+      | "article"
+      | "email"
+      | "rss"
+      | "highlight"
+      | "note"
+      | "pdf"
+      | "epub"
+      | "tweet"
+      | "video";
+    tags?: string[];
     limit?: number;
   },
 ): Promise<ReadwiseDocument[]> {
@@ -133,6 +155,16 @@ export async function fetchReadwiseDocuments(
 
     if (options?.location) {
       queryParams.append("location", options.location);
+    }
+
+    if (options?.category) {
+      queryParams.append("category", options.category);
+    }
+
+    if (options?.tags && options.tags.length > 0) {
+      for (const tag of options.tags.slice(0, 5)) {
+        queryParams.append("tag", tag);
+      }
     }
 
     queryParams.append("withHtmlContent", "true");
@@ -257,4 +289,42 @@ export function highlightsToMarkdown(highlights: ReadwiseHighlight[]): string {
 
 export function htmlToMarkdown(html: string): string {
   return turndownService.turndown(html);
+}
+
+export async function fetchReadwiseTags(token: string): Promise<ReadwiseTag[]> {
+  const allTags: ReadwiseTag[] = [];
+  let nextPageCursor: string | null = null;
+
+  while (true) {
+    const queryParams = new URLSearchParams();
+
+    if (nextPageCursor) {
+      queryParams.append("pageCursor", nextPageCursor);
+    }
+
+    const url = `${READWISE_API_BASE_V3}/tags/${queryParams.toString() ? `?${queryParams.toString()}` : ""}`;
+
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Token ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `Readwise API error: ${response.status} ${response.statusText}`,
+      );
+    }
+
+    const data: ReadwiseTagsResponse = await response.json();
+    allTags.push(...data.results);
+
+    nextPageCursor = data.nextPageCursor;
+
+    if (!nextPageCursor) {
+      break;
+    }
+  }
+
+  return allTags;
 }

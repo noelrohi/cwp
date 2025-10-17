@@ -8,10 +8,10 @@ import {
   FileAttachmentIcon,
   HierarchySquare01Icon,
   Idea01Icon,
+  LibraryIcon,
   LinkSquare02Icon,
   MessageMultiple01Icon,
   Scissor01Icon,
-  LibraryIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { ChevronRight } from "lucide-react";

@@ -94,6 +94,20 @@ export const integrationsRouter = createTRPCRouter({
         .object({
           resetSync: z.boolean().optional(),
           location: z.enum(["new", "later", "archive", "feed"]).optional(),
+          category: z
+            .enum([
+              "article",
+              "email",
+              "rss",
+              "highlight",
+              "note",
+              "pdf",
+              "epub",
+              "tweet",
+              "video",
+            ])
+            .optional(),
+          tags: z.array(z.string()).max(5).optional(),
         })
         .optional(),
     )
@@ -145,6 +159,8 @@ export const integrationsRouter = createTRPCRouter({
         {
           updatedAfter: lastSyncAt,
           location: input?.location,
+          category: input?.category,
+          tags: input?.tags,
           limit: 100,
         },
       );

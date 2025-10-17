@@ -2,8 +2,8 @@
 
 import {
   CheckmarkCircle01Icon,
+  DatabaseSync01Icon,
   Loading03Icon,
-  SparklesIcon,
   ViewIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -11,15 +11,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
+import { ReadwiseSyncDialog } from "@/blocks/integrations";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -30,8 +24,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Switch } from "@/components/ui/switch";
 import { useTRPC } from "@/server/trpc/client";
 
 export default function IntegrationsPage() {
@@ -39,14 +31,6 @@ export default function IntegrationsPage() {
   const queryClient = useQueryClient();
   const [readwiseToken, setReadwiseToken] = useState("");
   const [showConnectDialog, setShowConnectDialog] = useState(false);
-  const [showSyncDialog, setShowSyncDialog] = useState(false);
-  const [syncOptions, setSyncOptions] = useState<{
-    location?: "new" | "later" | "archive" | "feed";
-    resetSync: boolean;
-  }>({
-    location: "new",
-    resetSync: false,
-  });
 
   const integrations = useQuery(trpc.integrations.list.queryOptions());
 
@@ -83,33 +67,6 @@ export default function IntegrationsPage() {
       },
     }),
   );
-
-  const syncMutation = useMutation(
-    trpc.integrations.syncReadwise.mutationOptions({
-      onSuccess: (data) => {
-        const message = data.skippedDuplicates
-          ? `Created ${data.articlesCreated} article${data.articlesCreated !== 1 ? "s" : ""}, skipped ${data.skippedDuplicates} duplicate${data.skippedDuplicates !== 1 ? "s" : ""}`
-          : `Created ${data.articlesCreated} article${data.articlesCreated !== 1 ? "s" : ""}!`;
-
-        toast.success(message);
-        queryClient.invalidateQueries({
-          queryKey: trpc.integrations.list.queryKey(),
-        });
-        queryClient.invalidateQueries({
-          queryKey: trpc.articles.list.queryKey(),
-        });
-        setShowSyncDialog(false);
-        setSyncOptions({ location: "new", resetSync: false });
-      },
-      onError: (error) => {
-        toast.error(`Sync failed: ${error.message}`);
-      },
-    }),
-  );
-
-  const handleSync = () => {
-    syncMutation.mutate(syncOptions);
-  };
 
   const handleConnect = () => {
     if (!readwiseToken.trim()) {
@@ -158,16 +115,12 @@ export default function IntegrationsPage() {
         <div className="flex gap-2 w-full sm:w-auto">
           {readwiseIntegration ? (
             <>
-              <Button
-                onClick={() => {
-                  setSyncOptions({ location: "new", resetSync: false });
-                  setShowSyncDialog(true);
-                }}
-                disabled={syncMutation.isPending}
-              >
-                <HugeiconsIcon icon={SparklesIcon} size={16} />
-                Sync Documents
-              </Button>
+              <ReadwiseSyncDialog>
+                <Button>
+                  <HugeiconsIcon icon={DatabaseSync01Icon} size={16} />
+                  Sync Documents
+                </Button>
+              </ReadwiseSyncDialog>
               <Button
                 variant="outline"
                 onClick={handleDisconnect}
@@ -316,112 +269,6 @@ export default function IntegrationsPage() {
                 />
               ) : null}
               {connectMutation.isPending ? "Connecting..." : "Connect"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={showSyncDialog} onOpenChange={setShowSyncDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Sync Readwise Documents</DialogTitle>
-            <DialogDescription>
-              Choose which documents to sync from your Readwise library
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="space-y-3">
-              <Label>Document Location</Label>
-              <RadioGroup
-                value={syncOptions.location || "new"}
-                onValueChange={(value) =>
-                  setSyncOptions((prev) => ({
-                    ...prev,
-                    location:
-                      value === "all"
-                        ? undefined
-                        : (value as "new" | "later" | "archive" | "feed"),
-                  }))
-                }
-              >
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="new" id="new" />
-                  <Label htmlFor="new" className="font-normal cursor-pointer">
-                    Inbox (New) - Recommended
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="all" id="all" />
-                  <Label htmlFor="all" className="font-normal cursor-pointer">
-                    All locations
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="later" id="later" />
-                  <Label htmlFor="later" className="font-normal cursor-pointer">
-                    Later
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="archive" id="archive" />
-                  <Label
-                    htmlFor="archive"
-                    className="font-normal cursor-pointer"
-                  >
-                    Archive
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="feed" id="feed" />
-                  <Label htmlFor="feed" className="font-normal cursor-pointer">
-                    Feed
-                  </Label>
-                </div>
-              </RadioGroup>
-            </div>
-
-            <div className="flex items-center justify-between space-x-2 py-3 border-t">
-              <div className="space-y-0.5">
-                <Label htmlFor="reset-sync">Reset sync history</Label>
-                <p className="text-xs text-muted-foreground">
-                  Re-import all documents, ignoring last sync date
-                </p>
-              </div>
-              <Switch
-                id="reset-sync"
-                checked={syncOptions.resetSync}
-                onCheckedChange={(checked: boolean) =>
-                  setSyncOptions((prev) => ({ ...prev, resetSync: checked }))
-                }
-              />
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowSyncDialog(false)}
-              disabled={syncMutation.isPending}
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleSync} disabled={syncMutation.isPending}>
-              {syncMutation.isPending ? (
-                <>
-                  <HugeiconsIcon
-                    icon={Loading03Icon}
-                    size={16}
-                    className="animate-spin"
-                  />
-                  Syncing...
-                </>
-              ) : (
-                <>
-                  <HugeiconsIcon icon={SparklesIcon} size={16} />
-                  Sync Documents
-                </>
-              )}
             </Button>
           </DialogFooter>
         </DialogContent>
