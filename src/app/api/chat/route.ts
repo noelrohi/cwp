@@ -159,7 +159,12 @@ Tone:
       console.log("📡 [Chat API] Streaming response...\n");
 
       const result = streamText({
-        model: openrouter("x-ai/grok-4-fast"),
+        model: openrouter("x-ai/grok-4-fast", {
+          reasoning: {
+            enabled: true,
+            effort: "medium",
+          },
+        }),
         messages: convertToModelMessages(messages),
         system: systemPrompt,
         tools: createTools(trpc, writer, episodeId, articleId),

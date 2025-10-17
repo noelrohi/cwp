@@ -21,6 +21,7 @@ import {
   ConversationEmptyState,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
+import { Loader } from "@/components/ai-elements/loader";
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import {
   PromptInput,
@@ -33,7 +34,13 @@ import {
   PromptInputToolbar,
   PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
+import {
+  Reasoning,
+  ReasoningContent,
+  ReasoningTrigger,
+} from "@/components/ai-elements/reasoning";
 import { Response } from "@/components/ai-elements/response";
+import { Shimmer } from "@/components/ai-elements/shimmer";
 import {
   Task,
   TaskContent,
@@ -47,7 +54,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { ShimmeringText } from "@/components/ui/shimmering-text";
 import { useSidebar } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { useTRPC } from "@/server/trpc/client";
@@ -171,7 +177,7 @@ export default function ChatPage() {
   const contextType = episodeId ? "episode" : articleId ? "article" : null;
 
   return (
-    <div className="flex flex-col min-h-dvh relative">
+    <div className="flex flex-col min-h-dvh">
       {/* Floating sidebar trigger for mobile only */}
       {isMobile && (
         <Button
@@ -184,7 +190,7 @@ export default function ChatPage() {
         </Button>
       )}
 
-      <Conversation className="flex-1">
+      <Conversation className="flex-1 relative">
         <ConversationContent className="mx-auto w-full max-w-3xl">
           {messages.length === 0 ? (
             <ConversationEmptyState
@@ -238,6 +244,20 @@ export default function ChatPage() {
                             chunks={part.data.chunks}
                           />
                         );
+                      case "reasoning":
+                        if (part.text === "[REDACTED]") {
+                          return null;
+                        }
+                        return (
+                          <Reasoning
+                            key={i}
+                            className="w-full"
+                            isStreaming={part.state === "streaming"}
+                          >
+                            <ReasoningTrigger />
+                            <ReasoningContent>{part.text}</ReasoningContent>
+                          </Reasoning>
+                        );
                       case "data-retrievedContent":
                         return (
                           <div
@@ -246,17 +266,13 @@ export default function ChatPage() {
                           >
                             <div className="flex items-center gap-2">
                               {part.data.status === "loading" ? (
-                                <ShimmeringText
-                                  text={`Retrieving ${part.data.type} content...`}
-                                  className="text-sm font-medium"
-                                  duration={1.5}
-                                />
+                                <Shimmer className="text-sm font-medium">
+                                  Retrieving {part.data.type} content...
+                                </Shimmer>
                               ) : (
-                                <ShimmeringText
-                                  text={`Retrieved ${part.data.type} content...`}
-                                  className="text-sm font-medium"
-                                  duration={1.5}
-                                />
+                                <p className="text-sm font-medium">
+                                  Retrieved {part.data.type} content...
+                                </p>
                               )}
                             </div>
                           </div>
@@ -275,6 +291,22 @@ export default function ChatPage() {
               </Message>
             ))
           )}
+          {status === "streaming" &&
+            !messages
+              .slice()
+              .reverse()
+              .find((msg) => msg.role === "assistant")
+              ?.parts.some(
+                (part) =>
+                  part.type === "text" &&
+                  (part.state === "streaming" || part.state === "done"),
+              ) && (
+              <Message from="assistant">
+                <MessageContent variant="flat">
+                  <Loader className="text-muted-foreground" />
+                </MessageContent>
+              </Message>
+            )}
         </ConversationContent>
         <ConversationScrollButton />
       </Conversation>

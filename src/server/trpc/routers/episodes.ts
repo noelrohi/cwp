@@ -553,14 +553,14 @@ export const episodesRouter = createTRPCRouter({
         !episodeRecord.transcriptChunks ||
         episodeRecord.transcriptChunks.length === 0
       ) {
-        return { content: "" };
+        return { content: "", title: episodeRecord.title };
       }
 
       const content = episodeRecord.transcriptChunks
         .map((chunk) => chunk.content)
         .join("\n\n");
 
-      return { content };
+      return { content, title: episodeRecord.title };
     }),
 
   generateSummary: protectedProcedure

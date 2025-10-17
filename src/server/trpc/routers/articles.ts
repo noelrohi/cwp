@@ -756,18 +756,25 @@ export const articlesRouter = createTRPCRouter({
         });
       }
 
+      if (articleRecord.rawContent) {
+        return {
+          content: articleRecord.rawContent,
+          title: articleRecord.title,
+        };
+      }
+
       if (
         !articleRecord.transcriptChunks ||
         articleRecord.transcriptChunks.length === 0
       ) {
-        return { content: "" };
+        return { content: "", title: articleRecord.title };
       }
 
       const content = articleRecord.transcriptChunks
         .map((chunk) => chunk.content)
         .join("\n\n");
 
-      return { content };
+      return { content, title: articleRecord.title };
     }),
 
   getRawContent: protectedProcedure
