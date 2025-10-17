@@ -226,4 +226,12 @@ h6 {
     -webkit-line-clamp: 2;
     line-clamp: 2;
   }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
 }

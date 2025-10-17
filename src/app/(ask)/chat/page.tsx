@@ -7,12 +7,17 @@ import {
   SidebarLeftIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { IconMessage2Bolt } from "@tabler/icons-react";
+import {
+  IconCheck,
+  IconCopy,
+  IconMessage2Bolt,
+  IconRefresh,
+} from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { DefaultChatTransport } from "ai";
 import { ChevronDown } from "lucide-react";
 import { parseAsString, useQueryState } from "nuqs";
-import { useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import type { ChatUIMessage } from "@/app/api/chat/route";
 import { SignalCard } from "@/blocks/signals/signal-card";
 import {
@@ -57,6 +62,7 @@ import {
 import { useSidebar } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { useTRPC } from "@/server/trpc/client";
+import { Action, Actions } from "../../../components/ai-elements/actions";
 
 type ChunkData = {
   content: string;
@@ -150,7 +156,7 @@ export default function ChatPage() {
     enabled: !!articleId,
   });
 
-  const { messages, sendMessage, status } = useChat<ChatUIMessage>({
+  const { messages, sendMessage, status, regenerate } = useChat<ChatUIMessage>({
     transport: new DefaultChatTransport({
       api: "/api/chat",
       prepareSendMessagesRequest: ({ messages, id }) => {
@@ -190,7 +196,7 @@ export default function ChatPage() {
         </Button>
       )}
 
-      <Conversation>
+      <Conversation className="scrollbar-hide">
         <ConversationContent className="mx-auto w-full max-w-3xl">
           {messages.length === 0 ? (
             <ConversationEmptyState
@@ -201,7 +207,7 @@ export default function ChatPage() {
             />
           ) : (
             messages.map((message: ChatUIMessage) => (
-              <Message from={message.role} key={message.id}>
+              <Message from={message.role} key={message.id} className="group">
                 <MessageContent variant="flat">
                   {message.parts.map((part, i: number) => {
                     switch (part.type) {
@@ -277,12 +283,37 @@ export default function ChatPage() {
                             </div>
                           </div>
                         );
-                      case "text":
+                      case "text": {
+                        const isLatestAssistant =
+                          message.role === "assistant" &&
+                          message.id ===
+                            messages
+                              .filter((m) => m.role === "assistant")
+                              .slice(-1)[0]?.id;
                         return (
-                          <Response key={`${message.id}-${i}`}>
-                            {part.text}
-                          </Response>
+                          <Fragment key={`${message.id}-${i}`}>
+                            <Response>{part.text}</Response>
+                            {message.role === "assistant" &&
+                              part.state === "done" && (
+                                <Actions
+                                  className={cn(
+                                    !isLatestAssistant &&
+                                      "opacity-0 group-hover:opacity-100 transition-opacity",
+                                  )}
+                                >
+                                  <Action
+                                    onClick={() => regenerate()}
+                                    label="Retry"
+                                    tooltip="Retry"
+                                  >
+                                    <IconRefresh className="size-4" />
+                                  </Action>
+                                  <CopyAction text={part.text} />
+                                </Actions>
+                              )}
+                          </Fragment>
                         );
+                      }
                       default:
                         return null;
                     }
@@ -365,5 +396,37 @@ export default function ChatPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function CopyAction({ text }: { text: string }) {
+  const [isCopied, setIsCopied] = useState(false);
+
+  useEffect(() => {
+    if (isCopied) {
+      const timer = setTimeout(() => {
+        setIsCopied(false);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [isCopied]);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text);
+    setIsCopied(true);
+  };
+
+  return (
+    <Action
+      onClick={handleCopy}
+      label={isCopied ? "Copied" : "Copy"}
+      tooltip={isCopied ? "Copied" : "Copy"}
+    >
+      {isCopied ? (
+        <IconCheck className="size-4" />
+      ) : (
+        <IconCopy className="size-4" />
+      )}
+    </Action>
   );
 }
