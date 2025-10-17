@@ -445,14 +445,19 @@ Content: ${content}
     const timeB = b.chunk.startTimeSec ?? 0;
     return timeA - timeB;
   });
+  // Check mutation state (ground truth) not status field
   const isProcessing =
-    (currentStatus === "processing" && !generateSummary.isPending) ||
     processArticle.isPending ||
-    reprocessArticle.isPending;
+    reprocessArticle.isPending ||
+    processArticleWithSignals.isPending;
   const isGenerating = generateSignals.isPending;
   const isRegenerating = regenerateSignals.isPending;
-  const isProcessed = currentStatus === "processed";
+  // Don't trust status field - check actual data existence
   const hasSignalsGenerated = Boolean(articleData?.signalsGeneratedAt);
+  const hasSummary = summary.data !== undefined && summary.data !== null;
+  const isFullyProcessed = hasSignalsGenerated && hasSummary;
+  // For UI logic: consider "processed" if we have a summary (actual work was done)
+  const isProcessed = hasSummary || currentStatus === "processed";
   const lastSignalsGeneratedAt = articleData?.signalsGeneratedAt
     ? new Date(articleData.signalsGeneratedAt)
     : null;
@@ -702,7 +707,7 @@ Content: ${content}
               </DropdownMenu>
             </ButtonGroup>
 
-            {!isProcessed && (
+            {!isFullyProcessed && (
               <Dialog
                 open={showProcessDialog}
                 onOpenChange={setShowProcessDialog}
@@ -855,7 +860,7 @@ Content: ${content}
               </Dialog>
             )}
 
-            {isProcessed && hasSignalsGenerated && (
+            {isFullyProcessed && (
               <>
                 <Dialog
                   open={showRegenerateDialog}

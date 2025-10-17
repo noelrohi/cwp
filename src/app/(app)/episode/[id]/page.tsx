@@ -470,14 +470,19 @@ Content: ${content}
   const relatedSignals = signals.data ?? [];
   const currentStatus = episodeData?.status;
   const currentErrorMessage = episodeData?.errorMessage;
+  // Check mutation state (ground truth) not status field
   const isProcessing =
-    (currentStatus === "processing" && !generateSummary.isPending) ||
     processEpisode.isPending ||
-    reprocessEpisode.isPending;
+    reprocessEpisode.isPending ||
+    processEpisodeWithSignals.isPending;
   const isGenerating = generateSignals.isPending;
   const isRegenerating = regenerateSignals.isPending;
-  const isProcessed = currentStatus === "processed";
+  // Don't trust status field - check actual data existence
   const hasSignalsGenerated = Boolean(episodeData?.signalsGeneratedAt);
+  const hasSummary = summary.data !== undefined && summary.data !== null;
+  const isFullyProcessed = hasSignalsGenerated && hasSummary;
+  // For UI logic: consider "processed" if we have a summary (actual work was done)
+  const isProcessed = hasSummary || currentStatus === "processed";
   const lastProcessedAt = episodeData?.lastProcessedAt
     ? new Date(episodeData.lastProcessedAt)
     : null;
@@ -732,7 +737,7 @@ Content: ${content}
             </div>
 
             <div className="flex gap-2 flex-wrap">
-              {!isProcessed && (
+              {!isFullyProcessed && (
                 <Dialog
                   open={showProcessDialog}
                   onOpenChange={setShowProcessDialog}
@@ -890,7 +895,7 @@ Content: ${content}
                 </Dialog>
               )}
 
-              {isProcessed && hasSignalsGenerated && (
+              {isFullyProcessed && (
                 <>
                   <Dialog
                     open={showRegenerateDialog}
