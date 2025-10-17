@@ -177,7 +177,7 @@ export default function ChatPage() {
   const contextType = episodeId ? "episode" : articleId ? "article" : null;
 
   return (
-    <div className="flex flex-col min-h-dvh">
+    <div className="relative flex size-full flex-col h-dvh overflow-hidden">
       {/* Floating sidebar trigger for mobile only */}
       {isMobile && (
         <Button
@@ -190,7 +190,7 @@ export default function ChatPage() {
         </Button>
       )}
 
-      <Conversation className="flex-1 relative">
+      <Conversation>
         <ConversationContent className="mx-auto w-full max-w-3xl">
           {messages.length === 0 ? (
             <ConversationEmptyState
@@ -312,8 +312,8 @@ export default function ChatPage() {
       </Conversation>
 
       {/* Sticky prompt input at bottom */}
-      <div className="sticky bottom-0 inset-x-0 z-20 mt-auto bg-background">
-        <div className="mx-auto w-full max-w-3xl m-2">
+      <div className="grid shrink-0 gap-4 bg-background">
+        <div className="mx-auto w-full max-w-3xl mb-2">
           {contextTitle && contextType && (
             <div className="mb-0 text-xs sm:text-sm text-muted-foreground bg-muted border border-b-0 rounded-t-lg px-3 py-2 w-[calc(100%-0.5rem)] mx-auto flex items-center gap-2">
               <Badge
