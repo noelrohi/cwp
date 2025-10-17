@@ -282,6 +282,8 @@ export default function EpisodeDetailPage(props: {
 
   const actionMutation = useMutation(trpc.signals.action.mutationOptions());
   const undoMutation = useMutation(trpc.signals.undo.mutationOptions());
+  const skipAllMutation = useMutation(trpc.signals.skipAll.mutationOptions());
+  const [isSkippingAll, setIsSkippingAll] = useState(false);
 
   const handleAction = async (signalId: string, action: SignalAction) => {
     setPendingSignalId(signalId);
@@ -344,6 +346,31 @@ export default function EpisodeDetailPage(props: {
       toast.error(message);
     } finally {
       setPendingSignalId(null);
+    }
+  };
+
+  const handleSkipAll = async () => {
+    setIsSkippingAll(true);
+    try {
+      const result = await skipAllMutation.mutateAsync({
+        episodeId: params.id,
+        confidenceFilter:
+          selectedConfidence !== "all" ? selectedConfidence : undefined,
+      });
+
+      queryClient.invalidateQueries({
+        queryKey: trpc.signals.byEpisode.queryKey(),
+      });
+      queryClient.invalidateQueries({
+        queryKey: trpc.signals.episodeStats.queryKey(),
+      });
+      toast.success(`Skipped ${result.skippedCount} signals`);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to skip signals.";
+      toast.error(message);
+    } finally {
+      setIsSkippingAll(false);
     }
   };
 
@@ -1375,7 +1402,7 @@ Content: ${content}
                 )}
               </div>
 
-              {/* Right side: Action filter, Copy button, and Confidence filter - Desktop */}
+              {/* Right side: Action filter, Copy button, Skip All button, and Confidence filter - Desktop */}
               <div className="flex items-center gap-2">
                 {signalFilter === "actioned" && (
                   <Select
@@ -1427,6 +1454,27 @@ Content: ${content}
                     <span className="hidden sm:inline">Copy Signals</span>
                   </Button>
                 )}
+                {signalFilter === "pending" &&
+                  episodeStats.data &&
+                  episodeStats.data.pending > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleSkipAll}
+                      disabled={isSkippingAll}
+                    >
+                      {isSkippingAll ? (
+                        <HugeiconsIcon
+                          icon={Loading03Icon}
+                          size={16}
+                          className="animate-spin"
+                        />
+                      ) : (
+                        <HugeiconsIcon icon={BookmarkRemove01Icon} size={16} />
+                      )}
+                      Skip All ({episodeStats.data.pending})
+                    </Button>
+                  )}
                 <Select
                   value={selectedConfidence}
                   onValueChange={(value) =>
