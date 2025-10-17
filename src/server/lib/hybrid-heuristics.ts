@@ -32,15 +32,38 @@ export function extractHeuristicBuckets(content: string): HeuristicBuckets {
   }
 
   // FILTER 2: Ad content detection
+  // Philosophy: Be specific to avoid false positives. Only catch clear CTAs and sponsorships.
+  // Don't block legitimate discussion of topics like "pricing strategy" or "excited to share insights"
   const adIndicators = [
-    /\b(check out|visit|learn more at|sign up now|get started today|try (it|this) (now|today)|subscribe to)\b/i,
-    /\.(com|io|net|org)\/[a-z-_]/i, // URLs with paths
-    /\b(this episode is sponsored|brought to you by|today'?s sponsor)\b/i,
-    /\b(member fdic|terms.*conditions apply|subject to)\b/i,
-    /\b(pricing|plans starting at|\$\d+\/month)\b/i,
-    /\b(register (now|today)|join (me|us) (at|for)|save your spot|rsvp|inaugural)\b/i,
-    /\b(excited to (join|announce|share)|I'm (on stage|speaking at))\b/i,
-    /\b(event features|connect with peers|lineup of.*speakers)\b/i,
+    // CTAs with action verbs (high confidence - clear calls to action)
+    /\b(check out|learn more at|sign up now|get started today|click here|find out more)\b/i,
+    /\b(visit (our|my|the) (site|website|page|link))\b/i, // "visit" only with CTA context
+    /\b(try (it|this|us) (now|today|free|out))\b/i,
+    /\b(subscribe (now|today|to (our|my|the)))\b/i, // "subscribe" with CTA context, not standalone
+
+    // URLs with paths (likely ads/affiliate links)
+    /\.(com|io|net|org)\/[a-z-_]/i,
+
+    // Sponsorship mentions (high confidence)
+    /\b(this episode is sponsored|brought to you by|today'?s sponsor|our sponsor)\b/i,
+
+    // Legal/compliance language (high confidence)
+    /\b(member fdic|terms (and|&) conditions apply|subject to availability)\b/i,
+
+    // Pricing CTAs (specific phrases, not generic "pricing" discussion)
+    /\b(plans starting at|pricing starts at|starting from \$\d+|from only \$\d+)\b/i,
+    /\$\d+\s?\/(month|year|mo|yr)\b/i, // $99/month format
+
+    // Event CTAs (specific calls to action, not general announcements)
+    /\b(register (now|today|here)|save your spot|rsvp (now|today|here))\b/i,
+    /\b(join (me|us) (at|for) (our|the|this) (event|conference|webinar|workshop))\b/i,
+
+    // Product pitches with URLs (high confidence)
+    /\b(that's why (I|we) (built|created|made|launched))\s+\w+\.(com|io|net)/i,
+
+    // Event marketing (specific promotional language)
+    /\b(I'm (speaking|presenting) at (the|this|our))\b/i,
+    /\b(event features|connect with peers|lineup of (amazing|great|industry) speakers)\b/i,
   ];
 
   const adPenalty = adIndicators.filter((pattern) => pattern.test(trimmed));
@@ -52,14 +75,28 @@ export function extractHeuristicBuckets(content: string): HeuristicBuckets {
   }
 
   // FILTER 3: Intro/outro detection
+  // Philosophy: Catch episode framing and social CTAs, but allow legitimate summaries.
+  // "In this episode they discussed X" is valid content, not an intro.
   const introOutroIndicators = [
-    /\b(enjoy the episode|stick to the end|if you (stay|stick) (around|to)|let's (dive|jump) in)\b/i,
-    /\b(like for the algorithm|comment for|subscribe|hit the bell)\b/i,
-    /\b(that's why (I|we) (built|created|made))\s+\w+\.(com|io)/i,
-    /\b(in this episode|so in this episode|in today's episode)\b/i,
-    /\b(thanks for (coming on|having me)|hope you come back|include links)\b/i,
-    /\b(show notes|in the (description|comments))\b/i,
-    /\b(delivered.*over delivered|glad to be here|thank you for having me)\b/i,
+    // Episode framing (high confidence - clear intros/outros)
+    /\b(enjoy the episode|let's (dive|jump) (right )?in|here we go)\b/i,
+    /\b(stick (around|to the end)|if you (stay|stick) (around|to the end))\b/i,
+
+    // Social media CTAs (high confidence)
+    /\b(like for the algorithm|hit the (bell|like button)|smash that (like|bell))\b/i,
+    /\b(comment (below|down below)|subscribe (and|to) (the|my) (channel|newsletter))\b/i,
+
+    // Show logistics (high confidence)
+    /\b(show notes|links? in the (description|comments|show notes))\b/i,
+    /\b(check (out )?the (show notes|description))\b/i,
+
+    // Pleasantries at start/end (high confidence)
+    /\b(thanks for (coming on|having me|listening|tuning in))\b/i,
+    /\b(glad to be here|thank you for having me|thanks for being here)\b/i,
+    /\b(hope you (enjoyed|enjoy)|see you next (time|week|episode))\b/i,
+
+    // Product pitch with URL (moved from ad indicators)
+    /\b(that's why (I|we) (built|created|made|launched))\s+\w+\.(com|io|net)/i,
   ];
 
   const introPenalty = introOutroIndicators.filter((pattern) =>
