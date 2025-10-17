@@ -237,17 +237,26 @@ export default function PostDetailPage(props: {
   const generateSignals = useMutation(
     trpc.articles.generateSignals.mutationOptions({
       onSuccess: () => {
-        toast.success("Signal generation started");
-        queryClient.invalidateQueries({
-          queryKey: trpc.articles.getById.queryKey({ id: params.id }),
-        });
-        queryClient.invalidateQueries({
-          queryKey: trpc.signals.byArticle.queryKey(),
-        });
-        queryClient.invalidateQueries({
-          queryKey: trpc.signals.articleStats.queryKey(),
-        });
+        toast.success("Signal generation started - refreshing in a moment...");
         setShowGenerateDialog(false);
+
+        // Poll for new signals (generation happens async via Inngest)
+        const pollInterval = setInterval(() => {
+          queryClient.invalidateQueries({
+            queryKey: trpc.articles.getById.queryKey({ id: params.id }),
+          });
+          queryClient.invalidateQueries({
+            queryKey: trpc.signals.byArticle.queryKey({ articleId: params.id }),
+          });
+          queryClient.invalidateQueries({
+            queryKey: trpc.signals.articleStats.queryKey({
+              articleId: params.id,
+            }),
+          });
+        }, 2000);
+
+        // Stop polling after 30 seconds
+        setTimeout(() => clearInterval(pollInterval), 30000);
       },
       onError: (error) => {
         toast.error(`Failed to generate signals: ${error.message}`);
@@ -259,14 +268,25 @@ export default function PostDetailPage(props: {
   const regenerateSignals = useMutation(
     trpc.articles.regenerateSignals.mutationOptions({
       onSuccess: () => {
-        toast.success("Signal regeneration started");
-        queryClient.invalidateQueries({
-          queryKey: trpc.signals.byArticle.queryKey(),
-        });
-        queryClient.invalidateQueries({
-          queryKey: trpc.signals.articleStats.queryKey(),
-        });
+        toast.success(
+          "Signal regeneration started - refreshing in a moment...",
+        );
         setShowRegenerateDialog(false);
+
+        // Poll for new signals (regeneration happens async via Inngest)
+        const pollInterval = setInterval(() => {
+          queryClient.invalidateQueries({
+            queryKey: trpc.signals.byArticle.queryKey({ articleId: params.id }),
+          });
+          queryClient.invalidateQueries({
+            queryKey: trpc.signals.articleStats.queryKey({
+              articleId: params.id,
+            }),
+          });
+        }, 2000);
+
+        // Stop polling after 30 seconds
+        setTimeout(() => clearInterval(pollInterval), 30000);
       },
       onError: (error) => {
         toast.error(`Failed to regenerate signals: ${error.message}`);
