@@ -1,8 +1,13 @@
 "use client";
 
-import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons";
+import {
+  ArrowDown01Icon,
+  ArrowUp01Icon,
+  Cancel01Icon,
+  Search01Icon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -16,9 +21,16 @@ interface TranscriptDisplayProps {
 interface HighlightedTextProps {
   text: string;
   searchTerm: string;
+  currentMatchIndex: number;
+  matchIndexInText: number;
 }
 
-function HighlightedText({ text, searchTerm }: HighlightedTextProps) {
+function HighlightedText({
+  text,
+  searchTerm,
+  currentMatchIndex,
+  matchIndexInText,
+}: HighlightedTextProps) {
   if (!searchTerm.trim()) {
     return <>{text}</>;
   }
@@ -28,12 +40,17 @@ function HighlightedText({ text, searchTerm }: HighlightedTextProps) {
     "gi",
   );
   const parts = text.split(regex);
+  let matchCounter = matchIndexInText;
 
   return (
     <>
       {parts.map((part, index) =>
         regex.test(part) ? (
-          <mark key={index} className="bg-yellow-200 px-1 rounded">
+          <mark
+            key={index}
+            className={`px-1 rounded ${matchCounter === currentMatchIndex ? "bg-orange-400" : "bg-yellow-200"}`}
+            data-match-index={matchCounter++}
+          >
             {part}
           </mark>
         ) : (
@@ -89,30 +106,22 @@ function groupSegmentsIntoParagraphs(
     const startTime = segment.start || segment.startSecond || 0;
     const endTime = segment.end || segment.endSecond || startTime;
 
-    // Start new paragraph if this is the first segment
     if (currentParagraph.text === "") {
       currentParagraph.startTime = startTime;
       currentParagraph.text = text;
       currentParagraph.endTime = endTime;
       currentParagraph.speaker = segment.speaker;
     } else {
-      // Check if we should start a new paragraph
       const shouldStartNewParagraph =
-        // Long pause (more than 3 seconds gap)
         startTime - currentParagraph.endTime > 3 ||
-        // Current paragraph is getting too long (more than 300 characters)
         currentParagraph.text.length > 300 ||
-        // Text ends with sentence-ending punctuation and there's a pause
         (/[.!?]\s*$/.test(currentParagraph.text.trim()) &&
           startTime - currentParagraph.endTime > 1) ||
-        // Speaker changed
         (segment.speaker !== undefined &&
           segment.speaker !== currentParagraph.speaker);
 
       if (shouldStartNewParagraph) {
-        // Finish current paragraph
         paragraphs.push({ ...currentParagraph });
-        // Start new paragraph
         currentParagraph = {
           startTime: startTime,
           endTime: endTime,
@@ -120,15 +129,12 @@ function groupSegmentsIntoParagraphs(
           speaker: segment.speaker,
         };
       } else {
-        // Continue current paragraph
-        // biome-ignore lint/style/useTemplate: **
-        currentParagraph.text += " " + text;
+        currentParagraph.text += ` ${text}`;
         currentParagraph.endTime = endTime;
       }
     }
   }
 
-  // Add the last paragraph if it has content
   if (currentParagraph.text.trim()) {
     paragraphs.push(currentParagraph);
   }
@@ -141,15 +147,16 @@ export function TranscriptDisplay({
   speakerMappings,
 }: TranscriptDisplayProps) {
   const [searchTerm, setSearchTerm] = useState("");
+  const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
+  const [totalMatches, setTotalMatches] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  // Search functionality
   const handleSearch = (term: string) => {
     setSearchTerm(term);
+    setCurrentMatchIndex(0);
   };
 
-  // Get segments and group them into paragraphs
-  const getSegments = () => {
-    // Use utterances from Deepgram response as segments
+  const segments = useMemo(() => {
     if (transcript && transcript.length > 0) {
       return transcript.map((utterance) => ({
         start: utterance.start,
@@ -161,11 +168,12 @@ export function TranscriptDisplay({
     }
 
     return [];
-  };
+  }, [transcript]);
 
-  const segments = getSegments();
-  const paragraphs =
-    segments.length > 0 ? groupSegmentsIntoParagraphs(segments) : [];
+  const paragraphs = useMemo(
+    () => (segments.length > 0 ? groupSegmentsIntoParagraphs(segments) : []),
+    [segments],
+  );
 
   const getSpeakerName = (speakerIndex: number | undefined): string => {
     if (speakerIndex === undefined) return "";
@@ -176,12 +184,60 @@ export function TranscriptDisplay({
     return `Speaker ${speakerIndex}`;
   };
 
+  useEffect(() => {
+    if (!searchTerm.trim()) {
+      setTotalMatches(0);
+      return;
+    }
+
+    const regex = new RegExp(
+      searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+      "gi",
+    );
+    let count = 0;
+
+    for (const paragraph of paragraphs) {
+      const matches = paragraph.text.match(regex);
+      if (matches) {
+        count += matches.length;
+      }
+    }
+
+    setTotalMatches(count);
+    setCurrentMatchIndex(0);
+  }, [searchTerm, paragraphs]);
+
+  useEffect(() => {
+    if (totalMatches === 0 || !containerRef.current) return;
+
+    const currentMark = containerRef.current.querySelector(
+      `mark[data-match-index="${currentMatchIndex}"]`,
+    );
+    if (currentMark) {
+      currentMark.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }
+  }, [currentMatchIndex, totalMatches]);
+
+  const handleNext = () => {
+    if (totalMatches === 0) return;
+    setCurrentMatchIndex((prev) => (prev + 1) % totalMatches);
+  };
+
+  const handlePrevious = () => {
+    if (totalMatches === 0) return;
+    setCurrentMatchIndex((prev) => (prev - 1 + totalMatches) % totalMatches);
+  };
+
+  let globalMatchIndex = 0;
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          {/* Search */}
-          <div className="relative">
+        <div className="flex items-center gap-2 flex-1">
+          <div className="relative flex-1">
             <HugeiconsIcon
               icon={Search01Icon}
               size={16}
@@ -191,68 +247,123 @@ export function TranscriptDisplay({
               placeholder="Search transcript..."
               value={searchTerm}
               onChange={(e) => handleSearch(e.target.value)}
-              className="pl-10 w-64"
+              className="pl-10 pr-24"
             />
             {searchTerm && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0"
-                onClick={() => handleSearch("")}
-              >
-                <HugeiconsIcon icon={Cancel01Icon} size={12} />
-              </Button>
+              <div className="absolute right-1 top-1/2 transform -translate-y-1/2 flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0"
+                  onClick={handlePrevious}
+                  disabled={totalMatches === 0}
+                >
+                  <HugeiconsIcon icon={ArrowUp01Icon} size={12} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0"
+                  onClick={handleNext}
+                  disabled={totalMatches === 0}
+                >
+                  <HugeiconsIcon icon={ArrowDown01Icon} size={12} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0"
+                  onClick={() => handleSearch("")}
+                >
+                  <HugeiconsIcon icon={Cancel01Icon} size={12} />
+                </Button>
+              </div>
             )}
           </div>
+          {searchTerm && totalMatches > 0 && (
+            <span className="text-base text-muted-foreground whitespace-nowrap">
+              {currentMatchIndex + 1} / {totalMatches}
+            </span>
+          )}
         </div>
       </div>
 
-      <div className="bg-muted/50 rounded-lg p-6 max-h-96 overflow-y-auto">
+      <div
+        ref={containerRef}
+        className="bg-muted/50 rounded-lg p-6 max-h-[60svh] sm:max-h-[70svh] overflow-y-auto"
+      >
         <div className="space-y-4">
           {paragraphs.length > 0
-            ? // Display paragraphs grouped from segments
-              paragraphs.map((paragraph, index) => (
-                <div key={index} className="flex gap-3">
-                  <span className="text-xs text-muted-foreground font-mono min-w-[4rem] mt-0.5">
-                    {formatTimestamp(paragraph.startTime)}
-                  </span>
-                  <div className="flex-1">
-                    {paragraph.speaker !== undefined && (
-                      <div className="text-xs font-medium text-muted-foreground mb-1">
-                        {getSpeakerName(paragraph.speaker)}:
-                      </div>
-                    )}
-                    <span className="text-sm leading-relaxed">
-                      <HighlightedText
-                        text={paragraph.text}
-                        searchTerm={searchTerm}
-                      />
-                    </span>
-                  </div>
-                </div>
-              ))
-            : segments.length > 0
-              ? // Fallback to individual segments if paragraph grouping fails
-                segments.map((segment, index) => (
+            ? paragraphs.map((paragraph, index) => {
+                const matchIndexInText = globalMatchIndex;
+                const regex = new RegExp(
+                  searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+                  "gi",
+                );
+                const matches = paragraph.text.match(regex);
+                if (matches) {
+                  globalMatchIndex += matches.length;
+                }
+
+                return (
                   <div key={index} className="flex gap-3">
-                    <span className="text-xs text-muted-foreground font-mono min-w-[4rem] mt-0.5">
-                      {formatTimestamp(segment.start || 0)}
+                    <span className="text-sm sm:text-base text-muted-foreground font-mono min-w-[4rem] mt-0.5">
+                      {formatTimestamp(paragraph.startTime)}
                     </span>
                     <div className="flex-1">
-                      {segment.speaker !== undefined && (
-                        <div className="text-xs font-medium text-muted-foreground mb-1">
-                          {getSpeakerName(segment.speaker)}:
+                      {paragraph.speaker !== undefined && (
+                        <div className="text-sm sm:text-base font-medium text-muted-foreground mb-1">
+                          {getSpeakerName(paragraph.speaker)}:
                         </div>
                       )}
-                      <span className="text-sm leading-relaxed">
+                      <span className="text-sm sm:text-base leading-relaxed">
                         <HighlightedText
-                          text={segment.transcript || segment.text || ""}
+                          text={paragraph.text}
                           searchTerm={searchTerm}
+                          currentMatchIndex={currentMatchIndex}
+                          matchIndexInText={matchIndexInText}
                         />
                       </span>
                     </div>
                   </div>
-                ))
+                );
+              })
+            : segments.length > 0
+              ? segments.map((segment, index) => {
+                  const matchIndexInText = globalMatchIndex;
+                  const regex = new RegExp(
+                    searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+                    "gi",
+                  );
+                  const text = segment.transcript || segment.text || "";
+                  const matches = text.match(regex);
+                  if (matches) {
+                    globalMatchIndex += matches.length;
+                  }
+
+                  return (
+                    <div key={index} className="flex gap-3">
+                      <span className="text-base text-muted-foreground font-mono min-w-[4rem] mt-0.5">
+                        {formatTimestamp(segment.start || 0)}
+                      </span>
+                      <div className="flex-1">
+                        {segment.speaker !== undefined && (
+                          <div className="text-base font-medium text-muted-foreground mb-1">
+                            {getSpeakerName(segment.speaker)}:
+                          </div>
+                        )}
+                        <span className="text-base leading-relaxed">
+                          <HighlightedText
+                            text={text}
+                            searchTerm={searchTerm}
+                            currentMatchIndex={currentMatchIndex}
+                            matchIndexInText={matchIndexInText}
+                          />
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
               : null}
         </div>
       </div>

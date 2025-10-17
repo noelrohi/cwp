@@ -44,6 +44,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import {
+  Credenza,
+  CredenzaBody,
+  CredenzaContent,
+  CredenzaHeader,
+  CredenzaTitle,
+  CredenzaTrigger,
+} from "@/components/ui/credenza";
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -1209,19 +1217,19 @@ Content: ${content}
                 </ButtonGroup>
               )}
 
-              <Dialog>
-                <DialogTrigger asChild>
+              <Credenza>
+                <CredenzaTrigger asChild>
                   <button
                     type="button"
                     className="hidden"
                     id="transcript-dialog-trigger"
                   />
-                </DialogTrigger>
-                <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden">
-                  <DialogHeader>
-                    <DialogTitle>Episode Transcript</DialogTitle>
-                  </DialogHeader>
-                  <div className="overflow-auto">
+                </CredenzaTrigger>
+                <CredenzaContent className="sm:max-w-[90vw] sm:max-h-[90svh]">
+                  <CredenzaHeader>
+                    <CredenzaTitle>Episode Transcript</CredenzaTitle>
+                  </CredenzaHeader>
+                  <CredenzaBody className="overflow-y-auto">
                     {transcript && episodeData && (
                       <TranscriptDisplay
                         transcript={transcript}
@@ -1234,9 +1242,9 @@ Content: ${content}
                         }
                       />
                     )}
-                  </div>
-                </DialogContent>
-              </Dialog>
+                  </CredenzaBody>
+                </CredenzaContent>
+              </Credenza>
             </div>
           </div>
         </div>
