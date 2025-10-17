@@ -454,7 +454,8 @@ Content: ${content}
   const isRegenerating = regenerateSignals.isPending;
   // Don't trust status field - check actual data existence
   const hasSignalsGenerated = Boolean(articleData?.signalsGeneratedAt);
-  const hasSummary = summary.data !== undefined && summary.data !== null;
+  // Check if summary exists - use summary relation from article data (works on all tabs)
+  const hasSummary = Boolean(articleData?.summary?.markdownContent);
   const isFullyProcessed = hasSignalsGenerated && hasSummary;
   // For UI logic: consider "processed" if we have a summary (actual work was done)
   const isProcessed = hasSummary || currentStatus === "processed";

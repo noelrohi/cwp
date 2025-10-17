@@ -141,6 +141,7 @@ export const articlesRouter = createTRPCRouter({
       const articleRecord = await ctx.db.query.article.findFirst({
         where: eq(article.id, input.id),
         with: {
+          summary: true, // Include summary to check if it exists on all tabs
           transcriptChunks: {
             orderBy: (chunks, { asc }) => [asc(chunks.createdAt)],
             limit: 50,
