@@ -32,7 +32,7 @@ import { Streamdown } from "streamdown";
 import {
   SignalCard,
   type SignalCardMetadataItem,
-} from "@/blocks/signals/signal-card";
+} from "@/components/blocks/signals/signal-card";
 import { FavoriteButton } from "@/components/favorite-button";
 import { SnipDialog } from "@/components/snip-dialog";
 import { StreamdownWithSnip } from "@/components/streamdown-with-snip";

@@ -33,10 +33,11 @@ type SignalAction = "saved" | "skipped";
 
 import { ChevronDown } from "lucide-react";
 import { Streamdown } from "streamdown";
+import { MetaSignalsTab } from "@/components/blocks/episode/meta-signals-tab";
 import {
   SignalCard,
   type SignalCardMetadataItem,
-} from "@/blocks/signals/signal-card";
+} from "@/components/blocks/signals/signal-card";
 import { FavoriteButton } from "@/components/favorite-button";
 import { SnipDialog } from "@/components/snip-dialog";
 import { TranscriptDisplay } from "@/components/transcript-display";
@@ -99,9 +100,10 @@ export default function EpisodeDetailPage(props: {
   const [transcript, setTranscript] = useState<TranscriptData | null>(null);
   const [activeTab, setActiveTab] = useQueryState(
     "tab",
-    parseAsStringEnum<"summary" | "signals">([
+    parseAsStringEnum<"summary" | "signals" | "meta-signals">([
       "summary",
       "signals",
+      "meta-signals",
     ]).withDefault("summary"),
   );
   const [signalFilter, setSignalFilter] = useQueryState(
@@ -1286,6 +1288,9 @@ Content: ${content}
               {episodeStats.data?.total ?? 0}
             </Badge>
           </TabsTrigger>
+          <TabsTrigger value="meta-signals" className="flex-1">
+            Meta Signals
+          </TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -1772,6 +1777,8 @@ Content: ${content}
           )}
         </section>
       )}
+
+      {activeTab === "meta-signals" && <MetaSignalsTab episodeId={params.id} />}
     </main>
   );
 }

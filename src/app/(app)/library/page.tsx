@@ -15,7 +15,7 @@ import Link from "next/link";
 import { useQueryState } from "nuqs";
 import { useState } from "react";
 import { toast } from "sonner";
-import { ReadwiseSyncDialog } from "@/blocks/integrations";
+import { ReadwiseSyncDialog } from "@/components/blocks/integrations";
 import { SignalBadge } from "@/components/signal-badge";
 import { Button } from "@/components/ui/button";
 import {

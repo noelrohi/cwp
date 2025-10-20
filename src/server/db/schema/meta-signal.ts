@@ -1,0 +1,124 @@
+import { relations, sql } from "drizzle-orm";
+import {
+  check,
+  index,
+  integer,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+} from "drizzle-orm/pg-core";
+import { article, dailySignal, episode } from "./podcast";
+
+// Meta Signals - curated content cards for framebreak.com
+export const metaSignalStatusEnum = pgEnum("meta_signal_status", [
+  "draft",
+  "ready",
+  "published",
+]);
+
+export const metaSignal = pgTable(
+  "meta_signal",
+  {
+    id: text("id").primaryKey(),
+    episodeId: text("episode_id").references(() => episode.id, {
+      onDelete: "cascade",
+    }),
+    articleId: text("article_id").references(() => article.id, {
+      onDelete: "cascade",
+    }),
+    userId: text("user_id").notNull(),
+
+    // Content - LLM-generated, user-editable
+    title: text("title"),
+    summary: text("summary"),
+    manualNotes: text("manual_notes"),
+
+    // Publishing
+    status: metaSignalStatusEnum("status").default("draft").notNull(),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    publishedToFeed: integer("published_to_feed").default(0).notNull(), // boolean as int
+
+    // Engagement metrics (for future)
+    viewCount: integer("view_count").default(0).notNull(),
+    likeCount: integer("like_count").default(0).notNull(),
+
+    // Provenance - track which LLM/prompt generated this
+    llmModel: text("llm_model"),
+    llmPromptVersion: text("llm_prompt_version"),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    index().on(table.userId),
+    index().on(table.episodeId),
+    index().on(table.articleId),
+    index().on(table.status),
+    index().on(table.publishedAt),
+    check(
+      "meta_signal_source_check",
+      sql`(
+        (episode_id IS NOT NULL AND article_id IS NULL) OR
+        (episode_id IS NULL AND article_id IS NOT NULL)
+      )`,
+    ),
+  ],
+);
+
+// Junction table for selected quotes in meta signals
+export const metaSignalQuote = pgTable(
+  "meta_signal_quote",
+  {
+    id: text("id").primaryKey(),
+    metaSignalId: text("meta_signal_id")
+      .references(() => metaSignal.id, { onDelete: "cascade" })
+      .notNull(),
+    dailySignalId: text("daily_signal_id")
+      .references(() => dailySignal.id, { onDelete: "cascade" })
+      .notNull(),
+    extractedQuote: text("extracted_quote"), // LLM-extracted concise quote
+    sortOrder: integer("sort_order").default(0).notNull(),
+    addedAt: timestamp("added_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index().on(table.metaSignalId),
+    index().on(table.dailySignalId),
+    unique().on(table.metaSignalId, table.dailySignalId),
+  ],
+);
+
+// Relations
+export const metaSignalRelations = relations(metaSignal, ({ one, many }) => ({
+  episode: one(episode, {
+    fields: [metaSignal.episodeId],
+    references: [episode.id],
+  }),
+  article: one(article, {
+    fields: [metaSignal.articleId],
+    references: [article.id],
+  }),
+  quotes: many(metaSignalQuote),
+}));
+
+export const metaSignalQuoteRelations = relations(
+  metaSignalQuote,
+  ({ one }) => ({
+    metaSignal: one(metaSignal, {
+      fields: [metaSignalQuote.metaSignalId],
+      references: [metaSignal.id],
+    }),
+    dailySignal: one(dailySignal, {
+      fields: [metaSignalQuote.dailySignalId],
+      references: [dailySignal.id],
+    }),
+  }),
+);

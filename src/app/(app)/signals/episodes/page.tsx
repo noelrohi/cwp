@@ -16,14 +16,14 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { useAudioPlayer } from "@/components/audio-player/audio-player-provider";
 import {
   SignalCard,
   type SignalCardMetadataItem,
-} from "@/blocks/signals/signal-card";
-import { SignalEmptyState } from "@/blocks/signals/signal-empty-state";
-import { SignalErrorState } from "@/blocks/signals/signal-error-state";
-import { SignalSkeletonList } from "@/blocks/signals/signal-skeleton-list";
-import { useAudioPlayer } from "@/components/audio-player/audio-player-provider";
+} from "@/components/blocks/signals/signal-card";
+import { SignalEmptyState } from "@/components/blocks/signals/signal-empty-state";
+import { SignalErrorState } from "@/components/blocks/signals/signal-error-state";
+import { SignalSkeletonList } from "@/components/blocks/signals/signal-skeleton-list";
 import { SnipDialog } from "@/components/snip-dialog";
 import { Button } from "@/components/ui/button";
 import {

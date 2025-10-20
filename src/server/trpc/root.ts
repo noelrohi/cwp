@@ -5,6 +5,7 @@ import { episodesRouter } from "./routers/episodes";
 import { favoritesRouter } from "./routers/favorites";
 import { flashcardsRouter } from "./routers/flashcards";
 import { integrationsRouter } from "./routers/integrations";
+import { metaSignalsRouter } from "./routers/meta-signals";
 import { podcastsRouter } from "./routers/podcasts";
 import { ragRouter } from "./routers/rag";
 import { readwiseRouter } from "./routers/readwise";
@@ -16,6 +17,7 @@ export const appRouter = createTRPCRouter({
   episodes: episodesRouter,
   podcasts: podcastsRouter,
   signals: signalsRouter,
+  metaSignals: metaSignalsRouter,
   rag: ragRouter,
   articles: articlesRouter,
   flashcards: flashcardsRouter,

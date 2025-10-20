@@ -32,6 +32,7 @@ export {
 } from "./feed-parser";
 export { healthCheck } from "./health-monitoring";
 export { helloWorld } from "./hello";
+export { generateMetaSignalForEpisode } from "./meta-signal-generation";
 export {
   generateArticleSummaryFunction,
   generateEpisodeSummaryFunction,

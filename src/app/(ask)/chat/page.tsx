@@ -19,7 +19,6 @@ import { ChevronDown } from "lucide-react";
 import { parseAsString, useQueryState } from "nuqs";
 import { Fragment, useEffect, useState } from "react";
 import type { ChatUIMessage } from "@/app/api/chat/route";
-import { SignalCard } from "@/blocks/signals/signal-card";
 import {
   Conversation,
   ConversationContent,
@@ -52,6 +51,7 @@ import {
   TaskItem,
   TaskTrigger,
 } from "@/components/ai-elements/task";
+import { SignalCard } from "@/components/blocks/signals/signal-card";
 import { StreamdownWithSnip } from "@/components/streamdown-with-snip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
