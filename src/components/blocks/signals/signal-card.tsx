@@ -60,9 +60,11 @@ export function SignalCard(props: SignalCardProps) {
   } = props;
 
   const timestampLabel =
-    startTimeSec && endTimeSec
+    startTimeSec != null && endTimeSec != null
       ? `${formatTimecode(startTimeSec)} - ${formatTimecode(endTimeSec)}`
-      : formatTimecode(startTimeSec);
+      : startTimeSec != null
+        ? formatTimecode(startTimeSec)
+        : null;
   const resolvedSpeaker = speakerLabel?.trim() ?? null;
   const audioPlayer = useAudioPlayer();
   const isCurrentTrack =

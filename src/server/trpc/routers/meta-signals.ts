@@ -196,8 +196,8 @@ export const metaSignalsRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      // Get or create meta signal
-      const metaSignalRecord = await ctx.db.transaction(async (tx) => {
+      return await ctx.db.transaction(async (tx) => {
+        // Get or create meta signal
         const whereConditions = [eq(metaSignal.userId, ctx.user.id)];
 
         if (input.episodeId) {
@@ -212,46 +212,66 @@ export const metaSignalsRouter = createTRPCRouter({
           .where(and(...whereConditions))
           .limit(1);
 
+        let metaSignalRecord;
         if (existing.length > 0) {
-          return existing[0];
+          metaSignalRecord = existing[0];
+        } else {
+          // Create new meta signal if doesn't exist
+          const id = nanoid();
+          const newMetaSignal = await tx
+            .insert(metaSignal)
+            .values({
+              id,
+              userId: ctx.user.id,
+              episodeId: input.episodeId || null,
+              articleId: input.articleId || null,
+              status: "draft",
+            })
+            .returning();
+
+          metaSignalRecord = newMetaSignal[0];
         }
 
-        // Create new meta signal if doesn't exist
-        const id = nanoid();
-        const newMetaSignal = await tx
-          .insert(metaSignal)
+        // Verify daily signal ownership
+        const dailySignalRecord = await tx
+          .select()
+          .from(dailySignal)
+          .where(
+            and(
+              eq(dailySignal.id, input.dailySignalId),
+              eq(dailySignal.userId, ctx.user.id),
+            ),
+          )
+          .limit(1);
+
+        if (dailySignalRecord.length === 0) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Daily signal not found",
+          });
+        }
+
+        // Get current max sort order
+        const maxSortOrder = await tx
+          .select({ max: sql<number>`max(${metaSignalQuote.sortOrder})` })
+          .from(metaSignalQuote)
+          .where(eq(metaSignalQuote.metaSignalId, metaSignalRecord.id));
+
+        const nextSortOrder = (maxSortOrder[0]?.max ?? -1) + 1;
+
+        // Add quote
+        const quote = await tx
+          .insert(metaSignalQuote)
           .values({
-            id,
-            userId: ctx.user.id,
-            episodeId: input.episodeId || null,
-            articleId: input.articleId || null,
-            status: "draft",
+            id: nanoid(),
+            metaSignalId: metaSignalRecord.id,
+            dailySignalId: input.dailySignalId,
+            sortOrder: nextSortOrder,
           })
           .returning();
 
-        return newMetaSignal[0];
+        return quote[0];
       });
-
-      // Get current max sort order
-      const maxSortOrder = await ctx.db
-        .select({ max: sql<number>`max(${metaSignalQuote.sortOrder})` })
-        .from(metaSignalQuote)
-        .where(eq(metaSignalQuote.metaSignalId, metaSignalRecord.id));
-
-      const nextSortOrder = (maxSortOrder[0]?.max ?? -1) + 1;
-
-      // Add quote
-      const quote = await ctx.db
-        .insert(metaSignalQuote)
-        .values({
-          id: nanoid(),
-          metaSignalId: metaSignalRecord.id,
-          dailySignalId: input.dailySignalId,
-          sortOrder: nextSortOrder,
-        })
-        .returning();
-
-      return quote[0];
     }),
 
   // Remove quote from meta signal

@@ -2,7 +2,7 @@
 
 import { Loading03Icon, SparklesIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,7 +22,6 @@ interface MetaSignalsTabProps {
 
 export function MetaSignalsTab({ episodeId }: MetaSignalsTabProps) {
   const trpc = useTRPC();
-  const queryClient = useQueryClient();
 
   // Get existing meta signal (if any)
   const metaSignal = useQuery({
@@ -41,18 +40,6 @@ export function MetaSignalsTab({ episodeId }: MetaSignalsTabProps) {
         description:
           "This will take a few seconds. The page will refresh when ready.",
       });
-
-      // Poll for updates
-      const pollInterval = setInterval(() => {
-        queryClient.invalidateQueries({
-          queryKey: trpc.metaSignals.get.queryKey(),
-        });
-      }, 2000);
-
-      // Stop polling after 30 seconds
-      setTimeout(() => {
-        clearInterval(pollInterval);
-      }, 30000);
     } catch (error) {
       console.error("Failed to generate:", error);
       toast.error("Failed to generate meta signal");

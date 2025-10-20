@@ -9,6 +9,8 @@ import {
   timestamp,
   unique,
 } from "drizzle-orm/pg-core";
+import { nanoid } from "nanoid";
+import { user } from "./auth";
 import { article, dailySignal, episode } from "./podcast";
 
 // Meta Signals - curated content cards for framebreak.com
@@ -21,14 +23,18 @@ export const metaSignalStatusEnum = pgEnum("meta_signal_status", [
 export const metaSignal = pgTable(
   "meta_signal",
   {
-    id: text("id").primaryKey(),
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => nanoid()),
     episodeId: text("episode_id").references(() => episode.id, {
       onDelete: "cascade",
     }),
     articleId: text("article_id").references(() => article.id, {
       onDelete: "cascade",
     }),
-    userId: text("user_id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
 
     // Content - LLM-generated, user-editable
     title: text("title"),
@@ -76,7 +82,9 @@ export const metaSignal = pgTable(
 export const metaSignalQuote = pgTable(
   "meta_signal_quote",
   {
-    id: text("id").primaryKey(),
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => nanoid()),
     metaSignalId: text("meta_signal_id")
       .references(() => metaSignal.id, { onDelete: "cascade" })
       .notNull(),

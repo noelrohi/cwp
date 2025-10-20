@@ -163,7 +163,9 @@ Generate the meta signal card:`;
 
       // Parse summary (everything after headline, using multiline)
       const summaryMatch = text.match(/\*\*.+?\*\*\s*\n\n([\s\S]+)/);
-      const summary = summaryMatch ? summaryMatch[1].trim() : text;
+      const summary = summaryMatch
+        ? summaryMatch[1].trim()
+        : "Unable to parse summary from LLM response";
 
       return {
         selectedQuoteIds: selectedIndices
@@ -197,7 +199,7 @@ Generate the meta signal card:`;
           .set({
             title: synthesis.headline,
             summary: synthesis.summary,
-            llmModel: "anthropic/claude-3.5-sonnet",
+            llmModel: "x-ai/grok-4-fast",
             llmPromptVersion: "v2-auto-select",
             updatedAt: new Date(),
           })
@@ -223,7 +225,7 @@ Generate the meta signal card:`;
           title: synthesis.headline,
           summary: synthesis.summary,
           status: "draft",
-          llmModel: "anthropic/claude-3.5-sonnet",
+          llmModel: "x-ai/grok-4-fast",
           llmPromptVersion: "v2-auto-select",
         })
         .returning();

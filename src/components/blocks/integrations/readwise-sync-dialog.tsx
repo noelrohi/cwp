@@ -165,6 +165,8 @@ export function ReadwiseSyncDialog({ children }: ReadwiseSyncDialogProps) {
                 <SelectItem value="article">Article</SelectItem>
                 <SelectItem value="email">Email</SelectItem>
                 <SelectItem value="rss">RSS</SelectItem>
+                <SelectItem value="highlight">Highlight</SelectItem>
+                <SelectItem value="note">Note</SelectItem>
                 <SelectItem value="pdf">PDF</SelectItem>
                 <SelectItem value="epub">EPUB</SelectItem>
                 <SelectItem value="tweet">Tweet</SelectItem>

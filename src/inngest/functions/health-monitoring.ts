@@ -35,6 +35,22 @@ export const healthCheck = inngest.createFunction(
           resetAt: new Date(result.resetAt).toISOString(),
         });
 
+        // Verify rate limiting is actually enforced with a second call
+        const secondResult = await checkRateLimit(testKey, {
+          limit: 1,
+          windowMs: 60000,
+        });
+
+        if (secondResult.success) {
+          throw new Error(
+            "Rate limit enforcement failed: Second call should have been rate limited",
+          );
+        }
+
+        logger.info("Upstash rate limit enforcement verified", {
+          rateLimited: true,
+        });
+
         return { status: "ok", result };
       } catch (error) {
         logger.error("Upstash rate limit check failed", { error });
