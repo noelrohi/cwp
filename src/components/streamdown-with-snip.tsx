@@ -5,13 +5,15 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
 import { SnipDialog } from "./snip-dialog";
+import { StandaloneSnipDialog } from "./standalone-snip-dialog";
 import { Button } from "./ui/button";
 
 type StreamdownWithSnipProps = {
   content: string;
   className?: string;
   disallowedElements?: string[];
-  articleId: string;
+  articleId?: string;
+  episodeId?: string;
   selectionSource?: "summary" | "article";
 };
 
@@ -20,6 +22,7 @@ export function StreamdownWithSnip({
   className,
   disallowedElements,
   articleId,
+  episodeId,
   selectionSource = "article",
 }: StreamdownWithSnipProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -125,13 +128,27 @@ export function StreamdownWithSnip({
         )}
       </div>
 
-      {showSnipDialog && (
+      {showSnipDialog && (articleId || episodeId) && (
         <SnipDialog
           key={selectedText}
           articleId={articleId}
+          episodeId={episodeId}
           defaultBack={selectedText}
           open={showSnipDialog}
           selectionSource={selectionSource}
+          onOpenChange={(open) => {
+            if (!open) {
+              handleDialogClose();
+            }
+          }}
+        />
+      )}
+
+      {showSnipDialog && !articleId && !episodeId && (
+        <StandaloneSnipDialog
+          key={selectedText}
+          defaultBack={selectedText}
+          open={showSnipDialog}
           onOpenChange={(open) => {
             if (!open) {
               handleDialogClose();

@@ -6,6 +6,7 @@ import { inngest } from "@/inngest/client";
 import {
   article,
   dailySignal,
+  episode,
   flashcard,
   savedChunk,
   transcriptChunk,
@@ -164,6 +165,113 @@ export const flashcardsRouter = createTRPCRouter({
         signalDate: articleRecord.publishedAt ?? now,
         relevanceScore: 1,
         title: safeFront || articleRecord.title,
+        summary,
+        excerpt,
+        userAction: "saved",
+        presentedAt: now,
+        actionedAt: now,
+        scoringMethod: input.source ? `manual-${input.source}` : "manual",
+      });
+
+      const savedChunkId = nanoid();
+      await ctx.db.insert(savedChunk).values({
+        id: savedChunkId,
+        chunkId,
+        userId: ctx.user.id,
+        tags: input.tags?.length ? input.tags.join(",") : null,
+        highlightExtractedQuote: trimmedBack,
+        highlightExtractedAt: now,
+        savedAt: now,
+      });
+
+      await inngest.send({
+        name: "signal/actioned",
+        data: {
+          signalId,
+          action: "saved",
+        },
+      });
+
+      const flashcardId = nanoid();
+      await ctx.db.insert(flashcard).values({
+        id: flashcardId,
+        userId: ctx.user.id,
+        signalId,
+        front: safeFront,
+        back: trimmedBack,
+        tags: input.tags ?? [],
+      });
+
+      return { id: flashcardId, signalId };
+    }),
+
+  createFromEpisodeSelection: protectedProcedure
+    .input(
+      z.object({
+        episodeId: z.string(),
+        front: z
+          .string()
+          .min(1, "Front is required")
+          .max(500, "Front must be 500 characters or less"),
+        back: z
+          .string()
+          .min(1, "Back is required")
+          .max(5000, "Back must be 5000 characters or less"),
+        tags: z.array(z.string()).optional(),
+        source: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const episodeRecord = await ctx.db.query.episode.findFirst({
+        where: and(
+          eq(episode.id, input.episodeId),
+          eq(episode.userId, ctx.user.id),
+        ),
+        columns: {
+          id: true,
+          title: true,
+          publishedAt: true,
+        },
+      });
+
+      if (!episodeRecord) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Episode not found",
+        });
+      }
+
+      const trimmedBack = input.back.trim();
+      if (trimmedBack.length === 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Back content cannot be empty",
+        });
+      }
+
+      const chunkId = nanoid();
+      const wordCount = trimmedBack.split(/\s+/).filter(Boolean).length;
+
+      await ctx.db.insert(transcriptChunk).values({
+        id: chunkId,
+        episodeId: episodeRecord.id,
+        content: trimmedBack,
+        wordCount,
+      });
+
+      const signalId = nanoid();
+      const now = new Date();
+      const safeFront = input.front.trim();
+      const summary = buildSummary(trimmedBack, safeFront);
+      const excerpt = buildExcerpt(trimmedBack);
+
+      await ctx.db.insert(dailySignal).values({
+        id: signalId,
+        chunkId,
+        userId: ctx.user.id,
+        signalDate: episodeRecord.publishedAt ?? now,
+        relevanceScore: 1,
+        title: safeFront || episodeRecord.title,
         summary,
         excerpt,
         userAction: "saved",

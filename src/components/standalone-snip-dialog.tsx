@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -50,12 +50,14 @@ type StandaloneSnipDialogProps = {
   trigger?: React.ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  defaultBack?: string;
 };
 
 export function StandaloneSnipDialog({
   trigger,
   open: controlledOpen,
   onOpenChange,
+  defaultBack,
 }: StandaloneSnipDialogProps) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
@@ -90,11 +92,25 @@ export function StandaloneSnipDialog({
     resolver: zodResolver(standaloneFlashcardSchema),
     defaultValues: {
       front: "",
-      back: "",
+      back: defaultBack || "",
       tags: "",
       source: "",
     },
   });
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    // Reset form with default values when dialog opens
+    form.reset({
+      front: "",
+      back: defaultBack || "",
+      tags: "",
+      source: "",
+    });
+  }, [open, defaultBack, form]);
 
   const onSubmit = (data: StandaloneFlashcardFormData) => {
     const tags = data.tags

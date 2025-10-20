@@ -52,6 +52,7 @@ import {
   TaskItem,
   TaskTrigger,
 } from "@/components/ai-elements/task";
+import { StreamdownWithSnip } from "@/components/streamdown-with-snip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -292,7 +293,15 @@ export default function ChatPage() {
                               .slice(-1)[0]?.id;
                         return (
                           <Fragment key={`${message.id}-${i}`}>
-                            <Response>{part.text}</Response>
+                            {message.role === "assistant" ? (
+                              <StreamdownWithSnip
+                                content={part.text}
+                                articleId={articleId ?? undefined}
+                                episodeId={episodeId ?? undefined}
+                              />
+                            ) : (
+                              <Response>{part.text}</Response>
+                            )}
                             {message.role === "assistant" &&
                               part.state === "done" && (
                                 <Actions

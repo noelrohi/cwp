@@ -46,6 +46,7 @@ type FlashcardFormData = z.infer<typeof flashcardSchema>;
 type SnipDialogProps = {
   signalId?: string;
   articleId?: string;
+  episodeId?: string;
   flashcardId?: string;
   defaultBack?: string;
   defaultFront?: string;
@@ -60,6 +61,7 @@ type SnipDialogProps = {
 export function SnipDialog({
   signalId,
   articleId,
+  episodeId,
   flashcardId,
   defaultBack,
   defaultFront,
@@ -74,9 +76,9 @@ export function SnipDialog({
   const queryClient = useQueryClient();
   const [internalOpen, setInternalOpen] = useState(false);
 
-  if (!signalId && !articleId && !flashcardId) {
+  if (!signalId && !articleId && !episodeId && !flashcardId) {
     throw new Error(
-      "SnipDialog requires either a signalId, articleId, or flashcardId",
+      "SnipDialog requires either a signalId, articleId, episodeId, or flashcardId",
     );
   }
 
@@ -187,6 +189,40 @@ export function SnipDialog({
     }),
   );
 
+  const createFromEpisodeSelectionMutation = useMutation(
+    trpc.flashcards.createFromEpisodeSelection.mutationOptions({
+      onSuccess: async () => {
+        toast.success("Flashcard created", {
+          action: {
+            label: "View Snips",
+            onClick: () => {
+              window.location.href = "/snips";
+            },
+          },
+        });
+        await Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: trpc.flashcards.list.queryKey(),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: trpc.signals.list.queryKey(),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: trpc.signals.metrics.queryKey(),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: trpc.signals.episodesWithSignals.queryKey(),
+          }),
+        ]);
+        handleOpenChange(false);
+        form.reset();
+      },
+      onError: (error) => {
+        toast.error(error.message);
+      },
+    }),
+  );
+
   const updateMutation = useMutation(
     trpc.flashcards.update.mutationOptions({
       onSuccess: async () => {
@@ -280,13 +316,23 @@ export function SnipDialog({
         tags,
         source: selectionSource,
       });
+    } else if (episodeId) {
+      // Create mode - from episode selection
+      createFromEpisodeSelectionMutation.mutate({
+        episodeId,
+        front: data.front,
+        back: data.back,
+        tags,
+        source: selectionSource,
+      });
     }
   };
 
   const isLoading =
     createMutation.isPending ||
     updateMutation.isPending ||
-    createFromSelectionMutation.isPending;
+    createFromSelectionMutation.isPending ||
+    createFromEpisodeSelectionMutation.isPending;
 
   return (
     <Credenza open={open} onOpenChange={handleOpenChange}>
