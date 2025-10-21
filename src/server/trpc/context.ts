@@ -14,4 +14,19 @@ export async function createTRPCContext(opts?: { req?: NextRequest }) {
   };
 }
 
+export async function createMcpTRPCContext(opts: {
+  req: NextRequest | Request;
+}) {
+  const mcpSession = await auth.api.getMcpSession({
+    headers: opts.req.headers,
+  });
+
+  return {
+    db,
+    mcpSession,
+    userId: mcpSession?.userId ?? null,
+  };
+}
+
 export type Context = Awaited<ReturnType<typeof createTRPCContext>>;
+export type McpContext = Awaited<ReturnType<typeof createMcpTRPCContext>>;

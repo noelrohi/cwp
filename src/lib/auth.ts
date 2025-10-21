@@ -1,7 +1,7 @@
 import { autumn } from "autumn-js/better-auth";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { admin, lastLoginMethod } from "better-auth/plugins";
+import { admin, lastLoginMethod, mcp } from "better-auth/plugins";
 import { db } from "@/server/db";
 
 export const auth = betterAuth({
@@ -33,5 +33,12 @@ export const auth = betterAuth({
       enabled: true,
     },
   },
-  plugins: [lastLoginMethod(), autumn(), admin()],
+  plugins: [
+    lastLoginMethod(),
+    autumn(),
+    admin(),
+    mcp({
+      loginPage: "/sign-in",
+    }),
+  ],
 });

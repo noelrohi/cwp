@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { generateEmbedding } from "@/lib/embedding";
-import { hybridScoreBatchWithNovelty } from "@/server/lib/hybrid-scoring";
 import { scoreWithHeuristics } from "@/server/lib/hybrid-heuristics";
+import { hybridScoreBatchWithNovelty } from "@/server/lib/hybrid-scoring";
 
 const signal = `Yeah. Well one of those is technology and the AI race. By the way, we like to refer to AI not as artificial intelligence but as augmented intelligence. I think if more people started talking about as augmented intelligence it would take a lot of the fear and the trepidation and the mystery out of what's being done out there. The reason I say augmented it's really helping our people to do a better job serving our customers. Whether that's figuring out, you know, the turbulence in the sky and using technologies to better map and plot a route destination, having more signals available, whether it's Delta Concierge, which is our latest that we're rolling out in terms of our app, where we have, essentially an agentic framework where you're getting the more you feed into your own personal app and experience, the more that's going to come to you in terms of opportunities or what you want to experience when you're on the ground or what we can do to help you. Not necessarily what we're there to sell you, which is I think that's one of the dangers of this. We're there to help you. We got caught in a little with thinking about some storms, recent storm AI pricing.`;
 

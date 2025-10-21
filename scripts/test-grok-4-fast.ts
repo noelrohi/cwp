@@ -60,8 +60,7 @@ async function testGrok4Fast() {
   // Calculate variance
   const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
   const variance =
-    scores.reduce((sum, score) => sum + Math.pow(score - avg, 2), 0) /
-    scores.length;
+    scores.reduce((sum, score) => sum + (score - avg) ** 2, 0) / scores.length;
   const stdDev = Math.sqrt(variance);
 
   console.log("\n" + "=".repeat(80));
