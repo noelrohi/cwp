@@ -1,4 +1,4 @@
-import { createMcpHandler } from "@vercel/mcp-adapter";
+import { createMcpHandler } from "mcp-handler";
 import { z } from "zod";
 import { createMcpTRPCContext } from "@/server/trpc/context";
 import { mcpRouter } from "@/server/trpc/routers/mcp";
@@ -73,8 +73,17 @@ const handler = async (req: Request) => {
         "list-flashcards",
         "List all flashcards for the authenticated user with pagination",
         {
-          limit: z.number().min(1).max(100).optional(),
-          offset: z.number().min(0).optional(),
+          limit: z
+            .number()
+            .min(1)
+            .max(100)
+            .optional()
+            .describe("Maximum number of flashcards to return (1-100)"),
+          offset: z
+            .number()
+            .min(0)
+            .optional()
+            .describe("Number of flashcards to skip for pagination"),
         },
         async ({ limit, offset }) => {
           try {
@@ -97,7 +106,7 @@ const handler = async (req: Request) => {
       server.tool(
         "get-flashcard",
         "Get a specific flashcard by ID",
-        { id: z.string() },
+        { id: z.string().describe("Unique identifier of the flashcard") },
         async ({ id }) => {
           try {
             const flashcard = await caller.flashcards.get({ id });
@@ -120,10 +129,25 @@ const handler = async (req: Request) => {
         "create-flashcard",
         "Create a new standalone flashcard",
         {
-          front: z.string().min(1).max(500),
-          back: z.string().min(1).max(5000),
-          source: z.string().min(1).max(500),
-          tags: z.array(z.string()).optional(),
+          front: z
+            .string()
+            .min(1)
+            .max(500)
+            .describe("Front side of the flashcard (question/prompt)"),
+          back: z
+            .string()
+            .min(1)
+            .max(5000)
+            .describe("Back side of the flashcard (answer/explanation)"),
+          source: z
+            .string()
+            .min(1)
+            .max(500)
+            .describe("Source or origin of the flashcard content"),
+          tags: z
+            .array(z.string())
+            .optional()
+            .describe("Optional tags for categorizing the flashcard"),
         },
         async ({ front, back, source, tags }) => {
           try {
@@ -152,11 +176,27 @@ const handler = async (req: Request) => {
         "update-flashcard",
         "Update an existing flashcard",
         {
-          id: z.string(),
-          front: z.string().min(1).max(500),
-          back: z.string().min(1).max(5000),
-          source: z.string().optional(),
-          tags: z.array(z.string()).optional(),
+          id: z
+            .string()
+            .describe("Unique identifier of the flashcard to update"),
+          front: z
+            .string()
+            .min(1)
+            .max(500)
+            .describe("Front side of the flashcard (question/prompt)"),
+          back: z
+            .string()
+            .min(1)
+            .max(5000)
+            .describe("Back side of the flashcard (answer/explanation)"),
+          source: z
+            .string()
+            .optional()
+            .describe("Source or origin of the flashcard content"),
+          tags: z
+            .array(z.string())
+            .optional()
+            .describe("Optional tags for categorizing the flashcard"),
         },
         async ({ id, front, back, source, tags }) => {
           try {
@@ -179,7 +219,11 @@ const handler = async (req: Request) => {
       server.tool(
         "delete-flashcard",
         "Delete a flashcard by ID",
-        { id: z.string() },
+        {
+          id: z
+            .string()
+            .describe("Unique identifier of the flashcard to delete"),
+        },
         async ({ id }) => {
           try {
             await caller.flashcards.delete({ id });
