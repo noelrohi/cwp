@@ -113,6 +113,7 @@ export const episode = pgTable(
     signalsGeneratedAt: timestamp("signals_generated_at", {
       withTimezone: true,
     }),
+    hiddenAt: timestamp("hidden_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

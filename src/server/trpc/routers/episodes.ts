@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
-import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { inngest } from "@/inngest/client";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
@@ -80,7 +80,7 @@ export const episodesRouter = createTRPCRouter({
       const limit = input?.limit ?? 50;
 
       const rows = await ctx.db.query.episode.findMany({
-        where: and(eq(episode.userId, ctx.user.id)),
+        where: and(eq(episode.userId, ctx.user.id), isNull(episode.hiddenAt)),
         limit,
         orderBy: [desc(episode.publishedAt)],
         with: {
@@ -651,5 +651,38 @@ export const episodesRouter = createTRPCRouter({
         status: "dispatched" as const,
         pipelineRunId,
       };
+    }),
+
+  hideEpisode: protectedProcedure
+    .input(
+      z.object({
+        episodeId: z.string(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const episodeRecord = await ctx.db.query.episode.findFirst({
+        where: and(
+          eq(episode.id, input.episodeId),
+          eq(episode.userId, ctx.user.id),
+        ),
+        columns: {
+          id: true,
+          status: true,
+        },
+      });
+
+      if (!episodeRecord) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Episode not found",
+        });
+      }
+
+      await ctx.db
+        .update(episode)
+        .set({ hiddenAt: new Date() })
+        .where(eq(episode.id, input.episodeId));
+
+      return { success: true };
     }),
 });

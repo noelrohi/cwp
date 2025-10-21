@@ -8,11 +8,12 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { IconArrowRight } from "@tabler/icons-react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
 import { useQueryState } from "nuqs";
 import { useMemo } from "react";
+import { toast } from "sonner";
 import { AddPodcastDialog } from "@/components/blocks/podcasts/add-podcast-dialog";
 import { SignalBadge } from "@/components/signal-badge";
 import { Button } from "@/components/ui/button";
@@ -51,6 +52,30 @@ function EpisodeCard({
 }: {
   episode: RouterOutput["episodes"]["getEpisodes"][number];
 }) {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+
+  const hideEpisode = useMutation(
+    trpc.episodes.hideEpisode.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({
+          queryKey: trpc.episodes.getEpisodes.queryKey(),
+        });
+        toast.success("Episode hidden");
+      },
+      onError: (error) => {
+        toast.error(`Failed to hide episode: ${error.message}`);
+      },
+    }),
+  );
+
+  // Show hide button for truly unprocessed episodes (matching SignalBadge logic)
+  const isUnprocessed =
+    (episode.status === "pending" &&
+      !episode.summary?.markdownContent &&
+      episode.signalCounts.total === 0) ||
+    episode.status === "failed";
+
   return (
     <div className="flex gap-3 sm:gap-4 mb-3 sm:mb-4 p-3 sm:p-4 border rounded-lg hover:bg-muted/50 transition-colors">
       {/* Podcast Image */}
@@ -95,6 +120,16 @@ function EpisodeCard({
           status={episode.status}
           hasSummary={!!episode.summary?.markdownContent}
         />
+        {isUnprocessed && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => hideEpisode.mutate({ episodeId: episode.id })}
+            disabled={hideEpisode.isPending}
+          >
+            Hide
+          </Button>
+        )}
       </div>
     </div>
   );

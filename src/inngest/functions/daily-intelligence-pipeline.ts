@@ -198,6 +198,7 @@ export const dailyIntelligenceProcessEpisode = inngest.createFunction(
         signalsGeneratedAt: episodeData.signalsGeneratedAt
           ? new Date(episodeData.signalsGeneratedAt)
           : null,
+        hiddenAt: episodeData.hiddenAt ? new Date(episodeData.hiddenAt) : null,
       };
 
       const transcriptResult = await step.run("ensure-transcript", async () => {
@@ -428,6 +429,7 @@ export const dailyIntelligenceReprocessEpisode = inngest.createFunction(
         signalsGeneratedAt: episodeData.signalsGeneratedAt
           ? new Date(episodeData.signalsGeneratedAt)
           : null,
+        hiddenAt: episodeData.hiddenAt ? new Date(episodeData.hiddenAt) : null,
       };
 
       // Re-fetch transcript with force=true
@@ -714,6 +716,9 @@ export const dailyIntelligenceProcessEpisodeWithSignals =
             : null,
           signalsGeneratedAt: episodeData.signalsGeneratedAt
             ? new Date(episodeData.signalsGeneratedAt)
+            : null,
+          hiddenAt: episodeData.hiddenAt
+            ? new Date(episodeData.hiddenAt)
             : null,
         };
 
