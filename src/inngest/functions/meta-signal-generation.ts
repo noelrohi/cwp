@@ -144,7 +144,9 @@ Generate the meta signal card:`;
       // Parse selected quotes
       const selectedMatch = text.match(/SELECTED_QUOTES:\s*\[([^\]]+)\]/);
       const selectedIndices = selectedMatch
-        ? selectedMatch[1].split(",").map((n) => Number.parseInt(n.trim()) - 1)
+        ? selectedMatch[1]
+            .split(",")
+            .map((n) => Number.parseInt(n.trim(), 10) - 1)
         : [0, 1, 2]; // Default to first 3 if parsing fails
 
       // Parse extracted quotes section (using multiline matching)
@@ -244,7 +246,7 @@ Generate the meta signal card:`;
       for (const line of extractedQuotesLines) {
         const match = line.match(/^(\d+)\.\s*"(.+)"$/);
         if (match) {
-          const idx = Number.parseInt(match[1]) - 1;
+          const idx = Number.parseInt(match[1], 10) - 1;
           extractedQuotesMap.set(idx, match[2]);
         }
       }
