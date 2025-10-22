@@ -16,15 +16,15 @@ import {
 import { Input } from "@/components/ui/input";
 import { useTRPC } from "@/server/trpc/client";
 
-type YouTubePlaylistResult = {
-  playlistId: string;
-  title: string;
+type YouTubeChannelResult = {
+  channelId: string;
+  channelName: string;
+  handle: string | null;
   description: string;
   thumbnailUrl: string | null;
-  channelName: string;
-  channelId: string | null;
+  subscriberCount: string | null;
   videoCount: number | null;
-  playlistUrl: string;
+  channelUrl: string;
 };
 
 type AddYouTubeChannelDialogProps = {
@@ -41,17 +41,17 @@ export function AddYouTubeChannelDialog({
   const [youtubeSearchQuery, setYoutubeSearchQuery] = useState<string | null>(
     null,
   );
-  const [addingPlaylistId, setAddingPlaylistId] = useState<string | null>(null);
+  const [addingChannelId, setAddingChannelId] = useState<string | null>(null);
 
   const { data: searchResults, isFetching: isSearching } = useQuery({
-    ...trpc.podcasts.searchYouTubePlaylists.queryOptions({
+    ...trpc.podcasts.searchYouTubeChannels.queryOptions({
       query: youtubeSearchQuery || "",
       maxResults: 20,
     }),
     enabled: !!youtubeSearchQuery && youtubeSearchQuery.trim().length > 0,
   });
 
-  const [youtubeResults, setYoutubeResults] = useState<YouTubePlaylistResult[]>(
+  const [youtubeResults, setYoutubeResults] = useState<YouTubeChannelResult[]>(
     [],
   );
 
@@ -74,15 +74,15 @@ export function AddYouTubeChannelDialog({
 
       toast.success(result?.message || "YouTube channel added to your library");
 
-      // Trigger sync for YouTube playlist
+      // Trigger sync for YouTube channel
       if (result?.success && result.podcast?.id) {
-        syncYouTubePlaylist.mutate({ podcastId: result.podcast.id });
+        syncYouTubeChannel.mutate({ podcastId: result.podcast.id });
       }
 
       setIsOpen(false);
       setSearchQuery("");
       setYoutubeResults([]);
-      setAddingPlaylistId(null);
+      setAddingChannelId(null);
     },
     onError: (error) => {
       console.error("Failed to add YouTube channel:", error);
@@ -91,21 +91,21 @@ export function AddYouTubeChannelDialog({
           ? error.message
           : "Failed to add YouTube channel",
       );
-      setAddingPlaylistId(null);
+      setAddingChannelId(null);
     },
   });
 
-  const syncYouTubePlaylist = useMutation({
-    ...trpc.podcasts.syncYouTubePlaylist.mutationOptions(),
+  const syncYouTubeChannel = useMutation({
+    ...trpc.podcasts.syncYouTubeChannel.mutationOptions(),
     onSuccess: (data) => {
-      toast.success(data.message || "Episodes synced from YouTube");
+      toast.success(data.message || "Episodes synced from YouTube channel");
       queryClient.invalidateQueries({
         queryKey: trpc.podcasts.list.queryKey(),
       });
     },
     onError: (error) => {
       toast.error(
-        error instanceof Error ? error.message : "Failed to sync playlist",
+        error instanceof Error ? error.message : "Failed to sync channel",
       );
     },
   });
@@ -116,17 +116,17 @@ export function AddYouTubeChannelDialog({
     }
   };
 
-  const handlePlaylistSelect = (playlist: YouTubePlaylistResult) => {
+  const handleChannelSelect = (channel: YouTubeChannelResult) => {
     if (addPodcast.isPending) return;
 
-    setAddingPlaylistId(playlist.playlistId);
+    setAddingChannelId(channel.channelId);
     addPodcast.mutate({
-      podcastId: playlist.playlistId,
-      title: playlist.title,
-      description: playlist.channelName,
-      imageUrl: playlist.thumbnailUrl || undefined,
-      feedUrl: playlist.playlistUrl,
-      youtubePlaylistId: playlist.playlistId,
+      podcastId: channel.channelId,
+      title: channel.channelName,
+      description: channel.description || channel.channelName,
+      imageUrl: channel.thumbnailUrl || undefined,
+      feedUrl: channel.channelUrl,
+      youtubePlaylistId: channel.channelId,
     });
   };
 
@@ -135,7 +135,7 @@ export function AddYouTubeChannelDialog({
     setSearchQuery("");
     setYoutubeResults([]);
     setYoutubeSearchQuery(null);
-    setAddingPlaylistId(null);
+    setAddingChannelId(null);
   };
 
   return (
@@ -148,7 +148,7 @@ export function AddYouTubeChannelDialog({
             Add YouTube Channel
           </DialogTitle>
           <DialogDescription>
-            Search for a YouTube playlist or channel to add to your library
+            Search for a YouTube channel to add to your library
           </DialogDescription>
         </DialogHeader>
 
@@ -157,7 +157,7 @@ export function AddYouTubeChannelDialog({
           <div className="flex gap-2">
             <Input
               type="text"
-              placeholder="Search for YouTube playlists or channels..."
+              placeholder="Search for YouTube channels..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => {
@@ -187,36 +187,51 @@ export function AddYouTubeChannelDialog({
             <div className="space-y-2">
               {youtubeResults.map((result) => (
                 <div
-                  key={result.playlistId}
+                  key={result.channelId}
                   className="flex items-center gap-3 p-3 rounded-lg border"
                 >
-                  <div className="h-12 w-12 rounded bg-muted flex-shrink-0">
-                    {result.thumbnailUrl && (
+                  <div className="h-12 w-12 rounded-full bg-muted flex-shrink-0 overflow-hidden flex items-center justify-center">
+                    {result.thumbnailUrl ? (
                       <img
                         src={result.thumbnailUrl}
-                        alt={result.title}
-                        className="h-full w-full rounded object-cover"
+                        alt={result.channelName}
+                        className="h-full w-full object-cover"
+                        onError={(e) => {
+                          // Hide image on error and show fallback
+                          e.currentTarget.style.display = "none";
+                        }}
                       />
+                    ) : (
+                      <YoutubeIcon className="h-6 w-6 text-muted-foreground" />
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <h4 className="font-medium text-sm truncate">
-                      {result.title}
+                      {result.channelName}
                     </h4>
                     <p className="text-xs text-muted-foreground truncate">
-                      {result.channelName}
-                      {result.videoCount && ` · ${result.videoCount} videos`}
+                      {result.handle && `${result.handle}`}
+                      {result.subscriberCount && (
+                        <>
+                          {result.handle && " · "}
+                          {result.subscriberCount}
+                        </>
+                      )}
+                      {result.videoCount && (
+                        <>
+                          {(result.handle || result.subscriberCount) && " · "}
+                          {result.videoCount.toLocaleString()} videos
+                        </>
+                      )}
                     </p>
                   </div>
                   <Button
                     size="sm"
-                    onClick={() => handlePlaylistSelect(result)}
-                    disabled={addingPlaylistId === result.playlistId}
+                    onClick={() => handleChannelSelect(result)}
+                    disabled={addingChannelId === result.channelId}
                     className="flex-shrink-0"
                   >
-                    {addingPlaylistId === result.playlistId
-                      ? "Adding..."
-                      : "Add"}
+                    {addingChannelId === result.channelId ? "Adding..." : "Add"}
                   </Button>
                 </div>
               ))}
@@ -228,7 +243,7 @@ export function AddYouTubeChannelDialog({
           <div className="flex-1 flex items-center justify-center py-8">
             <div className="text-center">
               <p className="text-sm text-muted-foreground">
-                No playlists found. Try a different search.
+                No channels found. Try a different search.
               </p>
             </div>
           </div>

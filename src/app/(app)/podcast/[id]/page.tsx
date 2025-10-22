@@ -75,8 +75,8 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
     },
   });
 
-  const syncYouTubePlaylistMutation = useMutation({
-    ...trpc.podcasts.syncYouTubePlaylist.mutationOptions(),
+  const syncYouTubeChannelMutation = useMutation({
+    ...trpc.podcasts.syncYouTubeChannel.mutationOptions(),
     onError: (error) => {
       toast.error(error.message);
     },
@@ -250,17 +250,17 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
             </>
           )}
 
-          {/* YouTube Podcast Buttons */}
+          {/* YouTube Channel Buttons */}
           {sourceType === "youtube" && (
             <>
               <Button variant="outline" size="sm" className="shrink-0" asChild>
                 <a
-                  href={`https://www.youtube.com/playlist?list=${podcastData.youtubePlaylistId}`}
+                  href={`https://www.youtube.com/channel/${podcastData.youtubePlaylistId}`}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
                   <YoutubeIcon className="h-4 w-4" />
-                  YouTube Playlist
+                  YouTube Channel
                 </a>
               </Button>
               <Button
@@ -268,16 +268,16 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
                 size="sm"
                 className="shrink-0"
                 onClick={() =>
-                  syncYouTubePlaylistMutation.mutate({
+                  syncYouTubeChannelMutation.mutate({
                     podcastId: params.id,
                   })
                 }
-                disabled={syncYouTubePlaylistMutation.isPending}
+                disabled={syncYouTubeChannelMutation.isPending}
               >
                 <YoutubeIcon className="h-4 w-4" />
-                {syncYouTubePlaylistMutation.isPending
+                {syncYouTubeChannelMutation.isPending
                   ? "Syncing..."
-                  : "Sync Playlist"}
+                  : "Sync Channel"}
               </Button>
               <AddYouTubePlaylistDialog
                 podcastId={params.id}
@@ -285,20 +285,10 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
               >
                 <Button variant="outline" size="sm" className="shrink-0">
                   <YoutubeIcon className="h-4 w-4" />
-                  Change Playlist
+                  Change Channel
                 </Button>
               </AddYouTubePlaylistDialog>
             </>
-          )}
-
-          {/* No Source - Allow Adding YouTube Playlist */}
-          {sourceType === "none" && (
-            <AddYouTubePlaylistDialog podcastId={params.id}>
-              <Button variant="outline" size="sm" className="shrink-0">
-                <YoutubeIcon className="h-4 w-4" />
-                Add YouTube Playlist
-              </Button>
-            </AddYouTubePlaylistDialog>
           )}
         </div>
       </div>
@@ -319,18 +309,16 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
       )}
 
       {/* YouTube Sync Progress */}
-      {syncYouTubePlaylistMutation.isPending && (
+      {syncYouTubeChannelMutation.isPending && (
         <div className="rounded-lg border bg-muted/50 p-4">
           <div className="mb-2 flex items-center justify-between">
-            <span className="text-sm font-medium">
-              Syncing YouTube Playlist
-            </span>
+            <span className="text-sm font-medium">Syncing YouTube Channel</span>
           </div>
           <div className="mb-2 h-2 rounded-full bg-muted">
             <div className="h-2 rounded-full bg-primary animate-pulse w-full" />
           </div>
           <p className="text-xs text-muted-foreground">
-            Fetching videos from YouTube...
+            Fetching videos from YouTube channel (up to 100 most recent)...
           </p>
         </div>
       )}

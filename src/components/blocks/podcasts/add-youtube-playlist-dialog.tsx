@@ -15,7 +15,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { extractPlaylistId } from "@/server/lib/youtube-playlist";
 import { useTRPC } from "@/server/trpc/client";
 
 type AddYouTubePlaylistDialogProps = {
@@ -32,22 +31,22 @@ export function AddYouTubePlaylistDialog({
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
-  const [playlistUrl, setPlaylistUrl] = useState("");
+  const [channelUrl, setChannelUrl] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  const updatePlaylistId = useMutation({
-    ...trpc.podcasts.updateYouTubePlaylistId.mutationOptions(),
+  const updateChannelId = useMutation({
+    ...trpc.podcasts.updateYouTubeChannelId.mutationOptions(),
     onSuccess: () => {
       toast.success(
         currentPlaylistId
-          ? "YouTube playlist updated successfully"
-          : "YouTube playlist added successfully",
+          ? "YouTube channel updated successfully"
+          : "YouTube channel added successfully",
       );
       queryClient.invalidateQueries({
         queryKey: trpc.podcasts.get.queryKey({ podcastId }),
       });
       setIsOpen(false);
-      setPlaylistUrl("");
+      setChannelUrl("");
       setValidationError(null);
     },
     onError: (error) => {
@@ -55,54 +54,37 @@ export function AddYouTubePlaylistDialog({
         error instanceof Error
           ? error.message
           : currentPlaylistId
-            ? "Failed to update YouTube playlist"
-            : "Failed to add YouTube playlist",
+            ? "Failed to update YouTube channel"
+            : "Failed to add YouTube channel",
+      );
+      setValidationError(
+        error instanceof Error
+          ? error.message
+          : "Failed to update YouTube channel",
       );
     },
   });
 
-  const validateAndExtractPlaylistId = (input: string): string | null => {
-    if (!input.trim()) {
-      return null;
-    }
-
-    try {
-      const playlistId = extractPlaylistId(input);
-
-      // Validate playlist ID format (should start with PL and be reasonable length)
-      if (
-        !playlistId ||
-        !playlistId.startsWith("PL") ||
-        playlistId.length < 10
-      ) {
-        setValidationError("Invalid YouTube playlist URL or ID");
-        return null;
-      }
-
-      setValidationError(null);
-      return playlistId;
-    } catch (_error) {
-      setValidationError("Invalid YouTube playlist URL or ID");
-      return null;
-    }
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const playlistId = validateAndExtractPlaylistId(playlistUrl);
-    if (!playlistId) {
+    if (!channelUrl.trim()) {
+      setValidationError("Please enter a YouTube channel URL, ID, or handle");
       return;
     }
 
-    updatePlaylistId.mutate({
+    // Clear any previous validation errors
+    setValidationError(null);
+
+    // The validation will happen on the server side
+    updateChannelId.mutate({
       podcastId,
-      youtubePlaylistId: playlistId,
+      youtubeChannelInput: channelUrl.trim(),
     });
   };
 
   const handleUrlChange = (value: string) => {
-    setPlaylistUrl(value);
+    setChannelUrl(value);
     if (validationError) {
       setValidationError(null);
     }
@@ -116,33 +98,34 @@ export function AddYouTubePlaylistDialog({
           <DialogTitle className="flex items-center gap-2">
             <YoutubeIcon className="h-5 w-5 text-red-600" />
             {currentPlaylistId
-              ? "Change YouTube Playlist"
-              : "Add YouTube Playlist"}
+              ? "Change YouTube Channel"
+              : "Add YouTube Channel"}
           </DialogTitle>
           <DialogDescription>
             {currentPlaylistId
-              ? "Update the YouTube playlist for this podcast. This will change which videos are synced."
-              : "Enter the YouTube playlist URL or ID to sync episodes from YouTube."}
+              ? "Update the YouTube channel for this podcast. This will change which videos are synced (limited to 100 most recent)."
+              : "Enter the YouTube channel URL, ID, or handle to sync episodes from YouTube (limited to 100 most recent videos)."}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="playlist-url">YouTube Playlist URL</Label>
+            <Label htmlFor="channel-url">YouTube Channel URL</Label>
             <Input
-              id="playlist-url"
+              id="channel-url"
               type="text"
-              placeholder="https://youtube.com/playlist?list=PLxxxxx or PLxxxxx"
-              value={playlistUrl}
+              placeholder="https://youtube.com/@username or UCxxxxxx"
+              value={channelUrl}
               onChange={(e) => handleUrlChange(e.target.value)}
-              disabled={updatePlaylistId.isPending}
+              disabled={updateChannelId.isPending}
               className={validationError ? "border-destructive" : ""}
             />
             {validationError && (
               <p className="text-sm text-destructive">{validationError}</p>
             )}
             <p className="text-xs text-muted-foreground">
-              You can paste the full YouTube playlist URL or just the playlist
-              ID (starts with PL)
+              You can paste the channel URL (youtube.com/@username,
+              youtube.com/channel/UCxxxxx), handle (@username), or channel ID
+              (UCxxxxx)
             </p>
           </div>
           <div className="flex gap-2 justify-end">
@@ -151,18 +134,18 @@ export function AddYouTubePlaylistDialog({
               variant="outline"
               onClick={() => {
                 setIsOpen(false);
-                setPlaylistUrl("");
+                setChannelUrl("");
                 setValidationError(null);
               }}
-              disabled={updatePlaylistId.isPending}
+              disabled={updateChannelId.isPending}
             >
               Cancel
             </Button>
             <Button
               type="submit"
-              disabled={!playlistUrl.trim() || updatePlaylistId.isPending}
+              disabled={!channelUrl.trim() || updateChannelId.isPending}
             >
-              {updatePlaylistId.isPending ? "Saving..." : "Save"}
+              {updateChannelId.isPending ? "Saving..." : "Save"}
             </Button>
           </div>
         </form>

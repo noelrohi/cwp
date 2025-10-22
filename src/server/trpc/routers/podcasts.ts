@@ -585,6 +585,214 @@ export const podcastsRouter = createTRPCRouter({
       }
     }),
 
+  validateYouTubeChannel: protectedProcedure
+    .input(
+      z.object({
+        channelInput: z.string(),
+      }),
+    )
+    .query(async ({ input }) => {
+      try {
+        const { extractChannelId } = await import(
+          "@/server/lib/youtube-channel"
+        );
+        const channelId = await extractChannelId(input.channelInput);
+
+        if (!channelId) {
+          return {
+            valid: false,
+            channelId: null,
+            message: "Invalid YouTube channel URL, ID, or handle",
+          };
+        }
+
+        // Validate that it's a proper channel ID format (starts with UC)
+        if (!channelId.startsWith("UC")) {
+          return {
+            valid: false,
+            channelId: null,
+            message: "Invalid channel ID format",
+          };
+        }
+
+        return {
+          valid: true,
+          channelId,
+          message: "Valid YouTube channel",
+        };
+      } catch (error) {
+        console.error("Validate YouTube channel error:", error);
+        return {
+          valid: false,
+          channelId: null,
+          message:
+            error instanceof Error
+              ? error.message
+              : "Failed to validate channel",
+        };
+      }
+    }),
+
+  updateYouTubeChannelId: protectedProcedure
+    .input(
+      z.object({
+        podcastId: z.string(),
+        youtubeChannelInput: z.string(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        // Validate and extract channel ID
+        const { extractChannelId } = await import(
+          "@/server/lib/youtube-channel"
+        );
+        const channelId = await extractChannelId(input.youtubeChannelInput);
+
+        if (!channelId) {
+          throw new Error(
+            "Invalid YouTube channel URL, ID, or handle. Please check and try again.",
+          );
+        }
+
+        // Validate that it's a proper channel ID format (starts with UC)
+        if (!channelId.startsWith("UC")) {
+          throw new Error("Invalid channel ID format");
+        }
+
+        // Store channel ID in the youtubePlaylistId field (reusing existing field)
+        await ctx.db
+          .update(podcast)
+          .set({ youtubePlaylistId: channelId })
+          .where(
+            and(
+              eq(podcast.id, input.podcastId),
+              eq(podcast.userId, ctx.user.id),
+            ),
+          );
+
+        return {
+          success: true,
+          message: "YouTube channel ID updated",
+        };
+      } catch (error) {
+        console.error("Update YouTube channel ID error:", error);
+        throw new Error(
+          error instanceof Error
+            ? error.message
+            : "Failed to update YouTube channel ID",
+        );
+      }
+    }),
+
+  syncYouTubeChannel: protectedProcedure
+    .input(
+      z.object({
+        podcastId: z.string(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        // Get the podcast record
+        const podcastRecord = await ctx.db.query.podcast.findFirst({
+          where: and(
+            eq(podcast.id, input.podcastId),
+            eq(podcast.userId, ctx.user.id),
+          ),
+        });
+
+        if (!podcastRecord) {
+          throw new Error("Podcast not found");
+        }
+
+        if (!podcastRecord.youtubePlaylistId) {
+          throw new Error("No YouTube channel ID found for this podcast");
+        }
+
+        // Fetch channel videos from YouTube (limited to 100)
+        const { fetchChannelVideos } = await import(
+          "@/server/lib/youtube-channel"
+        );
+        const channelData = await fetchChannelVideos(
+          podcastRecord.youtubePlaylistId,
+        );
+
+        if (!channelData) {
+          throw new Error("Failed to fetch YouTube channel");
+        }
+
+        // Get existing episodes to avoid duplicates
+        const existingEpisodes = await ctx.db.query.episode.findMany({
+          where: eq(episode.podcastId, podcastRecord.id),
+          columns: {
+            youtubeVideoId: true,
+          },
+        });
+
+        const existingVideoIds = new Set(
+          existingEpisodes
+            .map((e) => e.youtubeVideoId)
+            .filter((id): id is string => id !== null),
+        );
+
+        // Prepare episodes to insert (limited to 100 by fetchChannelVideos)
+        const episodesToInsert = channelData.videos
+          .filter((video) => !existingVideoIds.has(video.videoId))
+          .map((video) => ({
+            id: nanoid(),
+            episodeId: `${podcastRecord.id}:yt:${video.videoId}`,
+            podcastId: podcastRecord.id,
+            userId: ctx.user.id,
+            title: video.title,
+            description: video.description,
+            publishedAt: video.publishedAt,
+            durationSec: video.durationSec,
+            thumbnailUrl: video.thumbnailUrl,
+            youtubeVideoId: video.videoId,
+            youtubeVideoUrl: video.videoUrl,
+            audioUrl: null,
+            transcriptUrl: null,
+            transcriptSource: null,
+            itunesSummary: null,
+            contentEncoded: null,
+            creator: video.channelName,
+            itunesTitle: null,
+            itunesEpisodeType: null,
+            itunesEpisode: null,
+            itunesKeywords: null,
+            itunesExplicit: null,
+            itunesImage: null,
+            link: video.videoUrl,
+            author: video.channelName,
+            comments: null,
+            category: null,
+            dcCreator: video.channelName,
+            status: "pending" as const,
+          }));
+
+        // Insert new episodes
+        if (episodesToInsert.length > 0) {
+          await ctx.db
+            .insert(episode)
+            .values(episodesToInsert)
+            .onConflictDoNothing({ target: episode.episodeId });
+        }
+
+        return {
+          success: true,
+          message: `Successfully synced ${episodesToInsert.length} new episodes from YouTube channel (limited to 100 most recent)`,
+          totalVideos: channelData.videos.length,
+          newEpisodes: episodesToInsert.length,
+        };
+      } catch (error) {
+        console.error("Sync YouTube channel error:", error);
+        throw new Error(
+          error instanceof Error
+            ? error.message
+            : "Failed to sync YouTube channel",
+        );
+      }
+    }),
+
   manuallyMatchEpisode: protectedProcedure
     .input(
       z.object({
@@ -833,6 +1041,35 @@ export const podcastsRouter = createTRPCRouter({
           error instanceof Error
             ? error.message
             : "Failed to search YouTube playlists",
+        );
+      }
+    }),
+
+  searchYouTubeChannels: protectedProcedure
+    .input(
+      z.object({
+        query: z.string(),
+        maxResults: z.number().int().min(1).max(50).optional().default(20),
+      }),
+    )
+    .query(async ({ input }) => {
+      try {
+        const { searchYouTubeChannels } = await import(
+          "@/server/lib/youtube-search"
+        );
+
+        const results = await searchYouTubeChannels(
+          input.query,
+          input.maxResults,
+        );
+
+        return results;
+      } catch (error) {
+        console.error("Search YouTube channels error:", error);
+        throw new Error(
+          error instanceof Error
+            ? error.message
+            : "Failed to search YouTube channels",
         );
       }
     }),

@@ -351,6 +351,177 @@ export async function searchYouTubePlaylists(
   }
 }
 
+export type YouTubeChannelSearchResult = {
+  channelId: string;
+  channelName: string;
+  handle: string | null;
+  description: string;
+  thumbnailUrl: string | null;
+  subscriberCount: string | null;
+  videoCount: number | null;
+  channelUrl: string;
+};
+
+/**
+ * Search YouTube for channels
+ */
+export async function searchYouTubeChannels(
+  query: string,
+  maxResults = 10,
+): Promise<YouTubeChannelSearchResult[]> {
+  try {
+    console.log(`[YouTube Search] Searching for channels: "${query}"`);
+
+    const youtube = await Innertube.create();
+    const results = await youtube.search(query, {
+      type: "channel",
+    });
+
+    const channels: YouTubeChannelSearchResult[] = [];
+
+    // YouTube search returns channels in the channels property
+    const items = results.channels || results.results || [];
+
+    for (const item of items) {
+      // biome-ignore lint/suspicious/noExplicitAny: **
+      const itemData = item as any;
+
+      // Extract channel ID
+      const channelId =
+        itemData.id || itemData.channel_id || itemData.author?.id || null;
+      if (!channelId || typeof channelId !== "string") continue;
+
+      // Extract channel name
+      const channelName = (() => {
+        const titleData =
+          itemData.author?.name || itemData.title || itemData.name;
+        if (titleData && typeof titleData === "object" && "text" in titleData) {
+          return String(titleData.text);
+        }
+        if (typeof titleData === "string") {
+          return titleData;
+        }
+        return "";
+      })();
+
+      // Extract handle
+      const handle = (() => {
+        const handleData =
+          itemData.author?.canonical_base_url ||
+          itemData.canonical_base_url ||
+          null;
+        if (handleData && typeof handleData === "string") {
+          // Extract handle from URL like "/@username"
+          const match = handleData.match(/@[\w-]+/);
+          return match ? match[0] : null;
+        }
+        return null;
+      })();
+
+      // Extract description
+      const description = (() => {
+        const descData =
+          itemData.description_snippet ||
+          itemData.description ||
+          itemData.snippet;
+        if (descData && typeof descData === "object" && "text" in descData) {
+          return String(descData.text);
+        }
+        if (Array.isArray(descData)) {
+          return descData
+            .map((part) =>
+              part && typeof part === "object" && "text" in part
+                ? String(part.text)
+                : "",
+            )
+            .join("");
+        }
+        if (typeof descData === "string") {
+          return descData;
+        }
+        return "";
+      })();
+
+      // Extract thumbnail (get the highest quality one)
+      const thumbnailUrl = (() => {
+        const thumbs =
+          itemData.author?.thumbnails ||
+          itemData.thumbnails ||
+          itemData.author?.avatar ||
+          itemData.thumbnail?.thumbnails;
+        if (!Array.isArray(thumbs) || thumbs.length === 0) return null;
+
+        // Get the largest thumbnail (last one is usually highest quality)
+        const bestThumb = thumbs[thumbs.length - 1] || thumbs[0];
+        if (bestThumb && typeof bestThumb === "object" && "url" in bestThumb) {
+          let url = String((bestThumb as { url: string }).url);
+          // Ensure URL is absolute
+          if (url.startsWith("//")) {
+            url = `https:${url}`;
+          } else if (url.startsWith("/")) {
+            url = `https://www.youtube.com${url}`;
+          }
+          return url;
+        }
+
+        return null;
+      })();
+
+      // Extract subscriber count
+      const subscriberCount = (() => {
+        const subData =
+          itemData.subscriber_count || itemData.author?.subscriber_count;
+        if (subData && typeof subData === "object" && "text" in subData) {
+          return String(subData.text);
+        }
+        if (typeof subData === "string") {
+          return subData;
+        }
+        return null;
+      })();
+
+      // Extract video count
+      const videoCount = (() => {
+        const countData = itemData.video_count;
+        if (countData && typeof countData === "object" && "text" in countData) {
+          const text = String(countData.text);
+          const match = text.match(/(\d+)/);
+          return match ? Number.parseInt(match[1], 10) : null;
+        }
+        if (typeof countData === "number") {
+          return countData;
+        }
+        return null;
+      })();
+
+      channels.push({
+        channelId,
+        channelName,
+        handle,
+        description,
+        thumbnailUrl,
+        subscriberCount,
+        videoCount,
+        channelUrl: `https://www.youtube.com/channel/${channelId}`,
+      });
+
+      if (channels.length >= maxResults) {
+        break;
+      }
+    }
+
+    console.log(`[YouTube Search] Found ${channels.length} channels`);
+
+    return channels;
+  } catch (error) {
+    console.error(`[YouTube Search] Failed to search channels:`, error);
+    if (error instanceof Error) {
+      console.error(`[YouTube Search] Error message: ${error.message}`);
+    }
+    return [];
+  }
+}
+
 /**
  * Get channel ID from a channel URL or handle
  */
