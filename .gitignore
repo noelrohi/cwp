@@ -53,3 +53,5 @@ public/mp3
 unmatched-episodes-*.json
 scripts/debug-*.ts
 scripts/test-*.ts
+
+.claude

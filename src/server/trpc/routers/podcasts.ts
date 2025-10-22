@@ -780,4 +780,33 @@ export const podcastsRouter = createTRPCRouter({
         );
       }
     }),
+
+  searchYouTubePlaylists: protectedProcedure
+    .input(
+      z.object({
+        query: z.string(),
+        maxResults: z.number().int().min(1).max(50).optional().default(20),
+      }),
+    )
+    .query(async ({ input }) => {
+      try {
+        const { searchYouTubePlaylists } = await import(
+          "@/server/lib/youtube-search"
+        );
+
+        const results = await searchYouTubePlaylists(
+          input.query,
+          input.maxResults,
+        );
+
+        return results;
+      } catch (error) {
+        console.error("Search YouTube playlists error:", error);
+        throw new Error(
+          error instanceof Error
+            ? error.message
+            : "Failed to search YouTube playlists",
+        );
+      }
+    }),
 });

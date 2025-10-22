@@ -1,8 +1,8 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2Icon, SearchIcon, StarIcon, XIcon } from "lucide-react";
-import { useState, useTransition } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Loader2Icon, SearchIcon, StarIcon, XIcon, YoutubeIcon } from "lucide-react";
+import { useEffect, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,6 +13,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useTRPC } from "@/server/trpc/client";
+
+type SearchMode = "itunes" | "youtube";
 
 type iTunesResult = {
   wrapperType: string;
@@ -46,6 +48,17 @@ type iTunesResult = {
   genres: string[];
 };
 
+type YouTubePlaylistResult = {
+  playlistId: string;
+  title: string;
+  description: string;
+  thumbnailUrl: string | null;
+  channelName: string;
+  channelId: string | null;
+  videoCount: number | null;
+  playlistUrl: string;
+};
+
 export type AddPodcastResult = {
   success: boolean;
   podcast?: {
@@ -66,10 +79,29 @@ export function AddPodcastDialog({ children }: AddPodcastDialogProps) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
+  const [searchMode, setSearchMode] = useState<SearchMode>("itunes");
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<iTunesResult[]>([]);
+  const [itunesResults, setItunesResults] = useState<iTunesResult[]>([]);
+  const [youtubeResults, setYoutubeResults] = useState<YouTubePlaylistResult[]>([]);
   const [isSearching, startSearchTransition] = useTransition();
-  const [addingPodcastId, setAddingPodcastId] = useState<number | null>(null);
+  const [addingPodcastId, setAddingPodcastId] = useState<string | null>(null);
+  const [youtubeSearchQuery, setYoutubeSearchQuery] = useState<string | null>(null);
+
+  const { data: youtubeSearchResults, isFetching: isYoutubeSearching } =
+    useQuery({
+      ...trpc.podcasts.searchYouTubePlaylists.queryOptions({
+        query: youtubeSearchQuery || "",
+        maxResults: 20,
+      }),
+      enabled: !!youtubeSearchQuery && youtubeSearchQuery.trim().length > 0,
+    });
+
+  // Sync YouTube search results to state
+  useEffect(() => {
+    if (youtubeSearchResults) {
+      setYoutubeResults(youtubeSearchResults);
+    }
+  }, [youtubeSearchResults]);
 
   const suggestedPodcasts = [
     { name: "Lenny's Podcast", query: "Lenny's Podcast" },
@@ -108,7 +140,8 @@ export function AddPodcastDialog({ children }: AddPodcastDialogProps) {
 
       setIsOpen(false);
       setSearchQuery("");
-      setSearchResults([]);
+      setItunesResults([]);
+      setYoutubeResults([]);
       setAddingPodcastId(null);
     },
     onError: (error) => {
@@ -117,32 +150,39 @@ export function AddPodcastDialog({ children }: AddPodcastDialogProps) {
     },
   });
 
-  const performSearch = (query: string) => {
+  const performSearch = (query: string, mode: SearchMode) => {
     if (!query.trim()) return;
 
-    startSearchTransition(async () => {
-      try {
-        const response = await fetch(
-          `https://itunes.apple.com/search?term=${encodeURIComponent(
-            query,
-          )}&media=podcast`,
-        );
-        const data = await response.json();
-        setSearchResults(data.results || []);
-      } catch (error) {
-        console.error("Failed to search podcasts:", error);
-      }
-    });
+    if (mode === "itunes") {
+      startSearchTransition(async () => {
+        try {
+          const response = await fetch(
+            `https://itunes.apple.com/search?term=${encodeURIComponent(
+              query,
+            )}&media=podcast`,
+          );
+          const data = await response.json();
+          setItunesResults(data.results || []);
+          setYoutubeResults([]);
+        } catch (error) {
+          console.error("Failed to search podcasts:", error);
+        }
+      });
+    } else {
+      // Trigger YouTube search via useQuery
+      setYoutubeSearchQuery(query);
+      setItunesResults([]);
+    }
   };
 
   const handleSearch = () => {
-    performSearch(searchQuery);
+    performSearch(searchQuery, searchMode);
   };
 
-  const handlePodcastSelect = (podcast: iTunesResult) => {
+  const handleItunesPodcastSelect = (podcast: iTunesResult) => {
     if (addPodcast.isPending) return;
 
-    setAddingPodcastId(podcast.collectionId);
+    setAddingPodcastId(podcast.collectionId.toString());
     addPodcast.mutate({
       podcastId: podcast.collectionId.toString(),
       title: podcast.collectionName,
@@ -152,16 +192,68 @@ export function AddPodcastDialog({ children }: AddPodcastDialogProps) {
     });
   };
 
+  const handleYoutubePlaylistSelect = (playlist: YouTubePlaylistResult) => {
+    if (addPodcast.isPending) return;
+
+    setAddingPodcastId(playlist.playlistId);
+    addPodcast.mutate({
+      podcastId: playlist.playlistId,
+      title: playlist.title,
+      description: playlist.channelName,
+      imageUrl: playlist.thumbnailUrl || undefined,
+      feedUrl: playlist.playlistUrl,
+      youtubePlaylistId: playlist.playlistId,
+    });
+  };
+
+  const handleModeChange = (newMode: SearchMode) => {
+    setSearchMode(newMode);
+    setSearchQuery("");
+    setItunesResults([]);
+    setYoutubeResults([]);
+  };
+
+  const searchResults = searchMode === "itunes" ? itunesResults : youtubeResults;
+  const hasResults = searchResults.length > 0;
+  const isCurrentlySearching =
+    searchMode === "itunes" ? isSearching : isYoutubeSearching;
+
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>{children}</DialogTrigger>
-      <DialogContent className="sm:max-w-md max-h-[80vh] flex flex-col">
+      <DialogContent className="sm:max-w-3xl max-h-[85vh] flex flex-col">
         <DialogHeader className="flex-shrink-0">
           <DialogTitle>Add New Podcast</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 flex-1 overflow-hidden">
-          {!searchQuery && !searchResults.length && (
-            <div className="space-y-3">
+
+        {/* Search Mode Toggle */}
+        <div className="flex gap-2 flex-shrink-0">
+          <Button
+            type="button"
+            variant={searchMode === "itunes" ? "default" : "outline"}
+            size="sm"
+            onClick={() => handleModeChange("itunes")}
+            className="flex-1"
+          >
+            <SearchIcon className="h-4 w-4 mr-2" />
+            iTunes
+          </Button>
+          <Button
+            type="button"
+            variant={searchMode === "youtube" ? "default" : "outline"}
+            size="sm"
+            onClick={() => handleModeChange("youtube")}
+            className="flex-1"
+          >
+            <YoutubeIcon className="h-4 w-4 mr-2" />
+            YouTube
+          </Button>
+        </div>
+
+        {/* Search Input - Fixed */}
+        <div className="flex-shrink-0">
+          {!searchQuery && !hasResults && searchMode === "itunes" && (
+            <div className="space-y-3 mb-4">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <StarIcon className="h-4 w-4" />
                 <span className="font-medium">Popular Suggestions</span>
@@ -174,12 +266,12 @@ export function AddPodcastDialog({ children }: AddPodcastDialogProps) {
                     size="sm"
                     onClick={() => {
                       setSearchQuery(podcast.query);
-                      performSearch(podcast.query);
+                      performSearch(podcast.query, "itunes");
                     }}
-                    disabled={isSearching}
+                    disabled={isCurrentlySearching}
                     className="text-xs h-8 justify-start"
                   >
-                    {isSearching && searchQuery === podcast.query ? (
+                    {isCurrentlySearching && searchQuery === podcast.query ? (
                       <div className="flex items-center gap-1">
                         <div className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
                         <span>Searching...</span>
@@ -193,10 +285,14 @@ export function AddPodcastDialog({ children }: AddPodcastDialogProps) {
             </div>
           )}
 
-          <div className="flex gap-2 flex-shrink-0">
+          <div className="flex gap-2">
             <Input
               type="text"
-              placeholder="Search for podcasts..."
+              placeholder={
+                searchMode === "itunes"
+                  ? "Search for podcasts..."
+                  : "Search for YouTube playlists..."
+              }
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => {
@@ -206,11 +302,12 @@ export function AddPodcastDialog({ children }: AddPodcastDialogProps) {
               }}
               className="flex-1"
             />
-            {searchResults.length > 0 && (
+            {hasResults && (
               <Button
                 onClick={() => {
                   setSearchQuery("");
-                  setSearchResults([]);
+                  setItunesResults([]);
+                  setYoutubeResults([]);
                 }}
                 variant="outline"
                 size="icon"
@@ -221,55 +318,98 @@ export function AddPodcastDialog({ children }: AddPodcastDialogProps) {
             <Button
               onClick={handleSearch}
               size="icon"
-              disabled={!searchQuery.trim() || isSearching}
+              disabled={!searchQuery.trim() || isCurrentlySearching}
             >
-              {isSearching ? (
+              {isCurrentlySearching ? (
                 <Loader2Icon className="h-4 w-4 animate-spin" />
               ) : (
                 <SearchIcon className="h-4 w-4" />
               )}
             </Button>
           </div>
-
-          {searchResults.length > 0 && (
-            <div className="space-y-2 overflow-y-auto flex-1 min-h-0">
-              {searchResults.map((result) => (
-                <div
-                  key={result.collectionId}
-                  className="flex items-center gap-3 p-3 rounded-lg border"
-                >
-                  <div className="h-10 w-10 rounded bg-muted flex-shrink-0">
-                    {result.artworkUrl100 && (
-                      <img
-                        src={result.artworkUrl100}
-                        alt={result.collectionName}
-                        className="h-full w-full rounded object-cover"
-                      />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-medium text-sm truncate">
-                      {result.collectionName}
-                    </h4>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {result.artistName}
-                    </p>
-                  </div>
-                  <Button
-                    size="sm"
-                    onClick={() => handlePodcastSelect(result)}
-                    disabled={addingPodcastId === result.collectionId}
-                    className="flex-shrink-0"
-                  >
-                    {addingPodcastId === result.collectionId
-                      ? "Adding..."
-                      : "Add"}
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
+
+        {/* Results - Scrollable */}
+        {hasResults && (
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <div className="space-y-2">
+              {searchMode === "itunes" &&
+                itunesResults.map((result) => (
+                  <div
+                    key={result.collectionId}
+                    className="flex items-center gap-3 p-3 rounded-lg border"
+                  >
+                    <div className="h-12 w-12 rounded bg-muted flex-shrink-0">
+                      {result.artworkUrl100 && (
+                        <img
+                          src={result.artworkUrl100}
+                          alt={result.collectionName}
+                          className="h-full w-full rounded object-cover"
+                        />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-medium text-sm truncate">
+                        {result.collectionName}
+                      </h4>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {result.artistName}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => handleItunesPodcastSelect(result)}
+                      disabled={
+                        addingPodcastId === result.collectionId.toString()
+                      }
+                      className="flex-shrink-0"
+                    >
+                      {addingPodcastId === result.collectionId.toString()
+                        ? "Adding..."
+                        : "Add"}
+                    </Button>
+                  </div>
+                ))}
+
+              {searchMode === "youtube" &&
+                youtubeResults.map((result) => (
+                  <div
+                    key={result.playlistId}
+                    className="flex items-center gap-3 p-3 rounded-lg border"
+                  >
+                    <div className="h-12 w-12 rounded bg-muted flex-shrink-0">
+                      {result.thumbnailUrl && (
+                        <img
+                          src={result.thumbnailUrl}
+                          alt={result.title}
+                          className="h-full w-full rounded object-cover"
+                        />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-medium text-sm truncate">
+                        {result.title}
+                      </h4>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {result.channelName}
+                        {result.videoCount && ` · ${result.videoCount} videos`}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => handleYoutubePlaylistSelect(result)}
+                      disabled={addingPodcastId === result.playlistId}
+                      className="flex-shrink-0"
+                    >
+                      {addingPodcastId === result.playlistId
+                        ? "Adding..."
+                        : "Add"}
+                    </Button>
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );
