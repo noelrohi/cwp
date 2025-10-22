@@ -12,6 +12,7 @@ export {
   regenerateArticleSignals,
   reprocessArticle,
 } from "./article-processing";
+export { generateClipForMetaSignal } from "./clip-generation";
 export {
   handleBulkSkip,
   monthlyCleanup,

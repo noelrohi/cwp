@@ -1,6 +1,7 @@
 import { relations, sql } from "drizzle-orm";
 import {
   check,
+  doublePrecision,
   index,
   integer,
   jsonb,
@@ -12,7 +13,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { nanoid } from "nanoid";
 import { user } from "./auth";
-import { article, dailySignal, episode } from "./podcast";
+import { article, episode } from "./podcast";
 
 // Meta Signals - curated content cards for framebreak.com
 export const metaSignalStatusEnum = pgEnum("meta_signal_status", [
@@ -26,6 +27,7 @@ export const metaSignalMediaTypeEnum = pgEnum("meta_signal_media_type", [
   "image",
   "carousel",
   "video",
+  "clip",
 ]);
 
 export const metaSignal = pgTable(
@@ -57,6 +59,12 @@ export const metaSignal = pgTable(
       durations?: number[];
       altTexts?: string[];
     }>(),
+
+    // Video clip support
+    clipUrl: text("clip_url"), // Vercel Blob URL for generated clip
+    clipThumbnailUrl: text("clip_thumbnail_url"), // Thumbnail for clip
+    timestampStart: doublePrecision("timestamp_start"), // Clip start time in seconds
+    timestampEnd: doublePrecision("timestamp_end"), // Clip end time in seconds
 
     // Publishing
     status: metaSignalStatusEnum("status").default("draft").notNull(),
@@ -95,31 +103,7 @@ export const metaSignal = pgTable(
   ],
 );
 
-// Junction table for selected quotes in meta signals
-export const metaSignalQuote = pgTable(
-  "meta_signal_quote",
-  {
-    id: text("id")
-      .primaryKey()
-      .$defaultFn(() => nanoid()),
-    metaSignalId: text("meta_signal_id")
-      .references(() => metaSignal.id, { onDelete: "cascade" })
-      .notNull(),
-    dailySignalId: text("daily_signal_id")
-      .references(() => dailySignal.id, { onDelete: "cascade" })
-      .notNull(),
-    extractedQuote: text("extracted_quote"), // LLM-extracted concise quote
-    sortOrder: integer("sort_order").default(0).notNull(),
-    addedAt: timestamp("added_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-  },
-  (table) => [
-    index().on(table.metaSignalId),
-    index().on(table.dailySignalId),
-    unique().on(table.metaSignalId, table.dailySignalId),
-  ],
-);
+// Note: metaSignalQuote table removed - clips are self-contained and don't need quote references
 
 // User likes for meta signals (Twitter-like engagement)
 export const metaSignalLike = pgTable(
@@ -155,23 +139,8 @@ export const metaSignalRelations = relations(metaSignal, ({ one, many }) => ({
     fields: [metaSignal.articleId],
     references: [article.id],
   }),
-  quotes: many(metaSignalQuote),
   likes: many(metaSignalLike),
 }));
-
-export const metaSignalQuoteRelations = relations(
-  metaSignalQuote,
-  ({ one }) => ({
-    metaSignal: one(metaSignal, {
-      fields: [metaSignalQuote.metaSignalId],
-      references: [metaSignal.id],
-    }),
-    dailySignal: one(dailySignal, {
-      fields: [metaSignalQuote.dailySignalId],
-      references: [dailySignal.id],
-    }),
-  }),
-);
 
 export const metaSignalLikeRelations = relations(metaSignalLike, ({ one }) => ({
   user: one(user, {

@@ -1,6 +1,7 @@
-import { generateText } from "ai";
+import { generateObject } from "ai";
 import { and, desc, eq, gte } from "drizzle-orm";
 import { nanoid } from "nanoid";
+import { z } from "zod";
 import { openrouter } from "@/ai/models";
 import { inngest } from "@/inngest/client";
 import { db } from "@/server/db";
@@ -8,13 +9,26 @@ import {
   dailySignal,
   episode,
   metaSignal,
-  metaSignalQuote,
   transcriptChunk,
 } from "@/server/db/schema";
 
 const MIN_CONFIDENCE_THRESHOLD = 0.7;
 const MIN_QUOTES_REQUIRED = 2;
 const MAX_QUOTES_TO_CONSIDER = 10;
+const MIN_CLIP_DURATION = 30; // seconds
+const MAX_CLIP_DURATION = 90; // seconds
+
+// Simplified meta-signal schema for clips
+const metaSignalClipSchema = z.object({
+  hook: z.string().describe("Punchy headline without emojis (10 words max)"),
+  thought: z
+    .string()
+    .describe(
+      "2-3 sentence synthesis explaining WHY this matters, with concrete examples",
+    ),
+  timestampStart: z.number().describe("Clip start time in seconds"),
+  timestampEnd: z.number().describe("Clip end time in seconds"),
+});
 
 export const generateMetaSignalForEpisode = inngest.createFunction(
   {
@@ -86,101 +100,53 @@ export const generateMetaSignalForEpisode = inngest.createFunction(
       );
     }
 
-    // Step 3: Use LLM to select and synthesize the best quotes
-    const synthesis = await step.run("llm-synthesis", async () => {
-      const quotesText = highConfidenceSignals
+    // Step 3: Use LLM to generate clip metadata
+    const clipData = await step.run("llm-clip-generation", async () => {
+      const quotesContext = highConfidenceSignals
         .map(
           (s, i) =>
-            `${i + 1}. [${(s.relevanceScore * 100).toFixed(0)}%] [${s.speakerName || s.chunkSpeaker || "Unknown"}]:
+            `${i + 1}. [Time: ${Math.floor((s.chunkStartTimeSec ?? 0) / 60)}:${String(Math.floor((s.chunkStartTimeSec ?? 0) % 60)).padStart(2, "0")}] [${s.speakerName || s.chunkSpeaker || "Unknown"}]:
 "${s.chunkContent.trim()}"`,
         )
         .join("\n\n");
 
-      const prompt = `You are curating insight cards for senior executives in consulting and professional services - styled like Frame Break newsletter posts. Your goal is to create punchy, scannable, shareable content.
+      const prompt = `You are creating viral video clip cards for senior executives - think Frame Break meets Twitter/LinkedIn short-form video.
 
 Episode: "${episodeData.title}"
 ${episodeData.creator ? `Guest: ${episodeData.creator}` : ""}
 ${episodeData.description ? `Context: ${episodeData.description.substring(0, 300)}` : ""}
 
-High-Confidence Quotes (${highConfidenceSignals.length} available):
-${quotesText}
+High-Quality Moments (${highConfidenceSignals.length} available):
+${quotesContext}
 
 Your task:
-1. SELECT 2-4 quotes that together tell a coherent story
-2. EXTRACT the best 1-2 sentence quote from each selected chunk (20-40 words) - find the most punchy, memorable part
-3. SYNTHESIZE them into a Frame Break-style meta signal card
+Create ONE banger video clip (${MIN_CLIP_DURATION}-${MAX_CLIP_DURATION} seconds) that executives will share.
 
-Output format (follow this EXACTLY):
+Requirements:
+- HOOK: Punchy headline (10 words max, NO emojis) - make them stop scrolling
+- THOUGHT: 2-3 sentences explaining WHY this matters (concrete, specific, Frame Break style)
+- TIMESTAMPS: Select a ${MIN_CLIP_DURATION}-${MAX_CLIP_DURATION} second segment with the best moment
+- The clip should tell a complete micro-story, not feel cut off
 
-SELECTED_QUOTES: [1,3,5]
+Selection criteria:
+- Look for moments with frameworks, numbers, specific examples
+- Avoid generic advice or transitional talk
+- Find the "money quote" that makes people go "wow"
+- Ensure timestamps capture complete thoughts
 
-EXTRACTED_QUOTES:
-1. "The actual extracted quote here - punchy and concise"
-2. "Another extracted quote - the best part of the chunk"
-3. "Final extracted quote - memorable and specific"
+Generate the clip metadata:`;
 
-**[Headline]**
-
-[2-3 sentence synthesis in Frame Break style - narrative, concrete, with numbers/examples. Explain WHY this matters, not WHAT was said. Make it tweet-worthy.]
-
-Guidelines:
-- Headlines: 10 words max, punchy, insight-focused (not topic-focused)
-- Extracted quotes: Find the BEST 1-2 sentences from each chunk - the money quote
-- Synthesis: Write like Usman's Frame Break posts - concrete, specific, no buzzwords
-- Use numbers and examples to make it immediately useful
-- Avoid: "leverage", "synergy", "paradigm shift", generic business speak
-- Think: What would make an executive forward this to their team?
-
-Generate the meta signal card:`;
-
-      const response = await generateText({
+      const response = await generateObject({
         model: openrouter("x-ai/grok-4-fast"),
+        schema: metaSignalClipSchema,
         prompt,
         temperature: 0.7,
       });
 
-      const text = response.text.trim();
-
-      // Parse selected quotes
-      const selectedMatch = text.match(/SELECTED_QUOTES:\s*\[([^\]]+)\]/);
-      const selectedIndices = selectedMatch
-        ? selectedMatch[1]
-            .split(",")
-            .map((n) => Number.parseInt(n.trim(), 10) - 1)
-        : [0, 1, 2]; // Default to first 3 if parsing fails
-
-      // Parse extracted quotes section (using multiline matching)
-      const extractedQuotesMatch = text.match(
-        /EXTRACTED_QUOTES:([\s\S]*?)(?=\*\*|$)/,
-      );
-      const extractedQuotesText = extractedQuotesMatch
-        ? extractedQuotesMatch[1].trim()
-        : "";
-
-      // Parse headline
-      const headlineMatch = text.match(/\*\*(.+?)\*\*/);
-      const headline = headlineMatch
-        ? headlineMatch[1].trim()
-        : "Untitled Meta Signal";
-
-      // Parse summary (everything after headline, using multiline)
-      const summaryMatch = text.match(/\*\*.+?\*\*\s*\n\n([\s\S]+)/);
-      const summary = summaryMatch
-        ? summaryMatch[1].trim()
-        : "Unable to parse summary from LLM response";
-
-      return {
-        selectedQuoteIds: selectedIndices
-          .filter((i) => i >= 0 && i < highConfidenceSignals.length)
-          .map((i) => highConfidenceSignals[i].id),
-        headline,
-        summary,
-        extractedQuotes: extractedQuotesText,
-        rawOutput: text,
-      };
+      return response.object;
     });
 
-    // Step 4: Create or update meta signal
+    // Step 4: Create or update meta signal with clip metadata
     const metaSignalRecord = await step.run("save-meta-signal", async () => {
       // Check if meta signal already exists
       const existing = await db
@@ -199,19 +165,17 @@ Generate the meta signal card:`;
         const updated = await db
           .update(metaSignal)
           .set({
-            title: synthesis.headline,
-            summary: synthesis.summary,
+            title: clipData.hook,
+            summary: clipData.thought,
+            timestampStart: clipData.timestampStart,
+            timestampEnd: clipData.timestampEnd,
+            mediaType: "clip",
             llmModel: "x-ai/grok-4-fast",
-            llmPromptVersion: "v2-auto-select",
+            llmPromptVersion: "v3-clip-generation",
             updatedAt: new Date(),
           })
           .where(eq(metaSignal.id, existing[0].id))
           .returning();
-
-        // Delete old quote associations
-        await db
-          .delete(metaSignalQuote)
-          .where(eq(metaSignalQuote.metaSignalId, existing[0].id));
 
         return updated[0];
       }
@@ -224,62 +188,40 @@ Generate the meta signal card:`;
           id,
           userId,
           episodeId,
-          title: synthesis.headline,
-          summary: synthesis.summary,
+          title: clipData.hook,
+          summary: clipData.thought,
+          timestampStart: clipData.timestampStart,
+          timestampEnd: clipData.timestampEnd,
+          mediaType: "clip",
           status: "draft",
           llmModel: "x-ai/grok-4-fast",
-          llmPromptVersion: "v2-auto-select",
+          llmPromptVersion: "v3-clip-generation",
         })
         .returning();
 
       return created[0];
     });
 
-    // Step 5: Associate selected quotes with extracted text
-    await step.run("save-quote-associations", async () => {
-      // Parse extracted quotes from LLM output
-      const extractedQuotesLines = synthesis.extractedQuotes
-        .split("\n")
-        .filter((line) => line.trim().match(/^\d+\.\s*"/));
-
-      const extractedQuotesMap = new Map<number, string>();
-      for (const line of extractedQuotesLines) {
-        const match = line.match(/^(\d+)\.\s*"(.+)"$/);
-        if (match) {
-          const idx = Number.parseInt(match[1], 10) - 1;
-          extractedQuotesMap.set(idx, match[2]);
-        }
-      }
-
-      const quoteAssociations = synthesis.selectedQuoteIds.map(
-        (quoteId, idx) => {
-          // Get the original index from highConfidenceSignals
-          const originalIdx = highConfidenceSignals.findIndex(
-            (s) => s.id === quoteId,
-          );
-          const extractedQuote = extractedQuotesMap.get(originalIdx) || null;
-
-          return {
-            id: nanoid(),
-            metaSignalId: metaSignalRecord.id,
-            dailySignalId: quoteId,
-            extractedQuote,
-            sortOrder: idx,
-          };
+    // Step 5: Trigger clip generation
+    await step.run("trigger-clip-generation", async () => {
+      await inngest.send({
+        name: "meta-signal/generate.clip",
+        data: {
+          metaSignalId: metaSignalRecord.id,
+          episodeId,
+          timestampStart: clipData.timestampStart,
+          timestampEnd: clipData.timestampEnd,
         },
-      );
-
-      if (quoteAssociations.length > 0) {
-        await db.insert(metaSignalQuote).values(quoteAssociations);
-      }
+      });
     });
 
     return {
       metaSignalId: metaSignalRecord.id,
-      title: synthesis.headline,
-      summary: synthesis.summary,
-      quotesSelected: synthesis.selectedQuoteIds.length,
-      totalQuotesConsidered: highConfidenceSignals.length,
+      hook: clipData.hook,
+      thought: clipData.thought,
+      timestampStart: clipData.timestampStart,
+      timestampEnd: clipData.timestampEnd,
+      clipDuration: clipData.timestampEnd - clipData.timestampStart,
     };
   },
 );

@@ -10,6 +10,7 @@ import {
   dailyIntelligenceReprocessEpisode,
   generateArticleSignalsFunction,
   generateArticleSummaryFunction,
+  generateClipForMetaSignal,
   generateEpisodeSummaryFunction,
   generateMetaSignalForEpisode,
   handleBulkSkip,
@@ -56,5 +57,6 @@ export const { GET, POST, PUT } = serve({
     healthCheck,
     // helloWorld,
     generateMetaSignalForEpisode,
+    generateClipForMetaSignal,
   ],
 });

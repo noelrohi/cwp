@@ -1,75 +1,12 @@
 import { TRPCError } from "@trpc/server";
-import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { inngest } from "@/inngest/client";
-import {
-  dailySignal,
-  metaSignal,
-  metaSignalLike,
-  metaSignalQuote,
-  transcriptChunk,
-} from "@/server/db/schema";
+import { metaSignal, metaSignalLike, user } from "@/server/db/schema";
 import { createTRPCRouter, protectedProcedure } from "../init";
 
-const MIN_CONFIDENCE_THRESHOLD = 0.7;
-
 export const metaSignalsRouter = createTRPCRouter({
-  // List high-confidence signals for meta signal curation
-  listHighConfidence: protectedProcedure
-    .input(
-      z.object({
-        episodeId: z.string().optional(),
-        articleId: z.string().optional(),
-        minScore: z.number().min(0).max(1).default(MIN_CONFIDENCE_THRESHOLD),
-      }),
-    )
-    .query(async ({ ctx, input }) => {
-      if (!input.episodeId && !input.articleId) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Either episodeId or articleId is required",
-        });
-      }
-
-      const whereConditions = [
-        eq(dailySignal.userId, ctx.user.id),
-        gte(dailySignal.relevanceScore, input.minScore),
-      ];
-
-      if (input.episodeId) {
-        whereConditions.push(eq(transcriptChunk.episodeId, input.episodeId));
-      } else if (input.articleId) {
-        whereConditions.push(eq(transcriptChunk.articleId, input.articleId));
-      }
-
-      const signals = await ctx.db
-        .select({
-          id: dailySignal.id,
-          relevanceScore: dailySignal.relevanceScore,
-          signalDate: dailySignal.signalDate,
-          title: dailySignal.title,
-          summary: dailySignal.summary,
-          excerpt: dailySignal.excerpt,
-          speakerName: dailySignal.speakerName,
-          userAction: dailySignal.userAction,
-          chunkId: dailySignal.chunkId,
-          chunkContent: transcriptChunk.content,
-          chunkSpeaker: transcriptChunk.speaker,
-          chunkStartTimeSec: transcriptChunk.startTimeSec,
-          chunkEndTimeSec: transcriptChunk.endTimeSec,
-        })
-        .from(dailySignal)
-        .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
-        .where(and(...whereConditions))
-        .orderBy(
-          desc(dailySignal.relevanceScore),
-          desc(dailySignal.signalDate),
-        );
-
-      return signals;
-    }),
-
   // Get or create meta signal for episode/article
   getOrCreate: protectedProcedure
     .input(
@@ -146,8 +83,38 @@ export const metaSignalsRouter = createTRPCRouter({
       }
 
       const metaSignalRecord = await ctx.db
-        .select()
+        .select({
+          id: metaSignal.id,
+          episodeId: metaSignal.episodeId,
+          articleId: metaSignal.articleId,
+          userId: metaSignal.userId,
+          title: metaSignal.title,
+          summary: metaSignal.summary,
+          manualNotes: metaSignal.manualNotes,
+          mediaType: metaSignal.mediaType,
+          mediaUrls: metaSignal.mediaUrls,
+          mediaMetadata: metaSignal.mediaMetadata,
+          clipUrl: metaSignal.clipUrl,
+          clipThumbnailUrl: metaSignal.clipThumbnailUrl,
+          timestampStart: metaSignal.timestampStart,
+          timestampEnd: metaSignal.timestampEnd,
+          status: metaSignal.status,
+          publishedAt: metaSignal.publishedAt,
+          publishedToFeed: metaSignal.publishedToFeed,
+          viewCount: metaSignal.viewCount,
+          likeCount: metaSignal.likeCount,
+          llmModel: metaSignal.llmModel,
+          llmPromptVersion: metaSignal.llmPromptVersion,
+          createdAt: metaSignal.createdAt,
+          updatedAt: metaSignal.updatedAt,
+          user: {
+            id: user.id,
+            name: user.name,
+            image: user.image,
+          },
+        })
         .from(metaSignal)
+        .innerJoin(user, eq(metaSignal.userId, user.id))
         .where(and(...whereConditions))
         .limit(1);
 
@@ -155,181 +122,22 @@ export const metaSignalsRouter = createTRPCRouter({
         return null;
       }
 
-      // Fetch quotes and like status in parallel
-      const [quotes, liked] = await Promise.all([
-        ctx.db
-          .select({
-            id: metaSignalQuote.id,
-            dailySignalId: metaSignalQuote.dailySignalId,
-            extractedQuote: metaSignalQuote.extractedQuote,
-            sortOrder: metaSignalQuote.sortOrder,
-            addedAt: metaSignalQuote.addedAt,
-            // Signal data
-            signalRelevanceScore: dailySignal.relevanceScore,
-            signalExcerpt: dailySignal.excerpt,
-            signalSpeakerName: dailySignal.speakerName,
-            // Chunk data
-            chunkContent: transcriptChunk.content,
-            chunkSpeaker: transcriptChunk.speaker,
-            chunkStartTimeSec: transcriptChunk.startTimeSec,
-          })
-          .from(metaSignalQuote)
-          .innerJoin(
-            dailySignal,
-            eq(metaSignalQuote.dailySignalId, dailySignal.id),
-          )
-          .innerJoin(
-            transcriptChunk,
-            eq(dailySignal.chunkId, transcriptChunk.id),
-          )
-          .where(eq(metaSignalQuote.metaSignalId, metaSignalRecord[0].id))
-          .orderBy(metaSignalQuote.sortOrder),
-        ctx.db
-          .select()
-          .from(metaSignalLike)
-          .where(
-            and(
-              eq(metaSignalLike.userId, ctx.user.id),
-              eq(metaSignalLike.metaSignalId, metaSignalRecord[0].id),
-            ),
-          )
-          .limit(1),
-      ]);
+      // Fetch like status
+      const liked = await ctx.db
+        .select()
+        .from(metaSignalLike)
+        .where(
+          and(
+            eq(metaSignalLike.userId, ctx.user.id),
+            eq(metaSignalLike.metaSignalId, metaSignalRecord[0].id),
+          ),
+        )
+        .limit(1);
 
       return {
         ...metaSignalRecord[0],
-        quotes,
         isLiked: liked.length > 0,
       };
-    }),
-
-  // Add quote to meta signal
-  addQuote: protectedProcedure
-    .input(
-      z.object({
-        episodeId: z.string().optional(),
-        articleId: z.string().optional(),
-        dailySignalId: z.string(),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      return await ctx.db.transaction(async (tx) => {
-        // Get or create meta signal
-        const whereConditions = [eq(metaSignal.userId, ctx.user.id)];
-
-        if (input.episodeId) {
-          whereConditions.push(eq(metaSignal.episodeId, input.episodeId));
-        } else if (input.articleId) {
-          whereConditions.push(eq(metaSignal.articleId, input.articleId));
-        }
-
-        const existing = await tx
-          .select()
-          .from(metaSignal)
-          .where(and(...whereConditions))
-          .limit(1);
-
-        const metaSignalRecord =
-          existing.length > 0
-            ? existing[0]
-            : (
-                await tx
-                  .insert(metaSignal)
-                  .values({
-                    id: nanoid(),
-                    userId: ctx.user.id,
-                    episodeId: input.episodeId || null,
-                    articleId: input.articleId || null,
-                    status: "draft",
-                  })
-                  .returning()
-              )[0];
-
-        // Verify daily signal ownership
-        const dailySignalRecord = await tx
-          .select()
-          .from(dailySignal)
-          .where(
-            and(
-              eq(dailySignal.id, input.dailySignalId),
-              eq(dailySignal.userId, ctx.user.id),
-            ),
-          )
-          .limit(1);
-
-        if (dailySignalRecord.length === 0) {
-          throw new TRPCError({
-            code: "NOT_FOUND",
-            message: "Daily signal not found",
-          });
-        }
-
-        // Get current max sort order
-        const maxSortOrder = await tx
-          .select({ max: sql<number>`max(${metaSignalQuote.sortOrder})` })
-          .from(metaSignalQuote)
-          .where(eq(metaSignalQuote.metaSignalId, metaSignalRecord.id));
-
-        const nextSortOrder = (maxSortOrder[0]?.max ?? -1) + 1;
-
-        // Add quote
-        const quote = await tx
-          .insert(metaSignalQuote)
-          .values({
-            id: nanoid(),
-            metaSignalId: metaSignalRecord.id,
-            dailySignalId: input.dailySignalId,
-            sortOrder: nextSortOrder,
-          })
-          .returning();
-
-        return quote[0];
-      });
-    }),
-
-  // Remove quote from meta signal
-  removeQuote: protectedProcedure
-    .input(
-      z.object({
-        episodeId: z.string().optional(),
-        articleId: z.string().optional(),
-        dailySignalId: z.string(),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      // Find meta signal
-      const whereConditions = [eq(metaSignal.userId, ctx.user.id)];
-
-      if (input.episodeId) {
-        whereConditions.push(eq(metaSignal.episodeId, input.episodeId));
-      } else if (input.articleId) {
-        whereConditions.push(eq(metaSignal.articleId, input.articleId));
-      }
-
-      const metaSignalRecord = await ctx.db
-        .select()
-        .from(metaSignal)
-        .where(and(...whereConditions))
-        .limit(1);
-
-      if (metaSignalRecord.length === 0) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Meta signal not found",
-        });
-      }
-
-      // Remove quote
-      await ctx.db
-        .delete(metaSignalQuote)
-        .where(
-          and(
-            eq(metaSignalQuote.metaSignalId, metaSignalRecord[0].id),
-            eq(metaSignalQuote.dailySignalId, input.dailySignalId),
-          ),
-        );
-
-      return { success: true };
     }),
 
   // Update meta signal (title, summary, notes)
