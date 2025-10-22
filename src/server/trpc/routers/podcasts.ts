@@ -319,6 +319,21 @@ export const podcastsRouter = createTRPCRouter({
         throw new Error("No feed URL available for this podcast");
       }
 
+      // Check if this podcast uses YouTube as its source
+      const { getPodcastSourceType } = await import(
+        "@/server/lib/podcast-utils"
+      );
+      const sourceType = getPodcastSourceType(
+        podcastRecord.feedUrl,
+        podcastRecord.youtubePlaylistId,
+      );
+
+      if (sourceType === "youtube") {
+        throw new Error(
+          "This podcast uses YouTube as its source. Use 'Sync Playlist' instead of 'Parse Feed'.",
+        );
+      }
+
       const existingEpisodes = await ctx.db.query.episode.findMany({
         where: eq(episode.podcastId, podcastRecord.id),
         columns: {
@@ -806,6 +821,130 @@ export const podcastsRouter = createTRPCRouter({
           error instanceof Error
             ? error.message
             : "Failed to search YouTube playlists",
+        );
+      }
+    }),
+
+  syncYouTubePlaylist: protectedProcedure
+    .input(
+      z.object({
+        podcastId: z.string(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        // Get the podcast record
+        const podcastRecord = await ctx.db.query.podcast.findFirst({
+          where: and(
+            eq(podcast.id, input.podcastId),
+            eq(podcast.userId, ctx.user.id),
+          ),
+        });
+
+        if (!podcastRecord) {
+          throw new Error("Podcast not found");
+        }
+
+        if (!podcastRecord.youtubePlaylistId) {
+          throw new Error("No YouTube playlist ID found for this podcast");
+        }
+
+        // Check if this podcast uses RSS as its source
+        const { getPodcastSourceType } = await import(
+          "@/server/lib/podcast-utils"
+        );
+        const sourceType = getPodcastSourceType(
+          podcastRecord.feedUrl,
+          podcastRecord.youtubePlaylistId,
+        );
+
+        if (sourceType === "rss") {
+          throw new Error(
+            "This podcast uses RSS feed as its source. Use 'Parse Feed' instead of 'Sync Playlist'.",
+          );
+        }
+
+        // Fetch playlist videos from YouTube
+        const { fetchPlaylistVideos } = await import(
+          "@/server/lib/youtube-playlist"
+        );
+        const playlistData = await fetchPlaylistVideos(
+          podcastRecord.youtubePlaylistId,
+        );
+
+        if (!playlistData) {
+          throw new Error("Failed to fetch YouTube playlist");
+        }
+
+        // Get existing episodes to avoid duplicates
+        const existingEpisodes = await ctx.db.query.episode.findMany({
+          where: eq(episode.podcastId, podcastRecord.id),
+          columns: {
+            youtubeVideoId: true,
+          },
+        });
+
+        const existingVideoIds = new Set(
+          existingEpisodes
+            .map((e) => e.youtubeVideoId)
+            .filter((id): id is string => id !== null),
+        );
+
+        // Prepare episodes to insert
+        const episodesToInsert = playlistData.videos
+          .filter((video) => !existingVideoIds.has(video.videoId))
+          .map((video) => ({
+            id: nanoid(),
+            episodeId: `${podcastRecord.id}:yt:${video.videoId}`,
+            podcastId: podcastRecord.id,
+            userId: ctx.user.id,
+            title: video.title,
+            description: video.description,
+            publishedAt: video.publishedAt,
+            durationSec: video.durationSec,
+            thumbnailUrl: video.thumbnailUrl,
+            youtubeVideoId: video.videoId,
+            youtubeVideoUrl: video.videoUrl,
+            audioUrl: null,
+            transcriptUrl: null,
+            transcriptSource: null,
+            itunesSummary: null,
+            contentEncoded: null,
+            creator: video.channelName,
+            itunesTitle: null,
+            itunesEpisodeType: null,
+            itunesEpisode: null,
+            itunesKeywords: null,
+            itunesExplicit: null,
+            itunesImage: null,
+            link: video.videoUrl,
+            author: video.channelName,
+            comments: null,
+            category: null,
+            dcCreator: video.channelName,
+            status: "pending" as const,
+          }));
+
+        // Insert new episodes
+        if (episodesToInsert.length > 0) {
+          await ctx.db
+            .insert(episode)
+            .values(episodesToInsert)
+            .onConflictDoNothing({ target: episode.episodeId });
+        }
+
+        return {
+          success: true,
+          message: `Successfully synced ${episodesToInsert.length} new episodes from YouTube playlist`,
+          totalVideos: playlistData.videos.length,
+          newEpisodes: episodesToInsert.length,
+        };
+      } catch (error) {
+        console.error("Sync YouTube playlist error:", error);
+        throw new Error(
+          error instanceof Error
+            ? error.message
+            : "Failed to sync YouTube playlist",
         );
       }
     }),

@@ -28,6 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { getPodcastSourceType } from "@/server/lib/podcast-utils";
 import { useTRPC } from "@/server/trpc/client";
 
 const signals = ["all", "with-signals", "without-signals"] as const;
@@ -50,6 +51,24 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
 
   const parseFeedMutation = useMutation({
     ...trpc.podcasts.parseFeed.mutationOptions(),
+    onError: (error) => {
+      toast.error(error.message);
+    },
+    onSuccess: (data) => {
+      toast.success(data.message);
+      queryClient.invalidateQueries({
+        queryKey: trpc.podcasts.get.queryKey({ podcastId: params.id }),
+      });
+      queryClient.invalidateQueries(
+        trpc.podcasts.episodesInfinite.infiniteQueryFilter({
+          podcastId: params.id,
+        }),
+      );
+    },
+  });
+
+  const syncYouTubePlaylistMutation = useMutation({
+    ...trpc.podcasts.syncYouTubePlaylist.mutationOptions(),
     onError: (error) => {
       toast.error(error.message);
     },
@@ -122,6 +141,12 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
   const episodesError =
     episodesQuery.error instanceof Error ? episodesQuery.error.message : null;
 
+  // Determine the source type of this podcast
+  const sourceType = getPodcastSourceType(
+    podcastData?.feedUrl ?? null,
+    podcastData?.youtubePlaylistId ?? null,
+  );
+
   return (
     <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
       {/* Back Navigation */}
@@ -186,40 +211,86 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
         </div>
 
         <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 sm:flex-wrap sm:overflow-x-visible">
-          {podcastData?.feedUrl && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="shrink-0"
-              onClick={() =>
-                parseFeedMutation.mutate({
-                  podcastId: params.id,
-                })
-              }
-              disabled={parseFeedMutation.isPending}
-            >
-              <HugeiconsIcon icon={RssIcon} size={16} />
-              {parseFeedMutation.isPending ? "Parsing..." : "Parse Feed"}
-            </Button>
-          )}
-          {podcastData?.feedUrl && (
-            <Button variant="outline" size="sm" className="shrink-0" asChild>
-              <a
-                href={podcastData.feedUrl}
-                target="_blank"
-                rel="noopener noreferrer"
+          {/* RSS Podcast Buttons */}
+          {sourceType === "rss" && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                onClick={() =>
+                  parseFeedMutation.mutate({
+                    podcastId: params.id,
+                  })
+                }
+                disabled={parseFeedMutation.isPending}
               >
-                <HugeiconsIcon icon={Link01Icon} size={16} />
-                RSS Feed
-              </a>
-            </Button>
+                <HugeiconsIcon icon={RssIcon} size={16} />
+                {parseFeedMutation.isPending ? "Parsing..." : "Parse Feed"}
+              </Button>
+              <Button variant="outline" size="sm" className="shrink-0" asChild>
+                <a
+                  href={podcastData.feedUrl || "#"}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <HugeiconsIcon icon={Link01Icon} size={16} />
+                  RSS Feed
+                </a>
+              </Button>
+            </>
           )}
-          <AddYouTubePlaylistDialog podcastId={params.id}>
-            <Button variant="outline" size="sm" className="shrink-0">
-              <YoutubeIcon className="h-4 w-4" />
-              Add YouTube Playlist
-            </Button>
-          </AddYouTubePlaylistDialog>
+
+          {/* YouTube Podcast Buttons */}
+          {sourceType === "youtube" && (
+            <>
+              <Button variant="outline" size="sm" className="shrink-0" asChild>
+                <a
+                  href={`https://www.youtube.com/playlist?list=${podcastData.youtubePlaylistId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <YoutubeIcon className="h-4 w-4" />
+                  YouTube Playlist
+                </a>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                onClick={() =>
+                  syncYouTubePlaylistMutation.mutate({
+                    podcastId: params.id,
+                  })
+                }
+                disabled={syncYouTubePlaylistMutation.isPending}
+              >
+                <YoutubeIcon className="h-4 w-4" />
+                {syncYouTubePlaylistMutation.isPending
+                  ? "Syncing..."
+                  : "Sync Playlist"}
+              </Button>
+              <AddYouTubePlaylistDialog
+                podcastId={params.id}
+                currentPlaylistId={podcastData.youtubePlaylistId ?? null}
+              >
+                <Button variant="outline" size="sm" className="shrink-0">
+                  <YoutubeIcon className="h-4 w-4" />
+                  Change Playlist
+                </Button>
+              </AddYouTubePlaylistDialog>
+            </>
+          )}
+
+          {/* No Source - Allow Adding YouTube Playlist */}
+          {sourceType === "none" && (
+            <AddYouTubePlaylistDialog podcastId={params.id}>
+              <Button variant="outline" size="sm" className="shrink-0">
+                <YoutubeIcon className="h-4 w-4" />
+                Add YouTube Playlist
+              </Button>
+            </AddYouTubePlaylistDialog>
+          )}
         </div>
       </div>
 
@@ -234,6 +305,23 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
           </div>
           <p className="text-xs text-muted-foreground">
             Processing feed and episodes...
+          </p>
+        </div>
+      )}
+
+      {/* YouTube Sync Progress */}
+      {syncYouTubePlaylistMutation.isPending && (
+        <div className="rounded-lg border bg-muted/50 p-4">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-sm font-medium">
+              Syncing YouTube Playlist
+            </span>
+          </div>
+          <div className="mb-2 h-2 rounded-full bg-muted">
+            <div className="h-2 rounded-full bg-primary animate-pulse w-full" />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Fetching videos from YouTube...
           </p>
         </div>
       )}

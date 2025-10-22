@@ -21,11 +21,13 @@ import { useTRPC } from "@/server/trpc/client";
 type AddYouTubePlaylistDialogProps = {
   children: React.ReactNode;
   podcastId: string;
+  currentPlaylistId?: string | null;
 };
 
 export function AddYouTubePlaylistDialog({
   children,
   podcastId,
+  currentPlaylistId,
 }: AddYouTubePlaylistDialogProps) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
@@ -36,7 +38,11 @@ export function AddYouTubePlaylistDialog({
   const updatePlaylistId = useMutation({
     ...trpc.podcasts.updateYouTubePlaylistId.mutationOptions(),
     onSuccess: () => {
-      toast.success("YouTube playlist added successfully");
+      toast.success(
+        currentPlaylistId
+          ? "YouTube playlist updated successfully"
+          : "YouTube playlist added successfully",
+      );
       queryClient.invalidateQueries({
         queryKey: trpc.podcasts.get.queryKey({ podcastId }),
       });
@@ -48,7 +54,9 @@ export function AddYouTubePlaylistDialog({
       toast.error(
         error instanceof Error
           ? error.message
-          : "Failed to add YouTube playlist",
+          : currentPlaylistId
+            ? "Failed to update YouTube playlist"
+            : "Failed to add YouTube playlist",
       );
     },
   });
@@ -107,10 +115,14 @@ export function AddYouTubePlaylistDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <YoutubeIcon className="h-5 w-5 text-red-600" />
-            Add YouTube Playlist
+            {currentPlaylistId
+              ? "Change YouTube Playlist"
+              : "Add YouTube Playlist"}
           </DialogTitle>
           <DialogDescription>
-            Enter the YouTube playlist URL or ID to sync episodes from YouTube.
+            {currentPlaylistId
+              ? "Update the YouTube playlist for this podcast. This will change which videos are synced."
+              : "Enter the YouTube playlist URL or ID to sync episodes from YouTube."}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
