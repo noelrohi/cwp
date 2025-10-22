@@ -8,6 +8,7 @@ import {
   transcriptChunk,
 } from "@/server/db/schema/podcast";
 import type { TranscriptData } from "@/types/transcript";
+import { getYouTubeTranscriptUtterances } from "./youtube-transcript";
 
 export type DatabaseClient = typeof dbInstance;
 export type EpisodeRecord = typeof episodeSchema.$inferSelect;
@@ -53,36 +54,84 @@ export async function ensureEpisodeTranscript({
     };
   }
 
-  if (!episode.audioUrl) {
-    throw new Error("Episode has no audio URL");
-  }
-
-  const apiKey = deepgramApiKey ?? process.env.DEEPGRAM_API_KEY;
-  if (!apiKey) {
-    throw new Error("DEEPGRAM_API_KEY environment variable is not set");
-  }
-
   try {
     await db
       .update(episodeSchema)
       .set({ status: "processing" })
       .where(eq(episodeSchema.id, episode.id));
 
-    const deepgram = createDeepgramClient(apiKey);
-    const { result, error } = await deepgram.listen.prerecorded.transcribeUrl(
-      { url: episode.audioUrl },
-      defaultDeepgramOptions,
-    );
+    let utterances: TranscriptData | null = null;
+    let duration: number | undefined;
+    let transcriptSource: "youtube" | "deepgram" = "deepgram";
 
-    if (error) {
-      throw new Error(`Deepgram transcription failed: ${error.message}`);
+    // Try YouTube transcript first if video ID is available
+    if (episode.youtubeVideoId) {
+      console.log(
+        `Attempting to fetch YouTube transcript for video: ${episode.youtubeVideoId}`,
+      );
+      try {
+        const youtubeUtterances = await getYouTubeTranscriptUtterances(
+          episode.youtubeVideoId,
+        );
+        if (youtubeUtterances && youtubeUtterances.length > 0) {
+          utterances = youtubeUtterances;
+          transcriptSource = "youtube";
+          console.log(
+            `Successfully fetched YouTube transcript (${youtubeUtterances.length} utterances)`,
+          );
+        } else {
+          console.log(
+            "YouTube transcript unavailable, falling back to Deepgram",
+          );
+        }
+      } catch (error) {
+        console.error("YouTube transcript fetch failed:", error);
+        console.log("Falling back to Deepgram");
+      }
     }
 
-    const utterances = result.results.utterances;
-    if (!utterances || utterances.length === 0) {
-      throw new Error("Deepgram returned no utterances for this episode");
+    // Fall back to Deepgram if YouTube failed or unavailable
+    if (!utterances) {
+      if (!episode.audioUrl) {
+        throw new Error(
+          "Episode has no audio URL and YouTube transcript unavailable",
+        );
+      }
+
+      const apiKey = deepgramApiKey ?? process.env.DEEPGRAM_API_KEY;
+      if (!apiKey) {
+        throw new Error("DEEPGRAM_API_KEY environment variable is not set");
+      }
+
+      console.log(
+        `Fetching Deepgram transcript for audio URL: ${episode.audioUrl}`,
+      );
+      const deepgram = createDeepgramClient(apiKey);
+      const { result, error } = await deepgram.listen.prerecorded.transcribeUrl(
+        { url: episode.audioUrl },
+        defaultDeepgramOptions,
+      );
+
+      if (error) {
+        throw new Error(`Deepgram transcription failed: ${error.message}`);
+      }
+
+      const deepgramUtterances = result.results.utterances;
+      duration = result.metadata.duration;
+      transcriptSource = "deepgram";
+
+      if (!deepgramUtterances || deepgramUtterances.length === 0) {
+        throw new Error("Deepgram returned no utterances for this episode");
+      }
+
+      utterances = deepgramUtterances;
+
+      console.log(
+        `Successfully fetched Deepgram transcript (${deepgramUtterances.length} utterances)`,
+      );
     }
 
+    // Store transcript in Vercel Blob
     const jsonContent = JSON.stringify(utterances);
     const blob = await put(
       `transcripts/${episode.id}-${Date.now().toString()}.json`,
@@ -97,13 +146,14 @@ export async function ensureEpisodeTranscript({
       .update(episodeSchema)
       .set({
         transcriptUrl: blob.url,
+        transcriptSource,
         status: "processing",
       })
       .where(eq(episodeSchema.id, episode.id));
 
     return {
       transcriptUrl: blob.url,
-      duration: result.metadata.duration,
+      duration,
       wasCreated: true,
     };
   } catch (error) {

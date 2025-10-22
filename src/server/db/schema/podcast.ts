@@ -58,6 +58,7 @@ export const podcast = pgTable(
     description: text("description"),
     imageUrl: text("image_url"),
     feedUrl: text("feed_url"),
+    youtubePlaylistId: text("youtube_playlist_id"),
     userId: text("user_id").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -88,7 +89,10 @@ export const episode = pgTable(
     durationSec: integer("duration_sec"),
     audioUrl: text("audio_url"),
     transcriptUrl: text("transcript_url"),
+    transcriptSource: text("transcript_source"), // "youtube" | "deepgram" | null
     thumbnailUrl: text("thumbnail_url"),
+    youtubeVideoId: text("youtube_video_id"),
+    youtubeVideoUrl: text("youtube_video_url"),
     // iTunes namespace fields
     itunesTitle: text("itunes_title"),
     itunesEpisodeType: text("itunes_episode_type"), // full, trailer, bonus

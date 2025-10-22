@@ -14,10 +14,12 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { YoutubeIcon } from "lucide-react";
 import Link from "next/link";
 import { parseAsStringLiteral, useQueryState } from "nuqs";
 import { use } from "react";
 import { toast } from "sonner";
+import { AddYouTubePlaylistDialog } from "@/components/blocks/podcasts/add-youtube-playlist-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -212,6 +214,12 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
               </a>
             </Button>
           )}
+          <AddYouTubePlaylistDialog podcastId={params.id}>
+            <Button variant="outline" size="sm" className="shrink-0">
+              <YoutubeIcon className="h-4 w-4" />
+              Add YouTube Playlist
+            </Button>
+          </AddYouTubePlaylistDialog>
         </div>
       </div>
 

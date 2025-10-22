@@ -212,6 +212,7 @@ export const podcastsRouter = createTRPCRouter({
         description: z.string().optional(),
         imageUrl: z.string().optional(),
         feedUrl: z.string().optional(),
+        youtubePlaylistId: z.string().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -240,6 +241,7 @@ export const podcastsRouter = createTRPCRouter({
           description: description || null,
           imageUrl: imageUrl || null,
           feedUrl: input.feedUrl || null,
+          youtubePlaylistId: input.youtubePlaylistId || null,
           userId: ctx.user.id,
         };
 
@@ -525,5 +527,252 @@ export const podcastsRouter = createTRPCRouter({
         feedTitle: feedData.title,
         totalEpisodes: totalItems,
       };
+    }),
+
+  updateYouTubePlaylistId: protectedProcedure
+    .input(
+      z.object({
+        podcastId: z.string(),
+        youtubePlaylistId: z.string().nullable(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        await ctx.db
+          .update(podcast)
+          .set({ youtubePlaylistId: input.youtubePlaylistId })
+          .where(
+            and(
+              eq(podcast.id, input.podcastId),
+              eq(podcast.userId, ctx.user.id),
+            ),
+          );
+
+        return {
+          success: true,
+          message: "YouTube playlist ID updated",
+        };
+      } catch (error) {
+        console.error("Update YouTube playlist ID error:", error);
+        throw new Error("Failed to update YouTube playlist ID");
+      }
+    }),
+
+  manuallyMatchEpisode: protectedProcedure
+    .input(
+      z.object({
+        episodeId: z.string(),
+        youtubeVideoId: z.string(),
+        youtubeVideoUrl: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        // Verify episode belongs to user
+        const episodeRecord = await ctx.db.query.episode.findFirst({
+          where: and(
+            eq(episode.id, input.episodeId),
+            eq(episode.userId, ctx.user.id),
+          ),
+        });
+
+        if (!episodeRecord) {
+          throw new Error("Episode not found");
+        }
+
+        // Update episode with YouTube video info
+        await ctx.db
+          .update(episode)
+          .set({
+            youtubeVideoId: input.youtubeVideoId,
+            youtubeVideoUrl:
+              input.youtubeVideoUrl ||
+              `https://www.youtube.com/watch?v=${input.youtubeVideoId}`,
+          })
+          .where(eq(episode.id, input.episodeId));
+
+        return {
+          success: true,
+          message: "Episode manually matched with YouTube video",
+        };
+      } catch (error) {
+        console.error("Manual episode match error:", error);
+        throw new Error(
+          error instanceof Error
+            ? error.message
+            : "Failed to manually match episode",
+        );
+      }
+    }),
+
+  getPotentialYouTubeMatches: protectedProcedure
+    .input(
+      z.object({
+        episodeId: z.string(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      try {
+        // Get the episode with its podcast
+        const episodeRecord = await ctx.db.query.episode.findFirst({
+          where: and(
+            eq(episode.id, input.episodeId),
+            eq(episode.userId, ctx.user.id),
+          ),
+          with: {
+            podcast: true,
+          },
+        });
+
+        if (!episodeRecord) {
+          throw new Error("Episode not found");
+        }
+
+        // Get channel name from episode author
+        const channelName = episodeRecord.author || episodeRecord.podcast?.title || "";
+
+        // Search YouTube using the episode title
+        const { searchYouTubeVideos } = await import(
+          "@/server/lib/youtube-search"
+        );
+
+        const searchQuery = episodeRecord.itunesTitle || episodeRecord.title;
+        console.log(`[YouTube Search] Searching for episode: "${searchQuery}"`);
+
+        // Add podcast/channel name to improve search accuracy
+        const enhancedQuery = channelName
+          ? `${searchQuery} ${channelName}`
+          : searchQuery;
+
+        const searchResults = await searchYouTubeVideos({
+          query: enhancedQuery,
+          maxResults: 20,
+        });
+
+        if (searchResults.length === 0) {
+          console.log("[YouTube Search] No results found, trying without channel name");
+          // Fallback: try search without channel name
+          const fallbackResults = await searchYouTubeVideos({
+            query: searchQuery,
+            maxResults: 20,
+          });
+          searchResults.push(...fallbackResults);
+        }
+
+        // Get all already matched video IDs for this podcast
+        const matchedEpisodes = await ctx.db.query.episode.findMany({
+          where: and(
+            eq(episode.podcastId, episodeRecord.podcast?.id || ""),
+            eq(episode.userId, ctx.user.id),
+            not(eq(episode.youtubeVideoId, sql`NULL`)),
+          ),
+          columns: {
+            youtubeVideoId: true,
+          },
+        });
+
+        const matchedVideoIds = new Set(
+          matchedEpisodes
+            .map((e) => e.youtubeVideoId)
+            .filter((id): id is string => id !== null),
+        );
+
+        // Calculate confidence scores
+        const { compareTwoStrings } = await import("string-similarity");
+        const { normalizeTitle } = await import(
+          "@/server/lib/youtube-matcher-utils"
+        );
+
+        const normalizedEpisodeTitle = normalizeTitle(searchQuery);
+
+        type VideoWithScore = {
+          videoId: string;
+          title: string;
+          description: string;
+          publishedAt: string | null;
+          durationSec: number;
+          thumbnailUrl: string | null;
+          videoUrl: string;
+          confidence: number;
+          titleSimilarity: number;
+          dateDiffDays: number | null;
+          isAlreadyMatched: boolean;
+          channelName: string;
+        };
+
+        const videosWithScores: VideoWithScore[] = searchResults.map(
+          (video, index) => {
+            const normalizedVideoTitle = normalizeTitle(video.title);
+            const titleSimilarity = compareTwoStrings(
+              normalizedEpisodeTitle,
+              normalizedVideoTitle,
+            );
+
+            // Calculate duration similarity if both durations are available
+            let durationSimilarity = 0;
+            if (episodeRecord.durationSec && video.durationSec) {
+              const durationDiff = Math.abs(
+                episodeRecord.durationSec - video.durationSec,
+              );
+              durationSimilarity = 1 - Math.min(durationDiff / episodeRecord.durationSec, 1);
+            }
+
+            // Calculate confidence score:
+            // 1. YouTube's search ranking (position bonus: first result gets higher score)
+            const positionBonus = Math.max(0, (20 - index) / 20) * 0.3; // 0-30% based on position
+            // 2. Title similarity (40%)
+            const titleScore = titleSimilarity * 0.4;
+            // 3. Duration similarity if available (30%)
+            const durationScore = durationSimilarity * 0.3;
+
+            const confidence = positionBonus + titleScore + durationScore;
+
+            // Calculate date difference if available
+            let dateDiffDays: number | null = null;
+            if (episodeRecord.publishedAt && video.publishedAt) {
+              const episodeDate = episodeRecord.publishedAt.getTime();
+              const videoDate = video.publishedAt.getTime();
+              dateDiffDays = Math.abs(episodeDate - videoDate) / (1000 * 60 * 60 * 24);
+            }
+
+            return {
+              videoId: video.videoId,
+              title: video.title,
+              description: video.description,
+              publishedAt: video.publishedAt?.toISOString() || null,
+              durationSec: video.durationSec,
+              thumbnailUrl: video.thumbnailUrl,
+              videoUrl: video.videoUrl,
+              confidence,
+              titleSimilarity,
+              dateDiffDays,
+              isAlreadyMatched: matchedVideoIds.has(video.videoId),
+              channelName: video.channelName,
+            };
+          },
+        );
+
+        // Sort by confidence (highest first), but put already matched videos at the end
+        videosWithScores.sort((a, b) => {
+          if (a.isAlreadyMatched !== b.isAlreadyMatched) {
+            return a.isAlreadyMatched ? 1 : -1;
+          }
+          return b.confidence - a.confidence;
+        });
+
+        return {
+          episodeTitle: episodeRecord.title,
+          episodePublishedAt: episodeRecord.publishedAt?.toISOString() || null,
+          searchQuery: enhancedQuery,
+          videos: videosWithScores,
+        };
+      } catch (error) {
+        console.error("Get potential YouTube matches error:", error);
+        throw new Error(
+          error instanceof Error
+            ? error.message
+            : "Failed to get potential YouTube matches",
+        );
+      }
     }),
 });

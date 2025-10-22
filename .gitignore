@@ -48,3 +48,8 @@ public/mp3
 .cache/
 
 .tasks/*
+
+# YouTube debug files
+unmatched-episodes-*.json
+scripts/debug-*.ts
+scripts/test-*.ts

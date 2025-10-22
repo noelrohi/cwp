@@ -19,6 +19,7 @@ import {
   Scissor01Icon,
   SparklesIcon,
   Undo02Icon,
+  YoutubeIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -34,6 +35,7 @@ type SignalAction = "saved" | "skipped";
 import { ChevronDown } from "lucide-react";
 import { Streamdown } from "streamdown";
 import { MetaSignalsTab } from "@/components/blocks/episode/meta-signals-tab";
+import { SyncYouTubeVideoDialog } from "@/components/blocks/episodes/sync-youtube-video-dialog";
 import {
   SignalCard,
   type SignalCardMetadataItem,
@@ -1213,6 +1215,27 @@ Content: ${content}
                             Download Audio
                           </a>
                         </DropdownMenuItem>
+                      )}
+                      {episodeData.youtubeVideoUrl ? (
+                        <DropdownMenuItem asChild>
+                          <a
+                            href={episodeData.youtubeVideoUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <HugeiconsIcon icon={YoutubeIcon} size={16} />
+                            View on YouTube
+                          </a>
+                        </DropdownMenuItem>
+                      ) : (
+                        <SyncYouTubeVideoDialog episodeId={params.id}>
+                          <DropdownMenuItem
+                            onSelect={(e) => e.preventDefault()}
+                          >
+                            <HugeiconsIcon icon={YoutubeIcon} size={16} />
+                            Sync to YouTube
+                          </DropdownMenuItem>
+                        </SyncYouTubeVideoDialog>
                       )}
                     </DropdownMenuContent>
                   </DropdownMenu>
