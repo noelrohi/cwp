@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { cosineSimilarity } from "ai";
+import { cosineSimilarity, generateText } from "ai";
 import { and, eq, sql } from "drizzle-orm";
+import { openrouter } from "@/ai/models";
 import { generateEmbeddingBatch } from "@/lib/embedding";
 import type { db as dbInstance } from "@/server/db";
 import {
@@ -31,18 +32,18 @@ export interface ArticleProcessingResult {
 
 /**
  * Extract article content using Jina AI Reader
- * Uses JSON format for cleaner content extraction
+ * Uses markdown format for cleaner content extraction
  */
 export async function extractArticleContent(
   url: string,
 ): Promise<ArticleExtractionResult> {
   const jinaUrl = `https://r.jina.ai/${url}`;
 
-  // Request JSON format for cleaner content (filters out navigation/UI elements)
+  // Request markdown format for cleaner content (filters out navigation/UI elements)
   const response = await fetch(jinaUrl, {
     headers: {
-      Accept: "application/json",
       Authorization: `Bearer ${process.env.JINA_API_KEY}`,
+      "X-Return-Format": "markdown",
     },
   });
 
@@ -52,35 +53,106 @@ export async function extractArticleContent(
     );
   }
 
-  const data = await response.json();
-  const jinaData = data.data;
+  const rawMarkdown = await response.text();
 
-  // Extract metadata from JSON response
-  const title = jinaData.title || "Untitled Article";
-  const author = jinaData.author || undefined;
-  const siteName = jinaData.siteName || undefined;
-  const publishedAt = jinaData.publishedTime
-    ? new Date(jinaData.publishedTime)
-    : undefined;
+  // Parse metadata from markdown headers if available
+  const lines = rawMarkdown.split("\n");
+  let title = "Untitled Article";
+  let author: string | undefined;
+  let publishedAt: Date | undefined;
+  let siteName: string | undefined;
+  let excerpt: string | undefined;
 
-  // Get clean markdown content from JSON response
-  const rawBodyContent = jinaData.content || "";
+  // Extract metadata from first few lines
+  for (let i = 0; i < Math.min(lines.length, 10); i++) {
+    const line = lines[i].trim();
 
-  const content = cleanMarkdownContent(rawBodyContent);
+    // Title is usually the first H1
+    if (line.startsWith("# ") && title === "Untitled Article") {
+      title = line.substring(2).trim();
+    }
+
+    // Look for "By Author" pattern
+    if (line.match(/^By\s+(.+)$/i)) {
+      author = line.replace(/^By\s+/i, "").trim();
+    }
+
+    // Look for date patterns
+    const dateMatch = line.match(/\b([A-Z][a-z]+\s+\d{1,2},\s+\d{4})\b/);
+    if (dateMatch) {
+      const parsedDate = new Date(dateMatch[1]);
+      if (!Number.isNaN(parsedDate.getTime())) {
+        publishedAt = parsedDate;
+      }
+    }
+  }
+
+  // Clean the markdown using AI to intelligently remove navigation
+  const cleanedMarkdown = await cleanMarkdownWithAI(rawMarkdown);
+
+  // Apply additional regex-based cleaning for embeddings
+  const content = cleanMarkdownContent(cleanedMarkdown);
 
   if (!content || content.length < 100) {
     throw new Error("Article content too short or empty");
   }
 
+  // Generate excerpt from first paragraph
+  if (!excerpt) {
+    const firstParagraph = content.split("\n\n")[0];
+    excerpt = firstParagraph?.slice(0, 200) || content.slice(0, 200);
+  }
+
   return {
     title,
     content,
-    rawContent: rawBodyContent,
+    rawContent: cleanedMarkdown, // Use AI-cleaned markdown for display
     author,
     publishedAt,
     siteName,
-    excerpt: jinaData.description || content.slice(0, 200),
+    excerpt,
   };
+}
+
+/**
+ * Clean markdown content using Grok-4 AI model
+ * Intelligently removes navigation, headers, footers, and UI elements while preserving article content
+ */
+export async function cleanMarkdownWithAI(markdown: string): Promise<string> {
+  try {
+    const response = await generateText({
+      model: openrouter("x-ai/grok-4-fast"),
+      messages: [
+        {
+          role: "system",
+          content: `You are a markdown content cleaner. Your job is to extract ONLY the main article content from a webpage's markdown, removing all navigation, headers, footers, sidebars, and UI elements.
+
+Rules:
+- Keep the article title if it's an H1 at the start
+- Keep the author name and publish date if present
+- Keep ALL main article body content and paragraphs
+- Remove navigation menus, search boxes, subscribe forms, social media buttons
+- Remove site headers/footers like "Published Time:", "Search", "Subscribe", "Share This", etc.
+- Remove image artifacts like "Image 1:", "Image 2:", etc.
+- Remove horizontal rules and dividers
+- Return ONLY the clean markdown, no explanations or commentary
+- Preserve the original markdown formatting (headings, lists, quotes, etc.)`,
+        },
+        {
+          role: "user",
+          content: `Clean this markdown content:\n\n${markdown}`,
+        },
+      ],
+      temperature: 0.1,
+      maxOutputTokens: 4000,
+    });
+
+    return response.text.trim();
+  } catch (error) {
+    console.error("Failed to clean markdown with AI:", error);
+    // Fallback to regex-based cleaning if AI fails
+    return cleanMarkdownContent(markdown);
+  }
 }
 
 /**
@@ -119,7 +191,7 @@ export function extractArticleBody(jinaContent: string): string {
   content = content.replace(/\[\]\([^)]+\)/g, "");
 
   // Step 4: Remove specific common footer patterns
-  content = content.replace(/Privacy & Cookies:.*?(?=\n\n|$)/gis, "");
+  content = content.replace(/Privacy & Cookies:.*?(?=\n\n|$)/gi, "");
   content = content.replace(/back\s+random\s+next/gi, "");
 
   // Step 5: Remove divider lines
@@ -139,6 +211,28 @@ export function extractArticleBody(jinaContent: string): string {
  */
 export function cleanMarkdownContent(content: string): string {
   let cleaned = content;
+
+  // Remove common blog navigation/header patterns
+  // These patterns appear before the main content
+  cleaned = cleaned.replace(/^.*?Published Time:.*?$/gm, "");
+  cleaned = cleaned.replace(/^You have unread updates\d*$/gm, "");
+  cleaned = cleaned.replace(/^Search\s*[-=]*$/gm, "");
+  cleaned = cleaned.replace(/^Search for:.*$/gm, "");
+  cleaned = cleaned.replace(/^Or try my new.*?search bot.*$/gm, "");
+  cleaned = cleaned.replace(/^Subscribe\s*[-=]*$/gm, "");
+  cleaned = cleaned.replace(/^Email.*?Terms.*?Privacy.*$/gm, "");
+  cleaned = cleaned.replace(/^Get the weekly digest.*$/gm, "");
+  cleaned = cleaned.replace(/^Type your email.*$/gm, "");
+  cleaned = cleaned.replace(/^\*\*Subscribe\*\*$/gm, "");
+  cleaned = cleaned.replace(/^Learn\s*[-=]*$/gm, "");
+  cleaned = cleaned.replace(/^Which workshop\?.*$/gm, "");
+  cleaned = cleaned.replace(/^The LinkedIn.*$/gm, "");
+  cleaned = cleaned.replace(/^Share This.*$/gm, "");
+  cleaned = cleaned.replace(/^Share on Mastodon.*$/gm, "");
+  cleaned = cleaned.replace(/^back\s+random\s+next$/gim, "");
+
+  // Remove site title patterns like "Title | Site Name"
+  cleaned = cleaned.replace(/^.+\s+\|\s+Seth's Blog\s*$/gm, "");
 
   // Remove horizontal rules (---, ===, etc.)
   cleaned = cleaned.replace(/^[\s]*[-=]{3,}[\s]*$/gm, "");
@@ -167,9 +261,13 @@ export function cleanMarkdownContent(content: string): string {
   cleaned = cleaned.replace(/```[\w]*\n/g, "");
   cleaned = cleaned.replace(/```/g, "");
 
+  // Remove bullet points that are just navigation links
+  cleaned = cleaned.replace(/^\*\s+\[.*?\]\s*$/gm, "");
+
   // Clean up excessive whitespace
   cleaned = cleaned.replace(/\n{3,}/g, "\n\n"); // max 2 newlines
   cleaned = cleaned.replace(/[ \t]+/g, " "); // normalize spaces
+  cleaned = cleaned.replace(/^\s+$/gm, ""); // remove lines with only whitespace
 
   return cleaned.trim();
 }

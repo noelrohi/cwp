@@ -24,6 +24,7 @@ import {
   transcriptChunk,
 } from "@/server/db/schema";
 import { dailySignal } from "@/server/db/schema/podcast";
+import { cleanMarkdownWithAI } from "@/server/lib/article-processing";
 import { createTRPCRouter, protectedProcedure } from "../init";
 
 export const articlesRouter = createTRPCRouter({
@@ -830,8 +831,8 @@ export const articlesRouter = createTRPCRouter({
       const jinaUrl = `https://r.jina.ai/${articleRecord.url}`;
       const response = await fetch(jinaUrl, {
         headers: {
-          Accept: "application/json",
           Authorization: `Bearer ${process.env.JINA_API_KEY}`,
+          "X-Return-Format": "markdown",
         },
       });
 
@@ -842,8 +843,10 @@ export const articlesRouter = createTRPCRouter({
         });
       }
 
-      const data = await response.json();
-      const rawContent = data.data.content;
+      const rawMarkdown = await response.text();
+
+      // Clean markdown using AI to remove navigation and UI elements
+      const rawContent = await cleanMarkdownWithAI(rawMarkdown);
 
       await ctx.db
         .update(article)
