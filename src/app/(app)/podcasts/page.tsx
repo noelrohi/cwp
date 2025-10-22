@@ -14,6 +14,7 @@ import Link from "next/link";
 import { useQueryState } from "nuqs";
 import { toast } from "sonner";
 import { AddPodcastDialog } from "@/components/blocks/podcasts/add-podcast-dialog";
+import { AddYouTubeChannelDialog } from "@/components/blocks/podcasts/add-youtube-channel-dialog";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -40,6 +41,9 @@ export default function Podcasts() {
   const [searchQuery, setSearchQuery] = useQueryState("q", {
     defaultValue: "",
   });
+  const [searchMode, setSearchMode] = useQueryState("mode", {
+    defaultValue: "podcasts",
+  });
   const [sortBy, setSortBy] = useQueryState("sort", { defaultValue: "date" });
   const [page, setPage] = useQueryState("page", {
     defaultValue: 1,
@@ -56,6 +60,19 @@ export default function Podcasts() {
       sortBy: sortBy as "date" | "title",
     }),
   );
+
+  const {
+    data: episodesData,
+    isLoading: episodesLoading,
+    error: episodesError,
+  } = useQuery({
+    ...trpc.episodes.searchGlobal.queryOptions({
+      query: debouncedSearchQuery.trim(),
+      limit: 50,
+    }),
+    enabled:
+      searchMode === "episodes" && debouncedSearchQuery.trim().length > 0,
+  });
 
   // Mutations
   const removePodcast = useMutation(trpc.podcasts.remove.mutationOptions());
@@ -95,12 +112,20 @@ export default function Podcasts() {
           Your Podcast List
         </h1>
 
-        <AddPodcastDialog>
-          <Button className="w-full sm:w-auto">
-            <HugeiconsIcon icon={Add01Icon} size={16} />
-            Add Podcast
-          </Button>
-        </AddPodcastDialog>
+        <div className="flex gap-2">
+          <AddPodcastDialog>
+            <Button className="flex-1 sm:flex-none">
+              <HugeiconsIcon icon={Add01Icon} size={16} />
+              Add Podcast
+            </Button>
+          </AddPodcastDialog>
+          <AddYouTubeChannelDialog>
+            <Button variant="outline" className="flex-1 sm:flex-none">
+              <HugeiconsIcon icon={Add01Icon} size={16} />
+              Add YouTube
+            </Button>
+          </AddYouTubeChannelDialog>
+        </div>
       </div>
 
       {/* Search and Filters */}
@@ -113,11 +138,29 @@ export default function Podcasts() {
           />
           <Input
             type="text"
-            placeholder="Search items..."
+            placeholder={
+              searchMode === "podcasts"
+                ? "Search podcasts..."
+                : "Search episodes..."
+            }
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
+            className="pl-10 pr-32"
           />
+          <div className="absolute right-2 top-1/2 -translate-y-1/2">
+            <Select value={searchMode} onValueChange={setSearchMode}>
+              <SelectTrigger
+                size="sm"
+                className="w-28 border-0 bg-secondary hover:bg-secondary/80"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="podcasts">Podcasts</SelectItem>
+                <SelectItem value="episodes">Episodes</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         <Select value={sortBy} onValueChange={setSortBy}>
@@ -131,8 +174,108 @@ export default function Podcasts() {
         </Select>
       </div>
 
-      {/* Podcasts List */}
-      {isLoading ? (
+      {/* Results List */}
+      {searchMode === "episodes" && debouncedSearchQuery ? (
+        // Episodes Search Results
+        episodesLoading ? (
+          <div className="space-y-3">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <div
+                key={index}
+                className="flex items-center gap-4 rounded-lg border bg-background p-4"
+              >
+                <Skeleton className="h-12 w-12 rounded-lg" />
+                <div className="flex-1">
+                  <Skeleton className="h-4 w-3/4 mb-2" />
+                  <Skeleton className="h-3 w-1/3" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : episodesError ? (
+          <div className="text-center py-12">
+            <div className="flex items-center justify-center mb-4">
+              <HugeiconsIcon
+                icon={Alert01Icon}
+                size={32}
+                className="text-destructive"
+              />
+            </div>
+            <h3 className="text-lg font-semibold mb-2">
+              Failed to search episodes
+            </h3>
+            <p className="text-base text-muted-foreground">
+              {episodesError.message || "An error occurred while searching."}
+            </p>
+          </div>
+        ) : episodesData && episodesData.length > 0 ? (
+          <>
+            <div className="space-y-3">
+              {episodesData.map((episode) => (
+                <Link
+                  key={episode.id}
+                  href={`/episode/${episode.id}`}
+                  className="flex items-center gap-4 rounded-lg border bg-background p-4 hover:bg-muted/50 transition-colors"
+                >
+                  {/* Episode/Podcast Thumbnail */}
+                  <div className="h-12 w-12 rounded-lg bg-muted flex-shrink-0">
+                    {episode.thumbnailUrl || episode.podcastImageUrl ? (
+                      <img
+                        src={
+                          episode.thumbnailUrl || episode.podcastImageUrl || ""
+                        }
+                        alt={episode.title}
+                        className="h-full w-full rounded-lg object-cover"
+                      />
+                    ) : (
+                      <div className="h-full w-full rounded-lg bg-gradient-to-br from-blue-500 to-purple-600" />
+                    )}
+                  </div>
+
+                  {/* Episode Info */}
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-base line-clamp-2">
+                      {episode.itunesTitle || episode.title}
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      {episode.podcastTitle}
+                      {(episode.publishedAt || episode.createdAt) && (
+                        <>
+                          {" • "}
+                          {new Date(
+                            episode.publishedAt || episode.createdAt,
+                          ).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })}
+                        </>
+                      )}
+                    </p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+            {episodesData.length >= 50 && (
+              <div className="flex justify-center pt-4">
+                <p className="text-sm text-muted-foreground">
+                  Showing first 50 results. Refine your search for more specific
+                  results.
+                </p>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="text-center py-12">
+            <div className="text-base text-muted-foreground mb-4">
+              No episodes found matching "{debouncedSearchQuery}"
+            </div>
+            <p className="text-base text-muted-foreground">
+              Try searching with different keywords or guest names.
+            </p>
+          </div>
+        )
+      ) : isLoading ? (
         <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, index) => (
             <div
@@ -265,7 +408,7 @@ export default function Podcasts() {
         </div>
       )}
 
-      {data?.data && data.data.length > 0 && (
+      {searchMode === "podcasts" && data?.data && data.data.length > 0 && (
         <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-base text-muted-foreground">
             Showing {(page - 1) * data.pagination.limit + 1} to{" "}

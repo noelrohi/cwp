@@ -63,6 +63,7 @@ export const podcastsRouter = createTRPCRouter({
           .enum(["all", "with-signals", "without-signals"])
           .optional()
           .default("all"),
+        query: z.string().optional(),
         limit: z.number().int().min(1).max(50).optional().default(20),
         cursor: z
           .object({
@@ -118,12 +119,23 @@ export const podcastsRouter = createTRPCRouter({
           })()
         : undefined;
 
+      const searchCondition = input.query
+        ? sql`(
+            ${episode.title} ilike ${`%${input.query}%`}
+            or ${episode.itunesTitle} ilike ${`%${input.query}%`}
+            or ${episode.description} ilike ${`%${input.query}%`}
+            or ${episode.author} ilike ${`%${input.query}%`}
+            or ${episode.creator} ilike ${`%${input.query}%`}
+          )`
+        : undefined;
+
       const rows = await ctx.db.query.episode.findMany({
         where: and(
           eq(episode.podcastId, input.podcastId),
           eq(episode.userId, ctx.user.id),
           filterCondition,
           cursorCondition,
+          searchCondition,
         ),
         orderBy: [desc(orderTimestampExpr), desc(episode.id)],
         limit: limit + 1,

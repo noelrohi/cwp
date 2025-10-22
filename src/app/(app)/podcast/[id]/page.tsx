@@ -6,6 +6,7 @@ import {
   Clock01Icon,
   Link01Icon,
   RssIcon,
+  Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -21,6 +22,7 @@ import { use } from "react";
 import { toast } from "sonner";
 import { AddYouTubePlaylistDialog } from "@/components/blocks/podcasts/add-youtube-playlist-dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -28,6 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useDebounce } from "@/hooks/use-debounce";
 import { getPodcastSourceType } from "@/server/lib/podcast-utils";
 import { useTRPC } from "@/server/trpc/client";
 
@@ -42,6 +45,11 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
     "filter",
     parseAsStringLiteral(signals).withDefault("all"),
   );
+  const [searchQuery, setSearchQuery] = useQueryState("q", {
+    defaultValue: "",
+  });
+
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
   const podcast = useQuery(
     trpc.podcasts.get.queryOptions({
@@ -89,6 +97,7 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
     ...trpc.podcasts.episodesInfinite.infiniteQueryOptions({
       podcastId: params.id,
       filterBySignals,
+      query: debouncedSearchQuery.trim() || undefined,
       limit: EPISODE_PAGE_SIZE,
     }),
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
@@ -328,23 +337,39 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
 
       {/* Episodes List */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-base sm:text-lg font-semibold">Episodes</h2>
-          <Select
-            value={filterBySignals}
-            onValueChange={(v: (typeof signals)[number]) =>
-              setFilterBySignals(v)
-            }
-          >
-            <SelectTrigger size="sm" className="w-[180px]">
-              <SelectValue placeholder="Filter episodes" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Episodes</SelectItem>
-              <SelectItem value="with-signals">With Signals</SelectItem>
-              <SelectItem value="without-signals">Without Signals</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
+            <div className="relative flex-1 sm:w-64">
+              <HugeiconsIcon
+                icon={Search01Icon}
+                size={16}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                type="text"
+                placeholder="Search episodes..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 h-9"
+              />
+            </div>
+            <Select
+              value={filterBySignals}
+              onValueChange={(v: (typeof signals)[number]) =>
+                setFilterBySignals(v)
+              }
+            >
+              <SelectTrigger size="sm" className="w-full sm:w-[180px]">
+                <SelectValue placeholder="Filter episodes" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Episodes</SelectItem>
+                <SelectItem value="with-signals">With Signals</SelectItem>
+                <SelectItem value="without-signals">Without Signals</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {episodesQuery.isError ? (
@@ -428,7 +453,9 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
               No episodes found
             </div>
             <p className="text-base text-muted-foreground">
-              Episodes will appear here once they're ingested.
+              {debouncedSearchQuery
+                ? "Try adjusting your search query."
+                : "Episodes will appear here once they're ingested."}
             </p>
           </div>
         )}

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
-import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { inngest } from "@/inngest/client";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
@@ -8,6 +8,7 @@ import {
   dailySignal,
   episode,
   episodeSummary,
+  podcast,
   transcriptChunk,
 } from "@/server/db/schema/podcast";
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "../init";
@@ -126,6 +127,63 @@ export const episodesRouter = createTRPCRouter({
         ...ep,
         signalCounts: signalCountMap.get(ep.id) ?? { total: 0, pending: 0 },
       }));
+    }),
+
+  searchGlobal: protectedProcedure
+    .input(
+      z.object({
+        query: z.string(),
+        limit: z.number().int().min(1).max(100).optional().default(50),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const { query, limit } = input;
+
+      if (!query.trim()) {
+        return [];
+      }
+
+      const searchPattern = `%${query.trim()}%`;
+
+      // Search across episodes with podcast information
+      const results = await ctx.db
+        .select({
+          id: episode.id,
+          episodeId: episode.episodeId,
+          title: episode.title,
+          itunesTitle: episode.itunesTitle,
+          description: episode.description,
+          publishedAt: episode.publishedAt,
+          createdAt: episode.createdAt,
+          durationSec: episode.durationSec,
+          author: episode.author,
+          creator: episode.creator,
+          thumbnailUrl: episode.thumbnailUrl,
+          podcastId: episode.podcastId,
+          podcastTitle: podcast.title,
+          podcastImageUrl: podcast.imageUrl,
+        })
+        .from(episode)
+        .innerJoin(podcast, eq(episode.podcastId, podcast.id))
+        .where(
+          and(
+            eq(episode.userId, ctx.user.id),
+            isNull(episode.hiddenAt),
+            or(
+              sql`${episode.title} ilike ${searchPattern}`,
+              sql`${episode.itunesTitle} ilike ${searchPattern}`,
+              sql`${episode.description} ilike ${searchPattern}`,
+              sql`${episode.author} ilike ${searchPattern}`,
+              sql`${episode.creator} ilike ${searchPattern}`,
+            ),
+          ),
+        )
+        .orderBy(
+          desc(sql`coalesce(${episode.publishedAt}, ${episode.createdAt})`),
+        )
+        .limit(limit);
+
+      return results;
     }),
 
   processEpisode: protectedProcedure
