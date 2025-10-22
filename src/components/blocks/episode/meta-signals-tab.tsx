@@ -13,14 +13,20 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { Item, ItemFooter } from "@/components/ui/item";
 import { useTRPC } from "@/server/trpc/client";
+import { MetaSignalCard } from "./meta-signal-card";
 
 interface MetaSignalsTabProps {
   episodeId: string;
+  hasYouTubeVideo?: boolean;
+  hasSignals?: boolean;
 }
 
-export function MetaSignalsTab({ episodeId }: MetaSignalsTabProps) {
+export function MetaSignalsTab({
+  episodeId,
+  hasYouTubeVideo = false,
+  hasSignals = false,
+}: MetaSignalsTabProps) {
   const trpc = useTRPC();
 
   // Get existing meta signal (if any)
@@ -45,8 +51,6 @@ export function MetaSignalsTab({ episodeId }: MetaSignalsTabProps) {
       toast.error("Failed to generate meta signal");
     }
   };
-
-  const selectedCount = metaSignal.data?.quotes?.length ?? 0;
 
   if (metaSignal.isPending) {
     return (
@@ -78,56 +82,15 @@ export function MetaSignalsTab({ episodeId }: MetaSignalsTabProps) {
   }
 
   const hasMetaSignal = metaSignal.data?.title && metaSignal.data?.summary;
+  const canGenerate = hasYouTubeVideo && hasSignals;
 
   return (
     <section className="space-y-6">
-      {/* Meta Signal Card or Empty State */}
+      {/* Twitter-like Feed or Empty State */}
       {hasMetaSignal && metaSignal.data ? (
-        <Item className="space-y-8" variant="muted">
-          {/* Headline - Banger style */}
-          <div className="space-y-3">
-            <h2 className="text-2xl sm:text-3xl font-bold leading-tight tracking-tight">
-              {metaSignal.data.title}
-            </h2>
-          </div>
-
-          {/* The Synthesis - Newsletter style narrative */}
-          <div className="prose prose-base dark:prose-invert max-w-none">
-            <p className="text-lg leading-relaxed font-normal text-foreground">
-              {metaSignal.data.summary}
-            </p>
-          </div>
-
-          {/* Best Quotes - Clean attribution */}
-          {selectedCount > 0 && metaSignal.data.quotes && (
-            <div className="space-y-6">
-              <div className="h-px bg-border" />
-              {metaSignal.data.quotes.map((quote) => (
-                <div key={quote.id} className="space-y-3">
-                  <blockquote className="text-base leading-relaxed text-foreground/90">
-                    "{quote.extractedQuote || quote.chunkContent}"
-                  </blockquote>
-                  <p className="text-sm text-muted-foreground">
-                    — {quote.signalSpeakerName || "Unknown"}
-                    {quote.chunkStartTimeSec && (
-                      <>
-                        {" "}
-                        • {Math.floor(quote.chunkStartTimeSec / 60)}:
-                        {String(quote.chunkStartTimeSec % 60).padStart(2, "0")}
-                      </>
-                    )}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Footer */}
-          <ItemFooter className="pt-6 border-t flex items-center justify-between">
-            <div className="text-xs text-muted-foreground">
-              {selectedCount} {selectedCount === 1 ? "quote" : "quotes"} •
-              AI-curated
-            </div>
+        <div className="space-y-4">
+          {/* Regenerate Button - only show when meta signal exists */}
+          <div className="flex items-center justify-end">
             <Button
               variant="outline"
               size="sm"
@@ -150,8 +113,11 @@ export function MetaSignalsTab({ episodeId }: MetaSignalsTabProps) {
                 </>
               )}
             </Button>
-          </ItemFooter>
-        </Item>
+          </div>
+
+          {/* Meta Signal Card */}
+          <MetaSignalCard signal={metaSignal.data} episodeId={episodeId} />
+        </div>
       ) : (
         <Empty>
           <EmptyHeader>
@@ -160,44 +126,49 @@ export function MetaSignalsTab({ episodeId }: MetaSignalsTabProps) {
             </EmptyMedia>
             <EmptyTitle>AI-Curated Meta Signal Card</EmptyTitle>
             <EmptyDescription>
-              Automatically curate and synthesize the best insights from
-              high-confidence signals into an executive-ready card.
+              {!hasYouTubeVideo
+                ? "Connect a YouTube video to enable meta signal generation."
+                : !hasSignals
+                  ? "Generate signals first to create a meta signal card."
+                  : "Automatically curate and synthesize the best insights from high-confidence signals into an executive-ready card."}
             </EmptyDescription>
           </EmptyHeader>
 
-          <EmptyContent>
-            <Button
-              size="lg"
-              onClick={handleGenerate}
-              disabled={generate.isPending}
-            >
-              {generate.isPending ? (
-                <>
-                  <HugeiconsIcon
-                    icon={Loading03Icon}
-                    size={16}
-                    className="animate-spin"
-                  />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <HugeiconsIcon icon={SparklesIcon} size={16} />
-                  Generate Meta Signal
-                </>
-              )}
-            </Button>
-            <p className="text-sm text-muted-foreground mt-3">
-              AI will select 2-4 best quotes and create a synthesized insight
-              card.
-            </p>
-
-            {generate.isPending && (
-              <p className="text-sm text-muted-foreground">
-                This usually takes 5-10 seconds
+          {canGenerate && (
+            <EmptyContent>
+              <Button
+                size="lg"
+                onClick={handleGenerate}
+                disabled={generate.isPending}
+              >
+                {generate.isPending ? (
+                  <>
+                    <HugeiconsIcon
+                      icon={Loading03Icon}
+                      size={16}
+                      className="animate-spin"
+                    />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <HugeiconsIcon icon={SparklesIcon} size={16} />
+                    Generate Meta Signal
+                  </>
+                )}
+              </Button>
+              <p className="text-sm text-muted-foreground mt-3">
+                AI will select 2-4 best quotes and create a synthesized insight
+                card.
               </p>
-            )}
-          </EmptyContent>
+
+              {generate.isPending && (
+                <p className="text-sm text-muted-foreground">
+                  This usually takes 5-10 seconds
+                </p>
+              )}
+            </EmptyContent>
+          )}
         </Empty>
       )}
     </section>

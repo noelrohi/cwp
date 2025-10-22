@@ -3,6 +3,7 @@ import {
   check,
   index,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   text,
@@ -18,6 +19,13 @@ export const metaSignalStatusEnum = pgEnum("meta_signal_status", [
   "draft",
   "ready",
   "published",
+]);
+
+export const metaSignalMediaTypeEnum = pgEnum("meta_signal_media_type", [
+  "text",
+  "image",
+  "carousel",
+  "video",
 ]);
 
 export const metaSignal = pgTable(
@@ -40,6 +48,15 @@ export const metaSignal = pgTable(
     title: text("title"),
     summary: text("summary"),
     manualNotes: text("manual_notes"),
+
+    // Media support for Twitter-like feed
+    mediaType: metaSignalMediaTypeEnum("media_type").default("text").notNull(),
+    mediaUrls: jsonb("media_urls").$type<string[]>(), // Array of media URLs
+    mediaMetadata: jsonb("media_metadata").$type<{
+      thumbnails?: string[];
+      durations?: number[];
+      altTexts?: string[];
+    }>(),
 
     // Publishing
     status: metaSignalStatusEnum("status").default("draft").notNull(),
@@ -104,6 +121,30 @@ export const metaSignalQuote = pgTable(
   ],
 );
 
+// User likes for meta signals (Twitter-like engagement)
+export const metaSignalLike = pgTable(
+  "meta_signal_like",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => nanoid()),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    metaSignalId: text("meta_signal_id")
+      .notNull()
+      .references(() => metaSignal.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index().on(table.userId),
+    index().on(table.metaSignalId),
+    unique().on(table.userId, table.metaSignalId),
+  ],
+);
+
 // Relations
 export const metaSignalRelations = relations(metaSignal, ({ one, many }) => ({
   episode: one(episode, {
@@ -115,6 +156,7 @@ export const metaSignalRelations = relations(metaSignal, ({ one, many }) => ({
     references: [article.id],
   }),
   quotes: many(metaSignalQuote),
+  likes: many(metaSignalLike),
 }));
 
 export const metaSignalQuoteRelations = relations(
@@ -130,3 +172,14 @@ export const metaSignalQuoteRelations = relations(
     }),
   }),
 );
+
+export const metaSignalLikeRelations = relations(metaSignalLike, ({ one }) => ({
+  user: one(user, {
+    fields: [metaSignalLike.userId],
+    references: [user.id],
+  }),
+  metaSignal: one(metaSignal, {
+    fields: [metaSignalLike.metaSignalId],
+    references: [metaSignal.id],
+  }),
+}));

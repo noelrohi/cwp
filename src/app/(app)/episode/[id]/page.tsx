@@ -1801,7 +1801,13 @@ Content: ${content}
         </section>
       )}
 
-      {activeTab === "meta-signals" && <MetaSignalsTab episodeId={params.id} />}
+      {activeTab === "meta-signals" && (
+        <MetaSignalsTab
+          episodeId={params.id}
+          hasYouTubeVideo={!!episode.data?.youtubeVideoId}
+          hasSignals={(signals.data?.length ?? 0) > 0}
+        />
+      )}
     </main>
   );
 }

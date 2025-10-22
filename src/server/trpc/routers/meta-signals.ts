@@ -6,6 +6,7 @@ import { inngest } from "@/inngest/client";
 import {
   dailySignal,
   metaSignal,
+  metaSignalLike,
   metaSignalQuote,
   transcriptChunk,
 } from "@/server/db/schema";
@@ -154,35 +155,51 @@ export const metaSignalsRouter = createTRPCRouter({
         return null;
       }
 
-      // Get selected quotes
-      const quotes = await ctx.db
-        .select({
-          id: metaSignalQuote.id,
-          dailySignalId: metaSignalQuote.dailySignalId,
-          extractedQuote: metaSignalQuote.extractedQuote,
-          sortOrder: metaSignalQuote.sortOrder,
-          addedAt: metaSignalQuote.addedAt,
-          // Signal data
-          signalRelevanceScore: dailySignal.relevanceScore,
-          signalExcerpt: dailySignal.excerpt,
-          signalSpeakerName: dailySignal.speakerName,
-          // Chunk data
-          chunkContent: transcriptChunk.content,
-          chunkSpeaker: transcriptChunk.speaker,
-          chunkStartTimeSec: transcriptChunk.startTimeSec,
-        })
-        .from(metaSignalQuote)
-        .innerJoin(
-          dailySignal,
-          eq(metaSignalQuote.dailySignalId, dailySignal.id),
-        )
-        .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
-        .where(eq(metaSignalQuote.metaSignalId, metaSignalRecord[0].id))
-        .orderBy(metaSignalQuote.sortOrder);
+      // Fetch quotes and like status in parallel
+      const [quotes, liked] = await Promise.all([
+        ctx.db
+          .select({
+            id: metaSignalQuote.id,
+            dailySignalId: metaSignalQuote.dailySignalId,
+            extractedQuote: metaSignalQuote.extractedQuote,
+            sortOrder: metaSignalQuote.sortOrder,
+            addedAt: metaSignalQuote.addedAt,
+            // Signal data
+            signalRelevanceScore: dailySignal.relevanceScore,
+            signalExcerpt: dailySignal.excerpt,
+            signalSpeakerName: dailySignal.speakerName,
+            // Chunk data
+            chunkContent: transcriptChunk.content,
+            chunkSpeaker: transcriptChunk.speaker,
+            chunkStartTimeSec: transcriptChunk.startTimeSec,
+          })
+          .from(metaSignalQuote)
+          .innerJoin(
+            dailySignal,
+            eq(metaSignalQuote.dailySignalId, dailySignal.id),
+          )
+          .innerJoin(
+            transcriptChunk,
+            eq(dailySignal.chunkId, transcriptChunk.id),
+          )
+          .where(eq(metaSignalQuote.metaSignalId, metaSignalRecord[0].id))
+          .orderBy(metaSignalQuote.sortOrder),
+        ctx.db
+          .select()
+          .from(metaSignalLike)
+          .where(
+            and(
+              eq(metaSignalLike.userId, ctx.user.id),
+              eq(metaSignalLike.metaSignalId, metaSignalRecord[0].id),
+            ),
+          )
+          .limit(1),
+      ]);
 
       return {
         ...metaSignalRecord[0],
         quotes,
+        isLiked: liked.length > 0,
       };
     }),
 
@@ -212,25 +229,21 @@ export const metaSignalsRouter = createTRPCRouter({
           .where(and(...whereConditions))
           .limit(1);
 
-        let metaSignalRecord;
-        if (existing.length > 0) {
-          metaSignalRecord = existing[0];
-        } else {
-          // Create new meta signal if doesn't exist
-          const id = nanoid();
-          const newMetaSignal = await tx
-            .insert(metaSignal)
-            .values({
-              id,
-              userId: ctx.user.id,
-              episodeId: input.episodeId || null,
-              articleId: input.articleId || null,
-              status: "draft",
-            })
-            .returning();
-
-          metaSignalRecord = newMetaSignal[0];
-        }
+        const metaSignalRecord =
+          existing.length > 0
+            ? existing[0]
+            : (
+                await tx
+                  .insert(metaSignal)
+                  .values({
+                    id: nanoid(),
+                    userId: ctx.user.id,
+                    episodeId: input.episodeId || null,
+                    articleId: input.articleId || null,
+                    status: "draft",
+                  })
+                  .returning()
+              )[0];
 
         // Verify daily signal ownership
         const dailySignalRecord = await tx
@@ -381,4 +394,105 @@ export const metaSignalsRouter = createTRPCRouter({
         message: "Meta signal generation started",
       };
     }),
+
+  // Like/unlike a meta signal (Twitter-style)
+  like: protectedProcedure
+    .input(
+      z.object({
+        metaSignalId: z.string(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      return await ctx.db.transaction(async (tx) => {
+        // Check if already liked
+        const existing = await tx
+          .select()
+          .from(metaSignalLike)
+          .where(
+            and(
+              eq(metaSignalLike.userId, ctx.user.id),
+              eq(metaSignalLike.metaSignalId, input.metaSignalId),
+            ),
+          )
+          .limit(1);
+
+        if (existing.length > 0) {
+          // Unlike
+          await tx
+            .delete(metaSignalLike)
+            .where(eq(metaSignalLike.id, existing[0].id));
+
+          // Decrement like count
+          await tx
+            .update(metaSignal)
+            .set({
+              likeCount: sql`${metaSignal.likeCount} - 1`,
+            })
+            .where(eq(metaSignal.id, input.metaSignalId));
+
+          return { liked: false };
+        }
+
+        // Like
+        await tx.insert(metaSignalLike).values({
+          id: nanoid(),
+          userId: ctx.user.id,
+          metaSignalId: input.metaSignalId,
+        });
+
+        // Increment like count
+        await tx
+          .update(metaSignal)
+          .set({
+            likeCount: sql`${metaSignal.likeCount} + 1`,
+          })
+          .where(eq(metaSignal.id, input.metaSignalId));
+
+        return { liked: true };
+      });
+    }),
+
+  // Check if user liked a meta signal
+  isLiked: protectedProcedure
+    .input(
+      z.object({
+        metaSignalId: z.string(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const like = await ctx.db
+        .select()
+        .from(metaSignalLike)
+        .where(
+          and(
+            eq(metaSignalLike.userId, ctx.user.id),
+            eq(metaSignalLike.metaSignalId, input.metaSignalId),
+          ),
+        )
+        .limit(1);
+
+      return like.length > 0;
+    }),
+
+  // List all liked meta signals by user
+  listLiked: protectedProcedure.query(async ({ ctx }) => {
+    const liked = await ctx.db
+      .select({
+        id: metaSignal.id,
+        title: metaSignal.title,
+        summary: metaSignal.summary,
+        mediaType: metaSignal.mediaType,
+        mediaUrls: metaSignal.mediaUrls,
+        mediaMetadata: metaSignal.mediaMetadata,
+        likeCount: metaSignal.likeCount,
+        createdAt: metaSignal.createdAt,
+        likedAt: metaSignalLike.createdAt,
+      })
+      .from(metaSignalLike)
+      .innerJoin(metaSignal, eq(metaSignalLike.metaSignalId, metaSignal.id))
+      .where(eq(metaSignalLike.userId, ctx.user.id))
+      .orderBy(desc(metaSignalLike.createdAt));
+
+    return liked;
+  }),
 });
