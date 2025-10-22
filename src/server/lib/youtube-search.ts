@@ -64,7 +64,9 @@ export async function searchYouTubeVideos(
 
       // Get duration
       const duration =
-        item.duration && typeof item.duration === "object" && "seconds" in item.duration
+        item.duration &&
+        typeof item.duration === "object" &&
+        "seconds" in item.duration
           ? Number(item.duration.seconds)
           : 0;
 
@@ -168,18 +170,35 @@ export async function getChannelId(
         channelId = pathParts[1];
       } else if (pathParts[0] === "@" || pathParts[0].startsWith("@")) {
         // Handle format
-        const handle = pathParts[0].startsWith("@") ? pathParts[0] : `@${pathParts[0]}`;
+        const handle = pathParts[0].startsWith("@")
+          ? pathParts[0]
+          : `@${pathParts[0]}`;
         const channel = await youtube.getChannel(handle);
-        return channel.header?.channel_id || null;
+        // Type guard for channel_id
+        const header = channel.header;
+        if (header && typeof header === "object" && "channel_id" in header) {
+          return String(header.channel_id) || null;
+        }
+        return null;
       } else if (pathParts[0] === "c" && pathParts[1]) {
         // Custom URL format
         const channel = await youtube.getChannel(pathParts[1]);
-        return channel.header?.channel_id || null;
+        // Type guard for channel_id
+        const header = channel.header;
+        if (header && typeof header === "object" && "channel_id" in header) {
+          return String(header.channel_id) || null;
+        }
+        return null;
       }
     } else if (channelUrlOrHandle.startsWith("@")) {
       // Handle format
       const channel = await youtube.getChannel(channelUrlOrHandle);
-      return channel.header?.channel_id || null;
+      // Type guard for channel_id
+      const header = channel.header;
+      if (header && typeof header === "object" && "channel_id" in header) {
+        return String(header.channel_id) || null;
+      }
+      return null;
     }
 
     return channelId;

@@ -156,7 +156,9 @@ export async function fetchPlaylistVideos(
 
       // Try to get published date from video_info (contains relative date like "7 months ago")
       const videoInfoText =
-        video.video_info && typeof video.video_info === "object" && "text" in video.video_info
+        video.video_info &&
+        typeof video.video_info === "object" &&
+        "text" in video.video_info
           ? String(video.video_info.text)
           : "";
 

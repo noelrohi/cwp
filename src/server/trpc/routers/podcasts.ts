@@ -629,7 +629,8 @@ export const podcastsRouter = createTRPCRouter({
         }
 
         // Get channel name from episode author
-        const channelName = episodeRecord.author || episodeRecord.podcast?.title || "";
+        const channelName =
+          episodeRecord.author || episodeRecord.podcast?.title || "";
 
         // Search YouTube using the episode title
         const { searchYouTubeVideos } = await import(
@@ -650,7 +651,9 @@ export const podcastsRouter = createTRPCRouter({
         });
 
         if (searchResults.length === 0) {
-          console.log("[YouTube Search] No results found, trying without channel name");
+          console.log(
+            "[YouTube Search] No results found, trying without channel name",
+          );
           // Fallback: try search without channel name
           const fallbackResults = await searchYouTubeVideos({
             query: searchQuery,
@@ -714,7 +717,8 @@ export const podcastsRouter = createTRPCRouter({
               const durationDiff = Math.abs(
                 episodeRecord.durationSec - video.durationSec,
               );
-              durationSimilarity = 1 - Math.min(durationDiff / episodeRecord.durationSec, 1);
+              durationSimilarity =
+                1 - Math.min(durationDiff / episodeRecord.durationSec, 1);
             }
 
             // Calculate confidence score:
@@ -732,7 +736,8 @@ export const podcastsRouter = createTRPCRouter({
             if (episodeRecord.publishedAt && video.publishedAt) {
               const episodeDate = episodeRecord.publishedAt.getTime();
               const videoDate = video.publishedAt.getTime();
-              dateDiffDays = Math.abs(episodeDate - videoDate) / (1000 * 60 * 60 * 24);
+              dateDiffDays =
+                Math.abs(episodeDate - videoDate) / (1000 * 60 * 60 * 24);
             }
 
             return {
