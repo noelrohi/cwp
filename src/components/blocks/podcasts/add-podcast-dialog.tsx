@@ -1,7 +1,13 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2Icon, SearchIcon, StarIcon, XIcon, YoutubeIcon } from "lucide-react";
+import {
+  Loader2Icon,
+  SearchIcon,
+  StarIcon,
+  XIcon,
+  YoutubeIcon,
+} from "lucide-react";
 import { useEffect, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -82,10 +88,14 @@ export function AddPodcastDialog({ children }: AddPodcastDialogProps) {
   const [searchMode, setSearchMode] = useState<SearchMode>("itunes");
   const [searchQuery, setSearchQuery] = useState("");
   const [itunesResults, setItunesResults] = useState<iTunesResult[]>([]);
-  const [youtubeResults, setYoutubeResults] = useState<YouTubePlaylistResult[]>([]);
+  const [youtubeResults, setYoutubeResults] = useState<YouTubePlaylistResult[]>(
+    [],
+  );
   const [isSearching, startSearchTransition] = useTransition();
   const [addingPodcastId, setAddingPodcastId] = useState<string | null>(null);
-  const [youtubeSearchQuery, setYoutubeSearchQuery] = useState<string | null>(null);
+  const [youtubeSearchQuery, setYoutubeSearchQuery] = useState<string | null>(
+    null,
+  );
 
   const { data: youtubeSearchResults, isFetching: isYoutubeSearching } =
     useQuery({
@@ -213,7 +223,8 @@ export function AddPodcastDialog({ children }: AddPodcastDialogProps) {
     setYoutubeResults([]);
   };
 
-  const searchResults = searchMode === "itunes" ? itunesResults : youtubeResults;
+  const searchResults =
+    searchMode === "itunes" ? itunesResults : youtubeResults;
   const hasResults = searchResults.length > 0;
   const isCurrentlySearching =
     searchMode === "itunes" ? isSearching : isYoutubeSearching;

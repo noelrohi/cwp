@@ -265,8 +265,7 @@ export async function searchYouTubePlaylists(
       // Extract channel name from LockupView metadata_parts
       const channelName = (() => {
         const metadataLine =
-          itemData.metadata?.metadata_parts ||
-          itemData.metadata?.subtitle;
+          itemData.metadata?.metadata_parts || itemData.metadata?.subtitle;
         if (metadataLine) {
           if (Array.isArray(metadataLine) && metadataLine.length > 0) {
             const first = metadataLine[0];
@@ -300,8 +299,7 @@ export async function searchYouTubePlaylists(
       // Extract video count from LockupView metadata_parts
       const videoCount = (() => {
         const metadataLine =
-          itemData.metadata?.metadata_parts ||
-          itemData.metadata?.subtitle;
+          itemData.metadata?.metadata_parts || itemData.metadata?.subtitle;
         if (
           metadataLine &&
           Array.isArray(metadataLine) &&

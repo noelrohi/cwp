@@ -31,17 +31,17 @@ export interface ArticleProcessingResult {
 
 /**
  * Extract article content using Jina AI Reader
- * Returns markdown with metadata headers
+ * Uses JSON format for cleaner content extraction
  */
 export async function extractArticleContent(
   url: string,
 ): Promise<ArticleExtractionResult> {
   const jinaUrl = `https://r.jina.ai/${url}`;
 
-  // Request markdown format - simpler and more reliable
-  // No special headers needed - Jina's public endpoint is free
+  // Request JSON format for cleaner content (filters out navigation/UI elements)
   const response = await fetch(jinaUrl, {
     headers: {
+      Accept: "application/json",
       Authorization: `Bearer ${process.env.JINA_API_KEY}`,
     },
   });
@@ -52,26 +52,19 @@ export async function extractArticleContent(
     );
   }
 
-  const text = await response.text();
+  const data = await response.json();
+  const jinaData = data.data;
 
-  // Parse metadata from headers
-  const lines = text.split("\n");
-  let title = "Untitled Article";
-  let publishedAt: Date | undefined;
+  // Extract metadata from JSON response
+  const title = jinaData.title || "Untitled Article";
+  const author = jinaData.author || undefined;
+  const siteName = jinaData.siteName || undefined;
+  const publishedAt = jinaData.publishedTime
+    ? new Date(jinaData.publishedTime)
+    : undefined;
 
-  for (let i = 0; i < Math.min(lines.length, 20); i++) {
-    const line = lines[i];
-
-    if (line.startsWith("Title: ")) {
-      title = line.substring(7).trim();
-    } else if (line.startsWith("Published Time: ")) {
-      const timeStr = line.substring(16).trim();
-      const parsed = new Date(timeStr);
-      publishedAt = Number.isNaN(parsed.getTime()) ? undefined : parsed;
-    }
-  }
-
-  const rawBodyContent = extractArticleBody(text);
+  // Get clean markdown content from JSON response
+  const rawBodyContent = jinaData.content || "";
 
   const content = cleanMarkdownContent(rawBodyContent);
 
@@ -83,61 +76,61 @@ export async function extractArticleContent(
     title,
     content,
     rawContent: rawBodyContent,
-    author: undefined,
+    author,
     publishedAt,
-    siteName: undefined,
-    excerpt: content.slice(0, 200),
+    siteName,
+    excerpt: jinaData.description || content.slice(0, 200),
   };
 }
 
 /**
- * Extract article body from Jina markdown response
- * Removes Jina metadata headers, navigation, footers, and extracts main content
+ * Extract article body from Jina response
+ * Removes navigation, headers, footers, and UI elements from both JSON and Markdown formats
+ *
+ * This function uses a conservative approach - it removes obvious navigation patterns
+ * while preserving the article content. It's better to leave some navigation than
+ * to accidentally remove actual content.
  */
-export function extractArticleBody(jinaMarkdown: string): string {
-  const lines = jinaMarkdown.split("\n");
-  let contentStartIndex = 0;
+export function extractArticleBody(jinaContent: string): string {
+  let content = jinaContent;
 
-  for (let i = 0; i < Math.min(lines.length, 20); i++) {
-    const line = lines[i];
-    if (line.startsWith("Markdown Content:")) {
-      contentStartIndex = i + 1;
-      break;
+  // Step 1: Remove markdown format headers
+  if (content.includes("Markdown Content:")) {
+    const lines = content.split("\n");
+    let contentStartIndex = 0;
+
+    for (let i = 0; i < Math.min(lines.length, 20); i++) {
+      const line = lines[i];
+      if (line.startsWith("Markdown Content:")) {
+        contentStartIndex = i + 1;
+        break;
+      }
     }
+
+    content = lines.slice(contentStartIndex).join("\n");
   }
 
-  let content = lines.slice(contentStartIndex).join("\n");
+  // Step 2: Remove image artifacts
+  content = content.replace(/!\[Image \d+:.*?\]\([^)]*\)/gi, "");
+  content = content.replace(/\[Image \d+:.*?\]/gi, "");
+  content = content.replace(/Image \d+:.*$/gim, "");
 
-  const commonFooterPatterns = [
-    /Privacy & Cookies:.*/g,
-    /Share This\s+Facebook.*/g,
-    /Share on Mastodon.*/g,
-    /Enter your.*instance URL.*/g,
-    /Subscribe.*Email Terms.*Privacy.*/g,
-    /back\s+random\s+next/gi,
-    /Search\s+Search for:.*/g,
-    /Get the weekly digest.*/g,
-    /Type your email…\s+Subscribe/g,
-    /Learn\s+Which workshop\?.*/g,
-    /Connect\s+News and updates.*/g,
-    /More Seth\s+Books.*/g,
-    /Welcome back\. Have you thought about subscribing\?.*/g,
-  ];
+  // Step 3: Remove empty markdown links
+  content = content.replace(/\[\]\([^)]+\)/g, "");
 
-  for (const pattern of commonFooterPatterns) {
-    content = content.replace(pattern, "");
-  }
+  // Step 4: Remove specific common footer patterns
+  content = content.replace(/Privacy & Cookies:.*?(?=\n\n|$)/gis, "");
+  content = content.replace(/back\s+random\s+next/gi, "");
 
-  content = content
-    .replace(/Image \d+:.*/gim, "")
-    .replace(/\[Image \d+:.*?\]/gi, "")
-    .replace(/You have unread updates\d+/gi, "")
-    .replace(/Or try my new AI-powered search bot/gi, "")
-    .replace(/Find all the books at [\w.]+/gi, "");
+  // Step 5: Remove divider lines
+  content = content.replace(/^[=-]{3,}$/gm, "");
 
-  content = content.replace(/\n{3,}/g, "\n\n").trim();
+  // Step 6: Clean up excessive whitespace
+  content = content.replace(/\n{3,}/g, "\n\n"); // Max 2 newlines
+  content = content.replace(/[ \t]+/g, " "); // Normalize spaces
+  content = content.replace(/^\s+|\s+$/gm, ""); // Trim lines
 
-  return content;
+  return content.trim();
 }
 
 /**
