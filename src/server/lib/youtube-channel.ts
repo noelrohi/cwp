@@ -14,7 +14,11 @@ export async function extractChannelId(input: string): Promise<string | null> {
   const trimmed = input.trim();
 
   // If it's already a clean channel ID (starts with UC), return as-is
-  if (trimmed.startsWith("UC") && !trimmed.includes("/") && !trimmed.includes("?")) {
+  if (
+    trimmed.startsWith("UC") &&
+    !trimmed.includes("/") &&
+    !trimmed.includes("?")
+  ) {
     return trimmed;
   }
 
@@ -82,7 +86,10 @@ export async function extractChannelId(input: string): Promise<string | null> {
 
     return null;
   } catch (error) {
-    console.error(`[YouTube] Failed to extract channel ID from "${input}":`, error);
+    console.error(
+      `[YouTube] Failed to extract channel ID from "${input}":`,
+      error,
+    );
     return null;
   }
 }
@@ -136,11 +143,11 @@ export async function fetchChannelVideos(
     const channelName =
       channel.metadata?.title ||
       (channel.header &&
-        typeof channel.header === "object" &&
-        "title" in channel.header &&
-        channel.header.title &&
-        typeof channel.header.title === "object" &&
-        "text" in channel.header.title
+      typeof channel.header === "object" &&
+      "title" in channel.header &&
+      channel.header.title &&
+      typeof channel.header.title === "object" &&
+      "text" in channel.header.title
         ? String(channel.header.title.text)
         : "");
 
@@ -198,7 +205,11 @@ export async function fetchChannelVideos(
         if (item.thumbnails.length === 0) return null;
 
         const firstThumb = item.thumbnails[0];
-        if (firstThumb && typeof firstThumb === "object" && "url" in firstThumb) {
+        if (
+          firstThumb &&
+          typeof firstThumb === "object" &&
+          "url" in firstThumb
+        ) {
           return String(firstThumb.url);
         }
 
@@ -260,11 +271,16 @@ export async function fetchChannelVideos(
               : 0;
 
           const videoThumbnailUrl = (() => {
-            if (!item.thumbnails || !Array.isArray(item.thumbnails)) return null;
+            if (!item.thumbnails || !Array.isArray(item.thumbnails))
+              return null;
             if (item.thumbnails.length === 0) return null;
 
             const firstThumb = item.thumbnails[0];
-            if (firstThumb && typeof firstThumb === "object" && "url" in firstThumb) {
+            if (
+              firstThumb &&
+              typeof firstThumb === "object" &&
+              "url" in firstThumb
+            ) {
               return String(firstThumb.url);
             }
 

@@ -21,7 +21,7 @@ import {
   savedChunk,
   transcriptChunk,
 } from "@/server/db/schema/podcast";
-import { createTRPCRouter, protectedProcedure } from "../init";
+import { createTRPCRouter, protectedProcedure, publicProcedure } from "../init";
 
 const DEFAULT_SIGNAL_LIMIT = 30;
 
@@ -1630,6 +1630,289 @@ export const signalsRouter = createTRPCRouter({
         saved: Number(stats[0]?.saved) || 0,
         skipped: Number(stats[0]?.skipped) || 0,
       };
+    }),
+
+  getUserSavedSignalsMarkdown: publicProcedure
+    .input(z.object({ userId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      // Query saved daily signals from episodes
+      const savedEpisodeSignals = await ctx.db
+        .select({
+          signalId: dailySignal.id,
+          actionedAt: dailySignal.actionedAt,
+          speakerName: dailySignal.speakerName,
+          chunkContent: transcriptChunk.content,
+          chunkSpeaker: transcriptChunk.speaker,
+          episodeTitle: episode.title,
+          episodePublishedAt: episode.publishedAt,
+          podcastTitle: podcast.title,
+        })
+        .from(dailySignal)
+        .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
+        .innerJoin(episode, eq(transcriptChunk.episodeId, episode.id))
+        .leftJoin(podcast, eq(episode.podcastId, podcast.id))
+        .where(
+          and(
+            eq(dailySignal.userId, input.userId),
+            eq(dailySignal.userAction, "saved"),
+            isNotNull(transcriptChunk.episodeId),
+          ),
+        )
+        .orderBy(desc(dailySignal.actionedAt));
+
+      // Query saved daily signals from articles
+      const savedArticleSignals = await ctx.db
+        .select({
+          signalId: dailySignal.id,
+          actionedAt: dailySignal.actionedAt,
+          chunkContent: transcriptChunk.content,
+          articleTitle: article.title,
+          articleUrl: article.url,
+          articleAuthor: article.author,
+          articlePublishedAt: article.publishedAt,
+        })
+        .from(dailySignal)
+        .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
+        .innerJoin(article, eq(transcriptChunk.articleId, article.id))
+        .where(
+          and(
+            eq(dailySignal.userId, input.userId),
+            eq(dailySignal.userAction, "saved"),
+            isNotNull(transcriptChunk.articleId),
+          ),
+        )
+        .orderBy(desc(dailySignal.actionedAt));
+
+      // Build markdown
+      let markdown = "# Saved Daily Signals\n\n";
+
+      if (
+        savedEpisodeSignals.length === 0 &&
+        savedArticleSignals.length === 0
+      ) {
+        markdown += "No saved signals found.\n";
+        return markdown;
+      }
+
+      // Group episode signals by episode
+      const episodeGroups = new Map<string, typeof savedEpisodeSignals>();
+
+      for (const signal of savedEpisodeSignals) {
+        const key = signal.episodeTitle || "Unknown Episode";
+        if (!episodeGroups.has(key)) {
+          episodeGroups.set(key, []);
+        }
+        episodeGroups.get(key)?.push(signal);
+      }
+
+      // Add episode signals to markdown
+      for (const [episodeTitle, signals] of episodeGroups) {
+        const firstSignal = signals[0];
+        markdown += `## ${episodeTitle}\n\n`;
+
+        if (firstSignal?.podcastTitle) {
+          markdown += `**Podcast:** ${firstSignal.podcastTitle}\n`;
+        }
+
+        if (firstSignal?.episodePublishedAt) {
+          const date = new Date(
+            firstSignal.episodePublishedAt,
+          ).toLocaleDateString();
+          markdown += `**Published:** ${date}\n`;
+        }
+
+        markdown += "\n";
+
+        for (const signal of signals) {
+          const speaker =
+            signal.speakerName || signal.chunkSpeaker || "Unknown Speaker";
+          markdown += `**${speaker}:**\n\n`;
+          markdown += `${signal.chunkContent}\n\n`;
+          markdown += "---\n\n";
+        }
+      }
+
+      // Group article signals by article
+      const articleGroups = new Map<string, typeof savedArticleSignals>();
+
+      for (const signal of savedArticleSignals) {
+        const key = signal.articleTitle || "Unknown Article";
+        if (!articleGroups.has(key)) {
+          articleGroups.set(key, []);
+        }
+        articleGroups.get(key)?.push(signal);
+      }
+
+      // Add article signals to markdown
+      for (const [articleTitle, signals] of articleGroups) {
+        const firstSignal = signals[0];
+        markdown += `## ${articleTitle}\n\n`;
+
+        if (firstSignal?.articleAuthor) {
+          markdown += `**Author:** ${firstSignal.articleAuthor}\n`;
+        }
+
+        if (firstSignal?.articleUrl) {
+          markdown += `**URL:** ${firstSignal.articleUrl}\n`;
+        }
+
+        if (firstSignal?.articlePublishedAt) {
+          const date = new Date(
+            firstSignal.articlePublishedAt,
+          ).toLocaleDateString();
+          markdown += `**Published:** ${date}\n`;
+        }
+
+        markdown += "\n";
+
+        for (const signal of signals) {
+          markdown += `${signal.chunkContent}\n\n`;
+          markdown += "---\n\n";
+        }
+      }
+
+      return markdown;
+    }),
+
+  getUserSavedSnipsMarkdown: publicProcedure
+    .input(z.object({ userId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      // Query saved snips from episodes
+      const savedEpisodeSnips = await ctx.db
+        .select({
+          savedChunkId: savedChunk.id,
+          chunkContent: transcriptChunk.content,
+          chunkSpeaker: transcriptChunk.speaker,
+          notes: savedChunk.notes,
+          tags: savedChunk.tags,
+          highlightExtractedQuote: savedChunk.highlightExtractedQuote,
+          savedAt: savedChunk.savedAt,
+          episodeTitle: episode.title,
+          episodePublishedAt: episode.publishedAt,
+          podcastTitle: podcast.title,
+        })
+        .from(savedChunk)
+        .innerJoin(transcriptChunk, eq(savedChunk.chunkId, transcriptChunk.id))
+        .innerJoin(episode, eq(transcriptChunk.episodeId, episode.id))
+        .leftJoin(podcast, eq(episode.podcastId, podcast.id))
+        .where(
+          and(
+            eq(savedChunk.userId, input.userId),
+            isNotNull(transcriptChunk.episodeId),
+          ),
+        )
+        .orderBy(desc(savedChunk.savedAt));
+
+      // Query saved snips from articles
+      const savedArticleSnips = await ctx.db
+        .select({
+          savedChunkId: savedChunk.id,
+          chunkContent: transcriptChunk.content,
+          notes: savedChunk.notes,
+          tags: savedChunk.tags,
+          highlightExtractedQuote: savedChunk.highlightExtractedQuote,
+          savedAt: savedChunk.savedAt,
+          articleTitle: article.title,
+          articleUrl: article.url,
+          articleAuthor: article.author,
+          articlePublishedAt: article.publishedAt,
+        })
+        .from(savedChunk)
+        .innerJoin(transcriptChunk, eq(savedChunk.chunkId, transcriptChunk.id))
+        .innerJoin(article, eq(transcriptChunk.articleId, article.id))
+        .where(
+          and(
+            eq(savedChunk.userId, input.userId),
+            isNotNull(transcriptChunk.articleId),
+          ),
+        )
+        .orderBy(desc(savedChunk.savedAt));
+
+      // Build markdown
+      let markdown = "# Saved Snips\n\n";
+
+      if (savedEpisodeSnips.length === 0 && savedArticleSnips.length === 0) {
+        markdown += "No saved snips found.\n";
+        return markdown;
+      }
+
+      // Add episode snips
+      if (savedEpisodeSnips.length > 0) {
+        markdown += "## From Episodes\n\n";
+
+        for (const snip of savedEpisodeSnips) {
+          markdown += `### ${snip.episodeTitle || "Unknown Episode"}\n\n`;
+
+          if (snip.podcastTitle) {
+            markdown += `**Podcast:** ${snip.podcastTitle}\n`;
+          }
+
+          if (snip.episodePublishedAt) {
+            const date = new Date(snip.episodePublishedAt).toLocaleDateString();
+            markdown += `**Published:** ${date}\n`;
+          }
+
+          markdown += "\n";
+
+          if (snip.highlightExtractedQuote) {
+            markdown += `> ${snip.highlightExtractedQuote}\n\n`;
+          } else {
+            markdown += `${snip.chunkContent}\n\n`;
+          }
+
+          if (snip.tags) {
+            markdown += `**Tags:** ${snip.tags}\n\n`;
+          }
+
+          if (snip.notes) {
+            markdown += `**Notes:** ${snip.notes}\n\n`;
+          }
+
+          markdown += "---\n\n";
+        }
+      }
+
+      // Add article snips
+      if (savedArticleSnips.length > 0) {
+        markdown += "## From Articles\n\n";
+
+        for (const snip of savedArticleSnips) {
+          markdown += `### ${snip.articleTitle || "Unknown Article"}\n\n`;
+
+          if (snip.articleAuthor) {
+            markdown += `**Author:** ${snip.articleAuthor}\n`;
+          }
+
+          if (snip.articleUrl) {
+            markdown += `**URL:** ${snip.articleUrl}\n`;
+          }
+
+          if (snip.articlePublishedAt) {
+            const date = new Date(snip.articlePublishedAt).toLocaleDateString();
+            markdown += `**Published:** ${date}\n`;
+          }
+
+          markdown += "\n";
+
+          if (snip.highlightExtractedQuote) {
+            markdown += `> ${snip.highlightExtractedQuote}\n\n`;
+          } else {
+            markdown += `${snip.chunkContent}\n\n`;
+          }
+
+          if (snip.tags) {
+            markdown += `**Tags:** ${snip.tags}\n\n`;
+          }
+
+          if (snip.notes) {
+            markdown += `**Notes:** ${snip.notes}\n\n`;
+          }
+
+          markdown += "---\n\n";
+        }
+      }
+
+      return markdown;
     }),
 });
 

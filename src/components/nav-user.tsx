@@ -1,5 +1,6 @@
 "use client";
 import {
+  Copy01Icon,
   Logout01Icon,
   MoreHorizontalCircle01Icon,
   Settings01Icon,
@@ -7,6 +8,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -51,6 +53,11 @@ export function NavUser() {
   }
 
   const user = data.user;
+
+  const handleCopyUserId = () => {
+    navigator.clipboard.writeText(user.id);
+    toast.success("User ID copied to clipboard");
+  };
 
   return (
     <SidebarMenu>
@@ -108,6 +115,10 @@ export function NavUser() {
               >
                 <HugeiconsIcon icon={UserCircleIcon} size={20} />
                 Account
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleCopyUserId}>
+                <HugeiconsIcon icon={Copy01Icon} size={16} />
+                Copy User ID
               </DropdownMenuItem>
               <DropdownMenuItem disabled>
                 <HugeiconsIcon icon={Settings01Icon} size={16} />
