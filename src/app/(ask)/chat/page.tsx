@@ -16,7 +16,14 @@ import {
 } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { DefaultChatTransport } from "ai";
-import { BookmarkIcon, ChevronDown, Sparkles } from "lucide-react";
+import {
+  BookmarkIcon,
+  ChevronDown,
+  Lightbulb,
+  Scissors,
+  Sparkles,
+  X,
+} from "lucide-react";
 import { parseAsBoolean, parseAsString, useQueryState } from "nuqs";
 import { Fragment, useEffect, useState } from "react";
 import type { ChatUIMessage } from "@/app/api/chat/route";
@@ -505,7 +512,7 @@ export default function ChatPage() {
                     >
                       <div className="flex items-center justify-between w-full gap-3">
                         <div className="flex items-center gap-2">
-                          <Sparkles className="size-4" />
+                          <Scissors className="size-4" />
                           <span>Search Snips</span>
                         </div>
                         <Switch checked={useSnipsTool} />
@@ -519,7 +526,7 @@ export default function ChatPage() {
                     >
                       <div className="flex items-center justify-between w-full gap-3">
                         <div className="flex items-center gap-2">
-                          <BookmarkIcon className="size-4" />
+                          <Lightbulb className="size-4" />
                           <span>Access Saved Signals</span>
                         </div>
                         <Switch checked={useSignalsTool} />
@@ -531,22 +538,42 @@ export default function ChatPage() {
                   <div
                     className={cn(
                       buttonVariants({ variant: "outline", size: "sm" }),
-                      "pointer-events-none",
+                      "group/badge relative pointer-events-auto",
                     )}
                   >
-                    <Sparkles className="size-3.5" />
+                    <Scissors className="size-3.5" />
                     <span>Snips</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setUseSnipsTool(false);
+                      }}
+                      className="absolute -top-1 -right-1 size-4 rounded-full bg-destructive text-destructive-foreground opacity-0 group-hover/badge:opacity-100 transition-opacity flex items-center justify-center hover:bg-destructive/90"
+                    >
+                      <X className="size-2.5" />
+                    </button>
                   </div>
                 )}
                 {useSignalsTool && (
                   <div
                     className={cn(
                       buttonVariants({ variant: "outline", size: "sm" }),
-                      "pointer-events-none",
+                      "group/badge relative pointer-events-auto",
                     )}
                   >
-                    <BookmarkIcon className="size-3.5" />
+                    <Lightbulb className="size-3.5" />
                     <span>Signals</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setUseSignalsTool(false);
+                      }}
+                      className="absolute -top-1 -right-1 size-4 rounded-full bg-destructive text-destructive-foreground opacity-0 group-hover/badge:opacity-100 transition-opacity flex items-center justify-center hover:bg-destructive/90"
+                    >
+                      <X className="size-2.5" />
+                    </button>
                   </div>
                 )}
               </PromptInputTools>
