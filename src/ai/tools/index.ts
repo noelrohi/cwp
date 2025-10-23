@@ -35,22 +35,27 @@ export function createTools(
   if (useSnipsTool) {
     baseTools.search_saved_snips = {
       description:
-        "Search the user's saved snips (flashcards/notes). Returns snips with their front (question/title), back (answer/content), tags, and source. Use this when user asks about their notes, flashcards, or study materials.",
+        "Retrieve the user's saved snips (flashcards/notes). Use this when user asks about 'snips', 'flashcards', or 'my notes'. Call without query parameter to get all snips, or with a query to search within them. Do NOT use this for searching podcast library - this retrieves already-saved snips.",
       inputSchema: z.object({
         query: z
           .string()
-          .describe("Search query to find relevant snips by content or tags"),
+          .optional()
+          .describe(
+            "Optional search query to find relevant snips by content or tags. If not provided, returns all snips.",
+          ),
       }),
-      execute: async ({ query }: { query: string }) => {
+      execute: async ({ query }: { query?: string }) => {
         console.log(`\n🔍 [Tool: search_saved_snips] Executing...`);
-        console.log(`   Query: "${query}"`);
+        console.log(`   Query: ${query ? `"${query}"` : "ALL SNIPS"}`);
 
         try {
           if (writer) {
             writer.write({
               type: "data-status",
               data: {
-                message: `Searching your snips for "${query}"...`,
+                message: query
+                  ? `Searching your snips for "${query}"...`
+                  : "Retrieving all your snips...",
                 type: "info",
               },
               transient: true,
@@ -58,18 +63,20 @@ export function createTools(
           }
 
           const startTime = Date.now();
-          const results = await trpc.flashcards.search({ query });
+          const results = query
+            ? await trpc.flashcards.search({ query })
+            : await trpc.flashcards.list();
           const duration = Date.now() - startTime;
 
           console.log(
-            `✅ [Tool: search_saved_snips] Found ${results.length} snips in ${duration}ms`,
+            `✅ [Tool: search_saved_snips] ${query ? "Found" : "Retrieved"} ${results.length} snips in ${duration}ms`,
           );
 
           if (writer) {
             writer.write({
               type: "data-status",
               data: {
-                message: `Found ${results.length} snip${results.length !== 1 ? "s" : ""}`,
+                message: `${query ? "Found" : "Retrieved"} ${results.length} snip${results.length !== 1 ? "s" : ""}`,
                 type: "success",
               },
               transient: true,
@@ -104,7 +111,7 @@ export function createTools(
               type: "data-searchedSnips",
               id: "snips-1",
               data: {
-                query,
+                query: query || "all",
                 snips: formattedResults,
                 totalFound: results.length,
               },
@@ -112,11 +119,12 @@ export function createTools(
           }
 
           console.log(
-            `📤 [Tool: search_saved_snips] Returning ${formattedResults.length} snips\n`,
+            `📤 [Tool: search_saved_snips] Returning ${formattedResults.length} snip${formattedResults.length !== 1 ? "s" : ""}\n`,
           );
           return {
             snips: formattedResults,
             totalFound: results.length,
+            query: query || null,
           };
         } catch (error) {
           console.error("❌ [Tool: search_saved_snips] ERROR:", error);
@@ -142,7 +150,7 @@ export function createTools(
   if (useSignalsTool) {
     baseTools.get_saved_signals = {
       description:
-        "Retrieve the user's saved signals/highlights from podcast episodes and articles. Returns saved content chunks with context. Use this when user asks about their saved content, highlights, or bookmarks.",
+        "Retrieve the user's saved signals/highlights from podcast episodes and articles. Use this when user asks about 'saved signals', 'saved highlights', 'what I saved', or 'my bookmarks'. Do NOT use this for searching - this retrieves already-saved content.",
       inputSchema: z.object({
         limit: z
           .number()
@@ -193,27 +201,23 @@ export function createTools(
 
           // biome-ignore lint/suspicious/noExplicitAny: saved signal type is complex
           const formattedResults = limitedResults.map((signal: any) => ({
-            id: signal.savedChunkId || signal.id,
-            content: signal.chunkContent || signal.highlightExtractedQuote || "",
+            id: signal.id,
+            content: signal.content || signal.highlightQuote || "",
             savedAt: signal.savedAt,
-            tags: signal.tags?.split(",").filter(Boolean) || [],
-            notes: signal.notes || null,
-            episode: signal.episodeId
+            tags: [],
+            notes: null,
+            episode: signal.episode
               ? {
-                  title: signal.episodeTitle,
-                  podcast: signal.podcastTitle,
+                  title: signal.episode.title,
+                  podcast: signal.episode.podcast?.title,
                   speaker: signal.speaker,
                   timestamp: formatTimestamp(signal.startTimeSec),
                   startTimeSec: signal.startTimeSec,
                   endTimeSec: signal.endTimeSec,
-                  audioUrl: signal.episodeAudioUrl,
+                  audioUrl: signal.episode.audioUrl,
                 }
               : undefined,
-            article: signal.articleId
-              ? {
-                  title: signal.articleTitle,
-                }
-              : undefined,
+            article: undefined,
           }));
 
           // Stream the signals for UI display
@@ -258,7 +262,7 @@ export function createTools(
   // Always include search_all_content
   baseTools.search_all_content = {
     description:
-      "Search ALL podcast episodes in the user's library (not just saved content). Use when user explicitly asks to search beyond their saved content or when saved search returns no results.",
+      "Semantic search across ALL podcast episodes in the user's library. Use ONLY when user wants to 'search for', 'find episodes about', or discover NEW content. NEVER use this when user asks about 'saved signals', 'saved highlights', 'snips', or 'what I saved' - use the dedicated saved content tools instead.",
     inputSchema: z.object({
       query: z.string().describe("The semantic search query"),
       limit: z
@@ -394,13 +398,14 @@ export function createTools(
     },
   };
 
-  // Always include get_content
-  baseTools.get_content = {
-    description: episodeId
-      ? "Retrieve the full transcript content of the current episode. Use this when the user wants to analyze, search within, or ask questions about the specific episode they're viewing."
-      : "Retrieve the full markdown content of the current article. Use this when the user wants to analyze, search within, or ask questions about the specific article they're viewing.",
-    inputSchema: z.object({}),
-    execute: async () => {
+  // Only include get_content if there's an episode or article context
+  if (episodeId || articleId) {
+    baseTools.get_content = {
+      description: episodeId
+        ? "Retrieve the full transcript content of the current episode. Use this when the user wants to analyze, search within, or ask questions about the specific episode they're viewing."
+        : "Retrieve the full markdown content of the current article. Use this when the user wants to analyze, search within, or ask questions about the specific article they're viewing.",
+      inputSchema: z.object({}),
+      execute: async () => {
       console.log(
         `\n📄 [Tool: get_content] Executing for ${episodeId ? "episode" : "article"}...`,
       );
@@ -464,6 +469,7 @@ export function createTools(
       }
     },
   };
+  }
 
   return baseTools;
 }

@@ -163,6 +163,12 @@ Core identity:
 - You retrieve actual content with proper attribution and context
 - You focus on concrete, actionable insights from real conversations
 
+IMPORTANT - Understanding user intent:
+- When user mentions "saved signals", "saved highlights", "what I saved", "my bookmarks" → Use get_saved_signals tool
+- When user mentions "snips", "flashcards", "my notes" → Use search_saved_snips tool (no query needed to get all)
+- When user wants to "search for X" or "find episodes about Y" → Use search_all_content tool
+- NEVER use search_all_content when user is asking about their saved content
+
 Behavioral guidelines:
 - Cite your sources with [podcast name - episode title (timestamp)] for podcast content
 - Use direct quotes from transcripts when available
@@ -187,17 +193,19 @@ Behavioral guidelines:
 
   const toolUsageInstructions = hasContext
     ? `
-Tool usage:
-- get_content: Use this FIRST to retrieve the full ${contextType} content before answering any questions
-${useSnipsTool ? "- search_saved_snips: Use when user asks about their notes, flashcards, or study materials" : ""}
-${useSignalsTool ? "- get_saved_signals: Use when user asks about their saved highlights, bookmarks, or saved content" : ""}
-- search_all_content: Use when user asks to search across all episodes in their library
+
+Available tools:
+- get_content: Retrieve the full ${contextType} content. Use this FIRST when analyzing this ${contextType}
+${useSnipsTool ? "- search_saved_snips: Get saved snips. Call with no parameters to retrieve all, or with query to search" : ""}
+${useSignalsTool ? "- get_saved_signals: Get saved signals/highlights. Call with optional limit parameter" : ""}
+- search_all_content: Search the entire podcast library (NOT for saved content)
 ${contextType === "episode" ? "- Always include timestamps in [mm:ss] or [h:mm:ss] format" : ""}`
     : `
-Tool usage:
-${useSnipsTool ? "- search_saved_snips: Use when user asks about their snips, notes, flashcards, or study materials" : ""}
-${useSignalsTool ? "- get_saved_signals: Use when user asks about their saved signals, highlights, bookmarks, or what they've saved" : ""}
-- search_all_content: Use when user asks to search podcast episodes or wants to find content in their library
+
+Available tools:
+${useSnipsTool ? "- search_saved_snips: Get saved snips. Call with no parameters to retrieve all, or with query to search specific snips" : ""}
+${useSignalsTool ? "- get_saved_signals: Get saved signals/highlights. Call with optional limit parameter (default 20, max 50)" : ""}
+- search_all_content: Search the entire podcast library for new content (NOT for retrieving saved content)
 - Always include timestamps in [mm:ss] or [h:mm:ss] format for podcast content`;
 
   const systemPrompt =
@@ -215,12 +223,7 @@ Tone:
       console.log("📡 [Chat API] Streaming response...\n");
 
       const result = streamText({
-        model: openrouter("x-ai/grok-4-fast", {
-          reasoning: {
-            enabled: true,
-            effort: "medium",
-          },
-        }),
+        model: openrouter("moonshotai/kimi-k2-0905:exacto"),
         messages: convertToModelMessages(messages),
         system: systemPrompt,
         tools: createTools(

@@ -8,6 +8,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
+  IconAdjustments,
   IconCheck,
   IconCopy,
   IconMessage2Bolt,
@@ -58,7 +59,7 @@ import {
 import { SignalCard } from "@/components/blocks/signals/signal-card";
 import { StreamdownWithSnip } from "@/components/streamdown-with-snip";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Collapsible,
   CollapsibleContent,
@@ -198,6 +199,31 @@ export default function ChatPage() {
   const contextTitle = episode.data?.title || article.data?.title;
   const contextType = episodeId ? "episode" : articleId ? "article" : null;
 
+  const suggestionPrompts = [
+    {
+      title: "Simulate thought leaders",
+      description: "Have Deutsch, Karpathy & Naval analyze your saved content",
+      prompt:
+        "Review everything in the saved signals and snips. Simulate David Deutsch, Andrej Karpathy, and Naval Ravikant. Have them analyze and discuss what they're finding in everything that's been saved, applying their unique perspectives to challenge the thinking and frameworks.",
+    },
+    {
+      title: "Map knowledge connections",
+      description: "Find patterns and themes across your saved signals",
+      prompt:
+        "Analyze patterns across all my saved signals and create a knowledge map showing how different ideas connect. Identify emerging themes, contradictions, and unexplored connections between concepts.",
+    },
+    {
+      title: "Challenge assumptions",
+      description: "Extract contrarian insights from your content",
+      prompt:
+        "Generate a synthesis of the most contrarian or counter-intuitive insights from my saved content. What assumptions am I making that might be wrong? What perspectives am I missing?",
+    },
+  ];
+
+  const handleSuggestionClick = (prompt: string) => {
+    setInput(prompt);
+  };
+
   return (
     <div className="relative flex size-full flex-col h-dvh overflow-hidden">
       {/* Floating sidebar trigger for mobile only */}
@@ -215,12 +241,31 @@ export default function ChatPage() {
       <Conversation className="scrollbar-hide">
         <ConversationContent className="mx-auto w-full max-w-3xl">
           {messages.length === 0 ? (
-            <ConversationEmptyState
-              className="mt-24"
-              icon={<IconMessage2Bolt className="size-12" />}
-              title="Start a conversation"
-              description="Ask anything about your saved signals"
-            />
+            <div className="flex flex-col items-center">
+              <ConversationEmptyState
+                className="mt-24"
+                icon={<IconMessage2Bolt className="size-12" />}
+                title="Start a conversation"
+                description="Ask anything about your saved signals"
+              />
+              <div className="mt-8 w-full max-w-2xl px-4 grid gap-3">
+                {suggestionPrompts.map((suggestion, idx) => (
+                  <Button
+                    key={idx}
+                    variant="outline"
+                    className="h-auto p-4 flex flex-col items-start text-left hover:bg-accent/50 transition-colors"
+                    onClick={() => handleSuggestionClick(suggestion.prompt)}
+                  >
+                    <div className="font-medium text-base mb-1">
+                      {suggestion.title}
+                    </div>
+                    <div className="text-sm text-muted-foreground font-normal">
+                      {suggestion.description}
+                    </div>
+                  </Button>
+                ))}
+              </div>
+            </div>
           ) : (
             messages.map((message: ChatUIMessage) => (
               <Message from={message.role} key={message.id} className="group">
@@ -448,7 +493,9 @@ export default function ChatPage() {
             <PromptInputToolbar className="border-none">
               <PromptInputTools>
                 <PromptInputActionMenu>
-                  <PromptInputActionMenuTrigger />
+                  <PromptInputActionMenuTrigger>
+                    <IconAdjustments className="size-4" />
+                  </PromptInputActionMenuTrigger>
                   <PromptInputActionMenuContent>
                     <PromptInputActionMenuItem
                       onSelect={(e) => {
@@ -480,6 +527,28 @@ export default function ChatPage() {
                     </PromptInputActionMenuItem>
                   </PromptInputActionMenuContent>
                 </PromptInputActionMenu>
+                {useSnipsTool && (
+                  <div
+                    className={cn(
+                      buttonVariants({ variant: "outline", size: "sm" }),
+                      "pointer-events-none",
+                    )}
+                  >
+                    <Sparkles className="size-3.5" />
+                    <span>Snips</span>
+                  </div>
+                )}
+                {useSignalsTool && (
+                  <div
+                    className={cn(
+                      buttonVariants({ variant: "outline", size: "sm" }),
+                      "pointer-events-none",
+                    )}
+                  >
+                    <BookmarkIcon className="size-3.5" />
+                    <span>Signals</span>
+                  </div>
+                )}
               </PromptInputTools>
               <PromptInputSubmit
                 status={status === "streaming" ? "streaming" : "ready"}
