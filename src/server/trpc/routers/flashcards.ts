@@ -1,5 +1,5 @@
 import { TRPCError } from "@trpc/server";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, or, ilike, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { inngest } from "@/inngest/client";
@@ -336,6 +336,46 @@ export const flashcardsRouter = createTRPCRouter({
 
     return flashcards;
   }),
+
+  search: protectedProcedure
+    .input(
+      z.object({
+        query: z.string().min(1, "Query is required"),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const searchTerm = `%${input.query}%`;
+
+      const flashcards = await ctx.db.query.flashcard.findMany({
+        where: and(
+          eq(flashcard.userId, ctx.user.id),
+          or(
+            ilike(flashcard.front, searchTerm),
+            ilike(flashcard.back, searchTerm),
+            sql`${flashcard.tags}::text ILIKE ${searchTerm}`,
+          ),
+        ),
+        orderBy: [desc(flashcard.createdAt)],
+        with: {
+          signal: {
+            with: {
+              chunk: {
+                with: {
+                  episode: {
+                    with: {
+                      podcast: true,
+                    },
+                  },
+                  article: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      return flashcards;
+    }),
 
   getBySignal: protectedProcedure
     .input(z.object({ signalId: z.string() }))

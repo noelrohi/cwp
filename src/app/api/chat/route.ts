@@ -48,6 +48,47 @@ export type ChatUIMessage = UIMessage<
       title?: string;
       status: "loading" | "complete";
     };
+    searchedSnips: {
+      query: string;
+      snips: Array<{
+        id: string;
+        front: string;
+        back: string;
+        tags: string[];
+        source: string;
+        createdAt: Date;
+        episode?: {
+          title: string;
+          podcast?: string;
+        };
+        article?: {
+          title: string;
+        };
+      }>;
+      totalFound: number;
+    };
+    retrievedSignals: {
+      signals: Array<{
+        id: string;
+        content: string;
+        savedAt: Date;
+        tags: string[];
+        notes: string | null;
+        episode?: {
+          title: string;
+          podcast?: string;
+          speaker: string | null;
+          timestamp: string;
+          startTimeSec: number | null;
+          endTimeSec: number | null;
+          audioUrl: string | null;
+        };
+        article?: {
+          title: string;
+        };
+      }>;
+      totalFound: number;
+    };
   }
 >;
 
@@ -70,14 +111,27 @@ export async function POST(req: Request) {
     messages,
     episodeId,
     articleId,
-  }: { messages: UIMessage[]; episodeId?: string; articleId?: string } =
-    await req.json();
+    useSnipsTool = false,
+    useSignalsTool = false,
+  }: {
+    messages: UIMessage[];
+    episodeId?: string;
+    articleId?: string;
+    useSnipsTool?: boolean;
+    useSignalsTool?: boolean;
+  } = await req.json();
   console.log(`📨 [Chat API] Received ${messages.length} messages`);
   if (episodeId) {
     console.log(`🎧 [Chat API] Episode context: ${episodeId}`);
   }
   if (articleId) {
     console.log(`📰 [Chat API] Article context: ${articleId}`);
+  }
+  if (useSnipsTool) {
+    console.log(`📝 [Chat API] Snips tool enabled`);
+  }
+  if (useSignalsTool) {
+    console.log(`⭐ [Chat API] Signals tool enabled`);
   }
   if (messages.length > 0) {
     const lastMsg = messages[messages.length - 1];
@@ -101,18 +155,18 @@ export async function POST(req: Request) {
   const hasContext = Boolean(episodeId || articleId);
   const contextType = episodeId ? "episode" : articleId ? "article" : null;
 
-  const baseSystemPrompt = `You are a helpful AI assistant that helps users discover and understand insights from their saved podcast content.
+  const baseSystemPrompt = `You are a helpful AI assistant that helps users discover and understand insights from their saved podcast content, snips, and signals.
 
 Core identity:
-- You have access to the user's personally curated podcast library
-- You retrieve actual transcript segments with timestamps and citations
+- You have access to the user's saved snips (flashcards/notes) and signals (saved highlights from podcasts/articles)
+- You can search across all episodes in their podcast library
+- You retrieve actual content with proper attribution and context
 - You focus on concrete, actionable insights from real conversations
 
 Behavioral guidelines:
-- Always search the user's saved content first before answering podcast-related questions
-- Cite your sources with [podcast name - episode title (timestamp)]
+- Cite your sources with [podcast name - episode title (timestamp)] for podcast content
 - Use direct quotes from transcripts when available
-- If no relevant content is found, say so clearly and suggest what the user might save next
+- If no relevant content is found, say so clearly
 - Keep responses concise — users want insights, not essays
 - Never fabricate content or timestamps`;
 
@@ -127,7 +181,7 @@ Behavioral guidelines:
 - ALWAYS use the get_content tool first to retrieve the full ${contextType === "episode" ? "transcript" : "content"}
 - After retrieving content, answer questions based on what's actually in the ${contextType}
 - Cite specific sections with ${contextType === "episode" ? "timestamps [mm:ss] or [h:mm:ss]" : "direct quotes"}
-- You can still use search_saved_content if the user asks to compare with other saved content
+- You can still use other tools if the user asks to compare with saved snips, signals, or search the library
 - Keep responses concise — users want insights, not essays
 - Never fabricate content or timestamps`;
 
@@ -135,14 +189,16 @@ Behavioral guidelines:
     ? `
 Tool usage:
 - get_content: Use this FIRST to retrieve the full ${contextType} content before answering any questions
-- search_saved_content: Use this if the user asks to find similar content or compare with other saved items
-- search_all_content: Use this when user asks to search beyond their saved content
+${useSnipsTool ? "- search_saved_snips: Use when user asks about their notes, flashcards, or study materials" : ""}
+${useSignalsTool ? "- get_saved_signals: Use when user asks about their saved highlights, bookmarks, or saved content" : ""}
+- search_all_content: Use when user asks to search across all episodes in their library
 ${contextType === "episode" ? "- Always include timestamps in [mm:ss] or [h:mm:ss] format" : ""}`
     : `
 Tool usage:
-- search_saved_content: Use this for most queries about podcast topics
-- search_all_content: Use this when user asks to search beyond their saved content
-- Always include timestamps in [mm:ss] or [h:mm:ss] format`;
+${useSnipsTool ? "- search_saved_snips: Use when user asks about their snips, notes, flashcards, or study materials" : ""}
+${useSignalsTool ? "- get_saved_signals: Use when user asks about their saved signals, highlights, bookmarks, or what they've saved" : ""}
+- search_all_content: Use when user asks to search podcast episodes or wants to find content in their library
+- Always include timestamps in [mm:ss] or [h:mm:ss] format for podcast content`;
 
   const systemPrompt =
     (hasContext ? contextSystemPrompt : baseSystemPrompt) +
@@ -167,16 +223,14 @@ Tone:
         }),
         messages: convertToModelMessages(messages),
         system: systemPrompt,
-        tools: createTools(trpc, writer, episodeId, articleId),
-        prepareStep: ({ model }) => {
-          if (hasContext) {
-            console.log("Step skipping search tool as we have context");
-            return {
-              model,
-              activeTools: ["get_content"],
-            };
-          }
-        },
+        tools: createTools(
+          trpc,
+          writer,
+          episodeId,
+          articleId,
+          useSnipsTool,
+          useSignalsTool,
+        ),
         experimental_transform: smoothStream({ chunking: "word" }),
         stopWhen: stepCountIs(10),
         onFinish: ({ text, toolCalls, finishReason, usage }) => {

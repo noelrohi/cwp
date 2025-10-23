@@ -15,8 +15,8 @@ import {
 } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { DefaultChatTransport } from "ai";
-import { ChevronDown } from "lucide-react";
-import { parseAsString, useQueryState } from "nuqs";
+import { BookmarkIcon, ChevronDown, Sparkles } from "lucide-react";
+import { parseAsBoolean, parseAsString, useQueryState } from "nuqs";
 import { Fragment, useEffect, useState } from "react";
 import type { ChatUIMessage } from "@/app/api/chat/route";
 import {
@@ -29,6 +29,10 @@ import { Loader } from "@/components/ai-elements/loader";
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import {
   PromptInput,
+  PromptInputActionMenu,
+  PromptInputActionMenuContent,
+  PromptInputActionMenuItem,
+  PromptInputActionMenuTrigger,
   PromptInputAttachment,
   PromptInputAttachments,
   PromptInputBody,
@@ -61,6 +65,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { useSidebar } from "@/components/ui/sidebar";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { useTRPC } from "@/server/trpc/client";
 import { Action, Actions } from "../../../components/ai-elements/actions";
@@ -142,6 +147,14 @@ export default function ChatPage() {
 
   const [episodeId] = useQueryState("episodeId", parseAsString);
   const [articleId] = useQueryState("articleId", parseAsString);
+  const [useSnipsTool, setUseSnipsTool] = useQueryState(
+    "useSnipsTool",
+    parseAsBoolean.withDefault(false),
+  );
+  const [useSignalsTool, setUseSignalsTool] = useQueryState(
+    "useSignalsTool",
+    parseAsBoolean.withDefault(false),
+  );
 
   const episode = useQuery({
     ...trpc.episodes.get.queryOptions({
@@ -167,6 +180,8 @@ export default function ChatPage() {
             id,
             articleId,
             episodeId,
+            useSnipsTool: useSnipsTool ?? false,
+            useSignalsTool: useSignalsTool ?? false,
           },
         };
       },
@@ -250,6 +265,49 @@ export default function ChatPage() {
                             key={`${message.id}-chunks-${i}`}
                             chunks={part.data.chunks}
                           />
+                        );
+                      case "data-searchedSnips":
+                        return (
+                          <Task
+                            key={`${message.id}-snips-${i}`}
+                            className="mb-4"
+                            defaultOpen={false}
+                          >
+                            <TaskTrigger
+                              title={`Found ${part.data.totalFound} snip${part.data.totalFound !== 1 ? "s" : ""} for "${part.data.query}"`}
+                            />
+                            <TaskContent>
+                              <TaskItem>
+                                <span className="text-sm text-muted-foreground">
+                                  Retrieved {part.data.totalFound} flashcard
+                                  {part.data.totalFound !== 1 ? "s" : ""} from
+                                  your saved snips
+                                </span>
+                              </TaskItem>
+                            </TaskContent>
+                          </Task>
+                        );
+                      case "data-retrievedSignals":
+                        return (
+                          <Task
+                            key={`${message.id}-signals-${i}`}
+                            className="mb-4"
+                            defaultOpen={false}
+                          >
+                            <TaskTrigger
+                              title={`Retrieved ${part.data.totalFound} saved signal${part.data.totalFound !== 1 ? "s" : ""}`}
+                            />
+                            <TaskContent>
+                              <TaskItem>
+                                <span className="text-sm text-muted-foreground">
+                                  Retrieved {part.data.totalFound} saved
+                                  highlight
+                                  {part.data.totalFound !== 1 ? "s" : ""} from
+                                  podcast episodes and articles
+                                </span>
+                              </TaskItem>
+                            </TaskContent>
+                          </Task>
                         );
                       case "reasoning":
                         if (part.text === "[REDACTED]") {
@@ -389,12 +447,39 @@ export default function ChatPage() {
             </PromptInputBody>
             <PromptInputToolbar className="border-none">
               <PromptInputTools>
-                {/* <PromptInputActionMenu>
+                <PromptInputActionMenu>
                   <PromptInputActionMenuTrigger />
                   <PromptInputActionMenuContent>
-                    <PromptInputActionAddAttachments />
+                    <PromptInputActionMenuItem
+                      onSelect={(e) => {
+                        e.preventDefault();
+                        setUseSnipsTool(!useSnipsTool);
+                      }}
+                    >
+                      <div className="flex items-center justify-between w-full gap-3">
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="size-4" />
+                          <span>Search Snips</span>
+                        </div>
+                        <Switch checked={useSnipsTool} />
+                      </div>
+                    </PromptInputActionMenuItem>
+                    <PromptInputActionMenuItem
+                      onSelect={(e) => {
+                        e.preventDefault();
+                        setUseSignalsTool(!useSignalsTool);
+                      }}
+                    >
+                      <div className="flex items-center justify-between w-full gap-3">
+                        <div className="flex items-center gap-2">
+                          <BookmarkIcon className="size-4" />
+                          <span>Access Saved Signals</span>
+                        </div>
+                        <Switch checked={useSignalsTool} />
+                      </div>
+                    </PromptInputActionMenuItem>
                   </PromptInputActionMenuContent>
-                </PromptInputActionMenu> */}
+                </PromptInputActionMenu>
               </PromptInputTools>
               <PromptInputSubmit
                 status={status === "streaming" ? "streaming" : "ready"}
