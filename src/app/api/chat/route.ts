@@ -89,6 +89,13 @@ export type ChatUIMessage = UIMessage<
       }>;
       totalFound: number;
     };
+    usage: {
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+      reasoningTokens?: number;
+      cachedInputTokens?: number;
+    };
   }
 >;
 
@@ -243,6 +250,20 @@ Tone:
           console.log(`   Tool calls: ${toolCalls?.length ?? 0}`);
           console.log(`   Response length: ${text?.length ?? 0} chars`);
           console.log(`   Usage: ${JSON.stringify(usage)}`);
+
+          // Send usage data to client
+          if (usage && writer) {
+            writer.write({
+              type: "data-usage",
+              data: {
+                inputTokens: usage.inputTokens ?? 0,
+                outputTokens: usage.outputTokens ?? 0,
+                totalTokens: usage.totalTokens ?? 0,
+                reasoningTokens: usage.reasoningTokens,
+                cachedInputTokens: usage.cachedInputTokens,
+              },
+            });
+          }
         },
       });
 

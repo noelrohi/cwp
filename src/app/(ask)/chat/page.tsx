@@ -1,32 +1,19 @@
 "use client";
 
-import { useChat } from "@ai-sdk/react";
-import {
-  File01Icon,
-  PodcastIcon,
-  SidebarLeftIcon,
-} from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
-import {
-  IconAdjustments,
-  IconCheck,
-  IconCopy,
-  IconMessage2Bolt,
-  IconRefresh,
-} from "@tabler/icons-react";
-import { useQuery } from "@tanstack/react-query";
-import { DefaultChatTransport } from "ai";
-import {
-  BookmarkIcon,
-  ChevronDown,
-  Lightbulb,
-  Scissors,
-  Sparkles,
-  X,
-} from "lucide-react";
-import { parseAsBoolean, parseAsString, useQueryState } from "nuqs";
-import { Fragment, useEffect, useState } from "react";
 import type { ChatUIMessage } from "@/app/api/chat/route";
+import { Action, Actions } from "@/components/ai-elements/actions";
+import {
+  Context,
+  ContextCacheUsage,
+  ContextContent,
+  ContextContentBody,
+  ContextContentFooter,
+  ContextContentHeader,
+  ContextInputUsage,
+  ContextOutputUsage,
+  ContextReasoningUsage,
+  ContextTrigger,
+} from "@/components/ai-elements/context";
 import {
   Conversation,
   ConversationContent,
@@ -76,7 +63,26 @@ import { useSidebar } from "@/components/ui/sidebar";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { useTRPC } from "@/server/trpc/client";
-import { Action, Actions } from "../../../components/ai-elements/actions";
+import { useChat } from "@ai-sdk/react";
+import {
+  File01Icon,
+  PodcastIcon,
+  SidebarLeftIcon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  IconAdjustments,
+  IconCheck,
+  IconCopy,
+  IconMessage2Bolt,
+  IconRefresh,
+} from "@tabler/icons-react";
+import { useQuery } from "@tanstack/react-query";
+import type { LanguageModelUsage } from "ai";
+import { DefaultChatTransport } from "ai";
+import { ChevronDown, Lightbulb, Scissors, X } from "lucide-react";
+import { parseAsBoolean, parseAsString, useQueryState } from "nuqs";
+import { Fragment, useEffect, useMemo, useState } from "react";
 
 type ChunkData = {
   content: string;
@@ -148,6 +154,9 @@ function CollapsibleChunks({ chunks }: { chunks: ChunkData[] }) {
   );
 }
 
+const MAX_TOKENS = 262144; // Kimi K2 context window
+const MODEL_ID = "moonshotai/kimi-k2-0905:exacto";
+
 export default function ChatPage() {
   const [input, setInput] = useState("");
   const { toggleSidebar, isMobile } = useSidebar();
@@ -163,6 +172,13 @@ export default function ChatPage() {
     "useSignalsTool",
     parseAsBoolean.withDefault(false),
   );
+
+  // Track cumulative token usage across the conversation
+  const [cumulativeUsage, setCumulativeUsage] = useState<LanguageModelUsage>({
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+  });
 
   const episode = useQuery({
     ...trpc.episodes.get.queryOptions({
@@ -195,6 +211,48 @@ export default function ChatPage() {
       },
     }),
   });
+
+  // Calculate cumulative usage from message data parts
+  useEffect(() => {
+    // Extract and accumulate usage from all assistant messages
+    const totalUsage: LanguageModelUsage = {
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      reasoningTokens: 0,
+      cachedInputTokens: 0,
+    };
+
+    for (const message of messages) {
+      // Check if message has usage data part
+      if (message.role === "assistant") {
+        for (const part of message.parts) {
+          if (part.type === "data-usage") {
+            const usage = part.data;
+            totalUsage.inputTokens =
+              (totalUsage.inputTokens ?? 0) + (usage.inputTokens ?? 0);
+            totalUsage.outputTokens =
+              (totalUsage.outputTokens ?? 0) + (usage.outputTokens ?? 0);
+            totalUsage.totalTokens =
+              (totalUsage.totalTokens ?? 0) + (usage.totalTokens ?? 0);
+            totalUsage.reasoningTokens =
+              (totalUsage.reasoningTokens ?? 0) + (usage.reasoningTokens ?? 0);
+            totalUsage.cachedInputTokens =
+              (totalUsage.cachedInputTokens ?? 0) +
+              (usage.cachedInputTokens ?? 0);
+          }
+        }
+      }
+    }
+
+    setCumulativeUsage(totalUsage);
+  }, [messages]);
+
+  // Calculate total used tokens for progress display
+  const usedTokens = useMemo(
+    () => cumulativeUsage.totalTokens ?? 0,
+    [cumulativeUsage],
+  );
 
   const handleSubmit = (message: PromptInputMessage) => {
     if (message.text?.trim()) {
@@ -490,6 +548,28 @@ export default function ChatPage() {
               <PromptInputAttachments>
                 {(attachment) => <PromptInputAttachment data={attachment} />}
               </PromptInputAttachments>
+              {(cumulativeUsage.totalTokens ?? 0) > 0 && (
+                <Context
+                  usedTokens={usedTokens}
+                  maxTokens={MAX_TOKENS}
+                  usage={cumulativeUsage}
+                  modelId={MODEL_ID.replaceAll(":exacto", "")}
+                >
+                  <ContextTrigger className="absolute right-0" />
+                  <ContextContent>
+                    <ContextContentHeader />
+                    <ContextContentBody>
+                      <div className="space-y-2">
+                        <ContextInputUsage />
+                        <ContextOutputUsage />
+                        <ContextReasoningUsage />
+                        <ContextCacheUsage />
+                      </div>
+                    </ContextContentBody>
+                    <ContextContentFooter className="bg-background" />
+                  </ContextContent>
+                </Context>
+              )}
               <PromptInputTextarea
                 value={input}
                 placeholder="Ask a question..."

@@ -406,69 +406,69 @@ export function createTools(
         : "Retrieve the full markdown content of the current article. Use this when the user wants to analyze, search within, or ask questions about the specific article they're viewing.",
       inputSchema: z.object({}),
       execute: async () => {
-      console.log(
-        `\n📄 [Tool: get_content] Executing for ${episodeId ? "episode" : "article"}...`,
-      );
-
-      try {
-        if (writer) {
-          writer.write({
-            type: "data-retrievedContent",
-            id: "content-1",
-            data: {
-              content: "",
-              type: episodeId ? "episode" : "article",
-              title: "",
-              status: "loading",
-            },
-          });
-        }
-
-        const startTime = Date.now();
-        const result = episodeId
-          ? await trpc.episodes.getContent({ episodeId })
-          : await trpc.articles.getContent({ articleId });
-        const duration = Date.now() - startTime;
-
         console.log(
-          `✅ [Tool: get_content] Retrieved content (${result.content.length} chars) in ${duration}ms`,
+          `\n📄 [Tool: get_content] Executing for ${episodeId ? "episode" : "article"}...`,
         );
 
-        if (writer) {
-          writer.write({
-            type: "data-retrievedContent",
-            id: "content-1",
-            data: {
-              content: result.content,
-              type: episodeId ? "episode" : "article",
-              title: result.title,
-              status: "complete",
-            },
-          });
+        try {
+          if (writer) {
+            writer.write({
+              type: "data-retrievedContent",
+              id: "content-1",
+              data: {
+                content: "",
+                type: episodeId ? "episode" : "article",
+                title: "",
+                status: "loading",
+              },
+            });
+          }
+
+          const startTime = Date.now();
+          const result = episodeId
+            ? await trpc.episodes.getContent({ episodeId })
+            : await trpc.articles.getContent({ articleId });
+          const duration = Date.now() - startTime;
+
+          console.log(
+            `✅ [Tool: get_content] Retrieved content (${result.content.length} chars) in ${duration}ms`,
+          );
+
+          if (writer) {
+            writer.write({
+              type: "data-retrievedContent",
+              id: "content-1",
+              data: {
+                content: result.content,
+                type: episodeId ? "episode" : "article",
+                title: result.title,
+                status: "complete",
+              },
+            });
+          }
+
+          return {
+            content: result.content,
+            length: result.content.length,
+          };
+        } catch (error) {
+          console.error("❌ [Tool: get_content] ERROR:", error);
+
+          if (writer) {
+            writer.write({
+              type: "data-status",
+              data: {
+                message: `Failed to retrieve content: ${error instanceof Error ? error.message : "Unknown error"}`,
+                type: "error",
+              },
+              transient: true,
+            });
+          }
+
+          throw error;
         }
-
-        return {
-          content: result.content,
-          length: result.content.length,
-        };
-      } catch (error) {
-        console.error("❌ [Tool: get_content] ERROR:", error);
-
-        if (writer) {
-          writer.write({
-            type: "data-status",
-            data: {
-              message: `Failed to retrieve content: ${error instanceof Error ? error.message : "Unknown error"}`,
-              type: "error",
-            },
-            transient: true,
-          });
-        }
-
-        throw error;
-      }
-    },
-  };
+      },
+    };
   }
 
   return baseTools;
