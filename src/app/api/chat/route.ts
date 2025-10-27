@@ -120,14 +120,17 @@ export async function POST(req: Request) {
     articleId,
     useSnipsTool = false,
     useSignalsTool = false,
+    modelId = "z-ai/glm-4.6:exacto",
   }: {
     messages: UIMessage[];
     episodeId?: string;
     articleId?: string;
     useSnipsTool?: boolean;
     useSignalsTool?: boolean;
+    modelId?: string;
   } = await req.json();
   console.log(`📨 [Chat API] Received ${messages.length} messages`);
+  console.log(`🤖 [Chat API] Using model: ${modelId}`);
   if (episodeId) {
     console.log(`🎧 [Chat API] Episode context: ${episodeId}`);
   }
@@ -230,7 +233,7 @@ Tone:
       console.log("📡 [Chat API] Streaming response...\n");
 
       const result = streamText({
-        model: openrouter("moonshotai/kimi-k2-0905:exacto"),
+        model: openrouter(modelId),
         messages: convertToModelMessages(messages),
         system: systemPrompt,
         tools: createTools(

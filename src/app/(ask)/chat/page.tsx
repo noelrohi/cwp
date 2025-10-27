@@ -1,5 +1,25 @@
 "use client";
 
+import { useChat } from "@ai-sdk/react";
+import {
+  File01Icon,
+  PodcastIcon,
+  SidebarLeftIcon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  IconAdjustments,
+  IconCheck,
+  IconCopy,
+  IconMessage2Bolt,
+  IconRefresh,
+} from "@tabler/icons-react";
+import { useQuery } from "@tanstack/react-query";
+import type { LanguageModelUsage } from "ai";
+import { DefaultChatTransport } from "ai";
+import { ChevronDown, Lightbulb, Scissors, X } from "lucide-react";
+import { parseAsBoolean, parseAsString, useQueryState } from "nuqs";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import type { ChatUIMessage } from "@/app/api/chat/route";
 import { Action, Actions } from "@/components/ai-elements/actions";
 import {
@@ -59,30 +79,17 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useSidebar } from "@/components/ui/sidebar";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { useTRPC } from "@/server/trpc/client";
-import { useChat } from "@ai-sdk/react";
-import {
-  File01Icon,
-  PodcastIcon,
-  SidebarLeftIcon,
-} from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
-import {
-  IconAdjustments,
-  IconCheck,
-  IconCopy,
-  IconMessage2Bolt,
-  IconRefresh,
-} from "@tabler/icons-react";
-import { useQuery } from "@tanstack/react-query";
-import type { LanguageModelUsage } from "ai";
-import { DefaultChatTransport } from "ai";
-import { ChevronDown, Lightbulb, Scissors, X } from "lucide-react";
-import { parseAsBoolean, parseAsString, useQueryState } from "nuqs";
-import { Fragment, useEffect, useMemo, useState } from "react";
 
 type ChunkData = {
   content: string;
@@ -97,6 +104,32 @@ type ChunkData = {
   endTimeSec?: number;
   episodeAudioUrl?: string;
 };
+
+const MODELS = {
+  "openai/gpt-oss-120b:exacto": {
+    name: "GPT OSS 120B",
+    maxTokens: 131072,
+  },
+  "z-ai/glm-4.6:exacto": {
+    name: "GLM-4.6",
+    maxTokens: 202752,
+  },
+  "deepseek/deepseek-v3.1-terminus:exacto": {
+    name: "DeepSeek V3.1",
+    maxTokens: 131072,
+  },
+  "moonshotai/kimi-k2-0905:exacto": {
+    name: "Kimi K2",
+    maxTokens: 262144,
+  },
+  "qwen/qwen3-coder:exacto": {
+    name: "Qwen3 Coder",
+    maxTokens: 262144,
+  },
+} as const;
+
+type ModelId = keyof typeof MODELS;
+const DEFAULT_MODEL_ID: ModelId = "z-ai/glm-4.6:exacto";
 
 function CollapsibleChunks({ chunks }: { chunks: ChunkData[] }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -154,9 +187,6 @@ function CollapsibleChunks({ chunks }: { chunks: ChunkData[] }) {
   );
 }
 
-const MAX_TOKENS = 262144; // Kimi K2 context window
-const MODEL_ID = "moonshotai/kimi-k2-0905:exacto";
-
 export default function ChatPage() {
   const [input, setInput] = useState("");
   const { toggleSidebar, isMobile } = useSidebar();
@@ -172,6 +202,14 @@ export default function ChatPage() {
     "useSignalsTool",
     parseAsBoolean.withDefault(false),
   );
+  const [modelId, setModelId] = useQueryState(
+    "modelId",
+    parseAsString.withDefault(DEFAULT_MODEL_ID),
+  );
+
+  // Get max tokens for selected model
+  const maxTokens =
+    MODELS[modelId as ModelId]?.maxTokens ?? MODELS[DEFAULT_MODEL_ID].maxTokens;
 
   // Track cumulative token usage across the conversation
   const [cumulativeUsage, setCumulativeUsage] = useState<LanguageModelUsage>({
@@ -206,6 +244,7 @@ export default function ChatPage() {
             episodeId,
             useSnipsTool: useSnipsTool ?? false,
             useSignalsTool: useSignalsTool ?? false,
+            modelId: modelId ?? DEFAULT_MODEL_ID,
           },
         };
       },
@@ -551,9 +590,9 @@ export default function ChatPage() {
               {(cumulativeUsage.totalTokens ?? 0) > 0 && (
                 <Context
                   usedTokens={usedTokens}
-                  maxTokens={MAX_TOKENS}
+                  maxTokens={maxTokens}
                   usage={cumulativeUsage}
-                  modelId={MODEL_ID.replaceAll(":exacto", "")}
+                  modelId={modelId.replaceAll(":exacto", "")}
                 >
                   <ContextTrigger className="absolute right-0" />
                   <ContextContent>
@@ -657,10 +696,24 @@ export default function ChatPage() {
                   </div>
                 )}
               </PromptInputTools>
-              <PromptInputSubmit
-                status={status === "streaming" ? "streaming" : "ready"}
-                disabled={!input.trim()}
-              />
+              <div className="flex flex-row gap-2">
+                <Select value={modelId} onValueChange={setModelId}>
+                  <SelectTrigger className="w-[160px] h-9 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(MODELS).map(([id, model]) => (
+                      <SelectItem key={id} value={id} className="text-xs">
+                        {model.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <PromptInputSubmit
+                  status={status === "streaming" ? "streaming" : "ready"}
+                  disabled={!input.trim()}
+                />
+              </div>
             </PromptInputToolbar>
           </PromptInput>
         </div>
