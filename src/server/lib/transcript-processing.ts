@@ -506,7 +506,7 @@ function buildChunksFromTranscript({
   };
   let currentCount = 0;
 
-  const pushCurrentChunk = () => {
+  const pushCurrentChunk = (forceKeep = false) => {
     if (currentCount > 0 && currentChunk.content.trim()) {
       const hasEnding = /[.!?]\s*$/.test(currentChunk.content.trim());
       const meetsMinWords = currentCount >= minTokens;
@@ -518,10 +518,10 @@ function buildChunksFromTranscript({
         `[CHUNK] Preview: "${currentChunk.content.slice(0, 100)}..."`,
       );
 
-      // Only push chunks that meet minimum length OR are complete speaker turns
-      if (meetsMinWords || hasEnding) {
+      // Only push chunks that meet minimum length OR are complete speaker turns OR forced
+      if (meetsMinWords || hasEnding || forceKeep) {
         console.log(
-          `[CHUNK] ✓ KEPT (minWords: ${meetsMinWords}, ending: ${hasEnding})`,
+          `[CHUNK] ✓ KEPT (minWords: ${meetsMinWords}, ending: ${hasEnding}, forced: ${forceKeep})`,
         );
         chunks.push({ ...currentChunk });
       } else {
@@ -539,6 +539,9 @@ function buildChunksFromTranscript({
     if (currentCount === 0) {
       currentChunk.startSec = Math.floor(word.start);
       currentChunk.speaker = word.speaker?.toString() ?? null;
+      console.log(
+        `[DEBUG] Starting new chunk at word ${i}, speaker: ${currentChunk.speaker}`,
+      );
     }
 
     // CRITICAL: Verify speaker consistency within chunk
@@ -557,17 +560,33 @@ function buildChunksFromTranscript({
     currentCount += 1;
     currentChunk.endSec = Math.ceil(word.end);
 
+    // Debug every 100 words
+    if (i % 100 === 0 && i > 0) {
+      console.log(
+        `[DEBUG] Word ${i}: currentCount=${currentCount}, maxTokens=${maxTokens}, content length=${currentChunk.content.length} chars`,
+      );
+    }
+
     const breakInfo = getBreakPoint(i);
 
     // Determine if we should break
     let shouldBreak = false;
+    let forceKeep = false;
 
     if (breakInfo.mustBreak) {
       // Mandatory breaks (speaker changes, long pauses)
+      console.log(
+        `[DEBUG] Word ${i}: MUST BREAK (speaker change or long pause)`,
+      );
       shouldBreak = true;
-    } else if (currentCount >= maxTokens * 1.1) {
-      // Hard limit - must break even if not ideal
+    } else if (currentCount >= maxTokens) {
+      // Hard limit at maxTokens - MUST break to prevent embedding failures
+      // Even if there's no good punctuation, we force the break
+      console.log(
+        `[DEBUG] Word ${i}: HARD LIMIT REACHED (${currentCount} >= ${maxTokens})`,
+      );
       shouldBreak = true;
+      forceKeep = true;
     } else if (currentCount >= minTokens) {
       // We have minimum content, check for good break points
       if (breakInfo.priority === "high") {
@@ -586,7 +605,7 @@ function buildChunksFromTranscript({
     }
 
     if (shouldBreak) {
-      pushCurrentChunk();
+      pushCurrentChunk(forceKeep);
     }
   }
 

@@ -56,13 +56,14 @@ export async function fetchYouTubeTranscript(
         "end_ms" in segment
       ) {
         const text = segment.snippet.text;
-        const startMs = segment.start_ms;
-        const endMs = segment.end_ms;
+        // YouTube API returns start_ms and end_ms as strings, need to parse them
+        const startMs = Number(segment.start_ms);
+        const endMs = Number(segment.end_ms);
 
         if (
           typeof text === "string" &&
-          typeof startMs === "number" &&
-          typeof endMs === "number"
+          !Number.isNaN(startMs) &&
+          !Number.isNaN(endMs)
         ) {
           segments.push({
             text,
@@ -106,15 +107,20 @@ export function transformYouTubeTranscript(
     const startSec = segment.startMs / 1000;
     const endSec = (segment.startMs + segment.durationMs) / 1000;
 
-    // Create word object for this segment (with required fields for TranscriptWord)
-    const word = {
-      word: segment.text,
-      start: startSec,
-      end: endSec,
-      confidence: 1.0, // YouTube doesn't provide confidence, default to 1.0
-      punctuated_word: segment.text,
-      speaker: 0, // YouTube doesn't provide speaker info
-    };
+    // Split segment text into individual words
+    const words = segment.text.trim().split(/\s+/);
+    const durationPerWord =
+      words.length > 0 ? (endSec - startSec) / words.length : 0;
+
+    // Create individual word objects for proper chunking
+    const wordObjects = words.map((wordText, wordIdx) => ({
+      word: wordText,
+      start: startSec + wordIdx * durationPerWord,
+      end: startSec + (wordIdx + 1) * durationPerWord,
+      confidence: 1.0,
+      punctuated_word: wordText,
+      speaker: 0,
+    }));
 
     // Check if we should start a new utterance
     const shouldStartNew =
@@ -143,13 +149,13 @@ export function transformYouTubeTranscript(
         start: startSec,
         end: endSec,
         transcript: segment.text,
-        words: [word],
+        words: [...wordObjects],
       };
     } else if (currentUtterance) {
       // Extend current utterance
       currentUtterance.end = endSec;
       currentUtterance.transcript += ` ${segment.text}`;
-      currentUtterance.words!.push(word);
+      currentUtterance.words!.push(...wordObjects);
     }
   }
 
