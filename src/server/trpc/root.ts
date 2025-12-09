@@ -2,6 +2,7 @@ import { createTRPCRouter } from "./init";
 import { adminRouter } from "./routers/admin";
 import { articlesRouter } from "./routers/articles";
 import { episodesRouter } from "./routers/episodes";
+import { exportsRouter } from "./routers/exports";
 import { favoritesRouter } from "./routers/favorites";
 import { flashcardsRouter } from "./routers/flashcards";
 import { integrationsRouter } from "./routers/integrations";
@@ -25,6 +26,7 @@ export const appRouter = createTRPCRouter({
   admin: adminRouter,
   integrations: integrationsRouter,
   readwise: readwiseRouter,
+  exports: exportsRouter,
 });
 
 export type AppRouter = typeof appRouter;

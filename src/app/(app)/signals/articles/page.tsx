@@ -14,6 +14,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { ExportDropdown } from "@/components/blocks/export-dropdown";
 import {
   SignalCard,
   type SignalCardMetadataItem,
@@ -271,6 +272,7 @@ function PendingArticleSignalsTab() {
                 <SelectItem value="low">Low (&lt;40%)</SelectItem>
               </SelectContent>
             </Select>
+            <ExportDropdown size="sm" />
           </div>
         </div>
       )}

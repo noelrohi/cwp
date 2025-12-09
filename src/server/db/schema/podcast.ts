@@ -535,3 +535,21 @@ export const favoriteRelations = relations(favorite, ({ one }) => ({
     references: [article.id],
   }),
 }));
+
+// Export settings per user - tracks last export timestamp for incremental exports
+export const userExportSettings = pgTable(
+  "user_export_settings",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().unique(),
+    lastExportedAt: timestamp("last_exported_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [index().on(table.userId)],
+);

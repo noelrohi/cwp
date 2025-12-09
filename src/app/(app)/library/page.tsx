@@ -15,6 +15,7 @@ import Link from "next/link";
 import { useQueryState } from "nuqs";
 import { useState } from "react";
 import { toast } from "sonner";
+import { ExportDropdown } from "@/components/blocks/export-dropdown";
 import { ReadwiseSyncDialog } from "@/components/blocks/integrations";
 import { SignalBadge } from "@/components/signal-badge";
 import { Button } from "@/components/ui/button";
@@ -105,12 +106,15 @@ export default function ReadwisePage() {
         <h1 className="text-xl sm:text-2xl font-semibold font-serif">
           Readwise Library
         </h1>
-        <ReadwiseSyncDialog>
-          <Button>
-            <HugeiconsIcon icon={DatabaseSync01Icon} size={16} />
-            Resync Documents
-          </Button>
-        </ReadwiseSyncDialog>
+        <div className="flex gap-2">
+          <ExportDropdown />
+          <ReadwiseSyncDialog>
+            <Button>
+              <HugeiconsIcon icon={DatabaseSync01Icon} size={16} />
+              Resync Documents
+            </Button>
+          </ReadwiseSyncDialog>
+        </div>
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">

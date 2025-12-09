@@ -17,6 +17,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useAudioPlayer } from "@/components/audio-player/audio-player-provider";
+import { ExportDropdown } from "@/components/blocks/export-dropdown";
 import {
   SignalCard,
   type SignalCardMetadataItem,
@@ -342,6 +343,7 @@ Content: ${content}
               </SelectContent>
             </Select>
             <div className="flex gap-2">
+              <ExportDropdown size="sm" />
               <Button variant="outline" size="sm" onClick={handleCopySignals}>
                 <HugeiconsIcon icon={Copy01Icon} size={16} />
                 Copy Signals
