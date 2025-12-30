@@ -36,7 +36,7 @@ export async function extractChannelId(input: string): Promise<string | null> {
       }
 
       // Format: /@username
-      if (pathParts[0] && pathParts[0].startsWith("@")) {
+      if (pathParts[0]?.startsWith("@")) {
         const handle = pathParts[0];
         const channel = await youtube.getChannel(handle);
         const header = channel.header;

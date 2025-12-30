@@ -1,22 +1,7 @@
 import { TRPCError } from "@trpc/server";
-import {
-  and,
-  asc,
-  count,
-  desc,
-  eq,
-  ilike,
-  inArray,
-  or,
-  sql,
-} from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, or } from "drizzle-orm";
 import { z } from "zod";
-import {
-  article,
-  dailySignal,
-  integration,
-  transcriptChunk,
-} from "@/server/db/schema";
+import { article, integration } from "@/server/db/schema";
 import { createTRPCRouter, protectedProcedure } from "../init";
 
 export const readwiseRouter = createTRPCRouter({
@@ -62,51 +47,11 @@ export const readwiseRouter = createTRPCRouter({
         ctx.db.select({ value: count() }).from(article).where(where),
       ]);
 
-      const articleIds = articles.map((art) => art.id);
-
-      let signalCountMap = new Map<
-        string,
-        { total: number; pending: number }
-      >();
-
-      if (articleIds.length > 0) {
-        const signalCounts = await ctx.db
-          .select({
-            articleId: transcriptChunk.articleId,
-            total: count(dailySignal.id),
-            pending: sql<number>`SUM(CASE WHEN ${dailySignal.userAction} IS NULL THEN 1 ELSE 0 END)`,
-          })
-          .from(dailySignal)
-          .innerJoin(
-            transcriptChunk,
-            eq(dailySignal.chunkId, transcriptChunk.id),
-          )
-          .where(
-            and(
-              eq(dailySignal.userId, ctx.user.id),
-              inArray(transcriptChunk.articleId, articleIds),
-            ),
-          )
-          .groupBy(transcriptChunk.articleId);
-
-        signalCountMap = new Map(
-          signalCounts.map((sc) => [
-            sc.articleId as string,
-            { total: Number(sc.total), pending: Number(sc.pending) },
-          ]),
-        );
-      }
-
-      const articlesWithCounts = articles.map((art) => ({
-        ...art,
-        signalCounts: signalCountMap.get(art.id) ?? { total: 0, pending: 0 },
-      }));
-
       const total = Number(totalCount?.value ?? 0);
       const totalPages = Math.ceil(total / input.limit);
 
       return {
-        data: articlesWithCounts,
+        data: articles,
         pagination: {
           page: input.page,
           limit: input.limit,

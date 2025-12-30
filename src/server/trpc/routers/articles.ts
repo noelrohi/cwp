@@ -1,29 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
-import {
-  and,
-  count,
-  desc,
-  eq,
-  exists,
-  ilike,
-  inArray,
-  not,
-  or,
-  sql,
-} from "drizzle-orm";
+import { and, count, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import Parser from "rss-parser";
 import { z } from "zod";
 import { inngest } from "@/inngest/client";
 import { checkRateLimit } from "@/lib/rate-limit";
-import {
-  article,
-  articleFeed,
-  episodeSummary,
-  transcriptChunk,
-} from "@/server/db/schema";
-import { dailySignal } from "@/server/db/schema/podcast";
+import { article, articleFeed, episodeSummary } from "@/server/db/schema";
 import { cleanMarkdownWithAI } from "@/server/lib/article-processing";
 import { createTRPCRouter, protectedProcedure } from "../init";
 
@@ -35,7 +18,6 @@ export const articlesRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      // Check if article already exists
       const existing = await ctx.db.query.article.findFirst({
         where: and(eq(article.userId, ctx.user.id), eq(article.url, input.url)),
       });
@@ -45,7 +27,6 @@ export const articlesRouter = createTRPCRouter({
       if (existing) {
         articleId = existing.id;
       } else {
-        // Create new article record
         articleId = nanoid();
         await ctx.db.insert(article).values({
           id: articleId,
@@ -56,7 +37,6 @@ export const articlesRouter = createTRPCRouter({
         });
       }
 
-      // Trigger Inngest processing
       await inngest.send({
         name: "article/process.requested",
         data: {
@@ -97,43 +77,7 @@ export const articlesRouter = createTRPCRouter({
         },
       });
 
-      // Fetch signal counts for all articles in a single query
-      const articleIds = articles.map((art) => art.id);
-
-      if (articleIds.length === 0) {
-        return articles.map((art) => ({
-          ...art,
-          signalCounts: { total: 0, pending: 0 },
-        }));
-      }
-
-      const signalCounts = await ctx.db
-        .select({
-          articleId: transcriptChunk.articleId,
-          total: count(dailySignal.id),
-          pending: sql<number>`SUM(CASE WHEN ${dailySignal.userAction} IS NULL THEN 1 ELSE 0 END)`,
-        })
-        .from(dailySignal)
-        .innerJoin(transcriptChunk, eq(dailySignal.chunkId, transcriptChunk.id))
-        .where(
-          and(
-            eq(dailySignal.userId, ctx.user.id),
-            inArray(transcriptChunk.articleId, articleIds),
-          ),
-        )
-        .groupBy(transcriptChunk.articleId);
-
-      const signalCountMap = new Map(
-        signalCounts.map((sc) => [
-          sc.articleId,
-          { total: Number(sc.total), pending: Number(sc.pending) },
-        ]),
-      );
-
-      return articles.map((art) => ({
-        ...art,
-        signalCounts: signalCountMap.get(art.id) ?? { total: 0, pending: 0 },
-      }));
+      return articles;
     }),
 
   getById: protectedProcedure
@@ -142,7 +86,7 @@ export const articlesRouter = createTRPCRouter({
       const articleRecord = await ctx.db.query.article.findFirst({
         where: eq(article.id, input.id),
         with: {
-          summary: true, // Include summary to check if it exists on all tabs
+          summary: true,
           transcriptChunks: {
             orderBy: (chunks, { asc }) => [asc(chunks.createdAt)],
             limit: 50,
@@ -333,7 +277,6 @@ export const articlesRouter = createTRPCRouter({
       const parser = new Parser();
       const feedData = await parser.parseURL(feed.feedUrl);
 
-      // Extract all URLs from feed items upfront
       const feedUrls = (feedData.items || [])
         .filter((item) => item.link)
         .map((item) => item.link as string);
@@ -345,7 +288,6 @@ export const articlesRouter = createTRPCRouter({
         };
       }
 
-      // Batch query: fetch all existing articles for these URLs in ONE query
       const existingArticles = await ctx.db.query.article.findMany({
         where: and(
           eq(article.userId, ctx.user.id),
@@ -356,10 +298,8 @@ export const articlesRouter = createTRPCRouter({
         },
       });
 
-      // Create a Set for O(1) lookup instead of O(n) array iteration
       const existingUrls = new Set(existingArticles.map((a) => a.url));
 
-      // Filter to only new articles
       const newArticleData = (feedData.items || [])
         .filter((item) => item.link && !existingUrls.has(item.link))
         .map((item) => ({
@@ -373,8 +313,6 @@ export const articlesRouter = createTRPCRouter({
           publishedAt: item.pubDate ? new Date(item.pubDate) : new Date(),
         }));
 
-      // Batch insert: insert all new articles in ONE query
-      // Use onConflictDoNothing to handle race conditions gracefully
       let newArticles = 0;
       if (newArticleData.length > 0) {
         await ctx.db
@@ -394,10 +332,6 @@ export const articlesRouter = createTRPCRouter({
     .input(
       z.object({
         feedId: z.string(),
-        filterBySignals: z
-          .enum(["all", "with-signals", "without-signals"])
-          .optional()
-          .default("all"),
         limit: z.number().min(1).max(100).default(20),
         cursor: z
           .object({
@@ -412,31 +346,6 @@ export const articlesRouter = createTRPCRouter({
       const limit = input.limit ?? 20;
 
       const orderTimestampExpr = sql`coalesce(${article.publishedAt}, ${article.createdAt})`;
-      const signalExists = exists(
-        ctx.db
-          .select({ value: sql`1` })
-          .from(dailySignal)
-          .innerJoin(
-            transcriptChunk,
-            eq(dailySignal.chunkId, transcriptChunk.id),
-          )
-          .where(
-            and(
-              eq(dailySignal.userId, ctx.user.id),
-              eq(transcriptChunk.articleId, article.id),
-            ),
-          ),
-      );
-
-      const filterCondition = (() => {
-        if (input.filterBySignals === "with-signals") {
-          return signalExists;
-        }
-        if (input.filterBySignals === "without-signals") {
-          return not(signalExists);
-        }
-        return undefined;
-      })();
 
       const cursorCondition = input.cursor
         ? (() => {
@@ -457,7 +366,6 @@ export const articlesRouter = createTRPCRouter({
         where: and(
           eq(article.userId, ctx.user.id),
           eq(article.feedId, input.feedId),
-          filterCondition,
           cursorCondition,
         ),
         orderBy: [desc(orderTimestampExpr), desc(article.id)],
@@ -508,9 +416,7 @@ export const articlesRouter = createTRPCRouter({
         articleRecord.status === "processed" &&
         articleRecord.transcriptChunks.length > 0
       ) {
-        throw new Error(
-          "Article already processed. Use Regenerate Signals to update existing signals.",
-        );
+        throw new Error("Article already processed.");
       }
 
       if (articleRecord.status === "processing") {
@@ -525,78 +431,6 @@ export const articlesRouter = createTRPCRouter({
           url: articleRecord.url,
         },
       });
-
-      return { success: true, status: "processing" };
-    }),
-
-  processArticleWithSignals: protectedProcedure
-    .input(
-      z.object({
-        articleId: z.string(),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      const articleRecord = await ctx.db.query.article.findFirst({
-        where: and(
-          eq(article.id, input.articleId),
-          eq(article.userId, ctx.user.id),
-        ),
-        columns: {
-          id: true,
-          url: true,
-          status: true,
-          signalsGeneratedAt: true,
-        },
-      });
-
-      if (!articleRecord) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Article not found",
-        });
-      }
-
-      if (
-        articleRecord.status === "processed" &&
-        articleRecord.signalsGeneratedAt !== null
-      ) {
-        return {
-          success: false,
-          message: "Article already fully processed with signals",
-        };
-      }
-
-      if (articleRecord.status === "processing") {
-        return {
-          success: false,
-          message: "Article is currently being processed",
-        };
-      }
-
-      // If failed or already has chunks, trigger reprocess to clean up first
-      const needsCleanup =
-        articleRecord.status === "failed" ||
-        articleRecord.status === "processed";
-
-      if (needsCleanup) {
-        await inngest.send({
-          name: "article/reprocess.requested",
-          data: {
-            articleId: input.articleId,
-            userId: ctx.user.id,
-            url: articleRecord.url,
-          },
-        });
-      } else {
-        await inngest.send({
-          name: "article/process-with-signals.requested",
-          data: {
-            articleId: input.articleId,
-            userId: ctx.user.id,
-            url: articleRecord.url,
-          },
-        });
-      }
 
       return { success: true, status: "processing" };
     }),
@@ -619,7 +453,6 @@ export const articlesRouter = createTRPCRouter({
         throw new Error("Article not found");
       }
 
-      // Trigger Inngest function for reprocessing (handles cleanup + processing)
       await inngest.send({
         name: "article/reprocess.requested",
         data: {
@@ -630,119 +463,6 @@ export const articlesRouter = createTRPCRouter({
       });
 
       return { success: true, status: "processing" };
-    }),
-
-  generateSignals: protectedProcedure
-    .input(
-      z.object({
-        articleId: z.string(),
-        maxSignals: z.number().min(5).max(30).optional().default(30),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      const articleRecord = await ctx.db.query.article.findFirst({
-        where: and(
-          eq(article.id, input.articleId),
-          eq(article.userId, ctx.user.id),
-        ),
-        columns: {
-          id: true,
-          status: true,
-          signalsGeneratedAt: true,
-        },
-      });
-
-      if (!articleRecord) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Article not found",
-        });
-      }
-
-      const chunksWithEmbeddings = await ctx.db
-        .select({ count: count() })
-        .from(transcriptChunk)
-        .where(
-          and(
-            eq(transcriptChunk.articleId, input.articleId),
-            sql`${transcriptChunk.embedding} IS NOT NULL`,
-          ),
-        );
-
-      if (!chunksWithEmbeddings[0] || chunksWithEmbeddings[0].count === 0) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message:
-            "Article must be processed with embeddings before generating signals",
-        });
-      }
-
-      // Trigger Inngest function for signal generation
-      await inngest.send({
-        name: "article/signals.generate",
-        data: {
-          articleId: input.articleId,
-          userId: ctx.user.id,
-          maxSignals: input.maxSignals,
-        },
-      });
-
-      return {
-        success: true,
-      };
-    }),
-
-  regenerateSignals: protectedProcedure
-    .input(
-      z.object({
-        articleId: z.string(),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      const articleRecord = await ctx.db.query.article.findFirst({
-        where: and(
-          eq(article.id, input.articleId),
-          eq(article.userId, ctx.user.id),
-        ),
-      });
-
-      if (!articleRecord) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Article not found",
-        });
-      }
-
-      const chunksWithEmbeddings = await ctx.db
-        .select({ count: count() })
-        .from(transcriptChunk)
-        .where(
-          and(
-            eq(transcriptChunk.articleId, input.articleId),
-            sql`${transcriptChunk.embedding} IS NOT NULL`,
-          ),
-        );
-
-      if (!chunksWithEmbeddings[0] || chunksWithEmbeddings[0].count === 0) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message:
-            "Article must be processed with embeddings before regenerating signals",
-        });
-      }
-
-      // Trigger Inngest function for signal regeneration
-      await inngest.send({
-        name: "article/signals.regenerate",
-        data: {
-          articleId: input.articleId,
-          userId: ctx.user.id,
-        },
-      });
-
-      return {
-        success: true,
-      };
     }),
 
   getSummary: protectedProcedure
@@ -845,7 +565,6 @@ export const articlesRouter = createTRPCRouter({
 
       const rawMarkdown = await response.text();
 
-      // Clean markdown using AI to remove navigation and UI elements
       const rawContent = await cleanMarkdownWithAI(rawMarkdown);
 
       await ctx.db

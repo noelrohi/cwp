@@ -69,11 +69,9 @@ function EpisodeCard({
     }),
   );
 
-  // Show hide button for truly unprocessed episodes (matching SignalBadge logic)
+  // Show hide button for truly unprocessed episodes
   const isUnprocessed =
-    (episode.status === "pending" &&
-      !episode.summary?.markdownContent &&
-      episode.signalCounts.total === 0) ||
+    (episode.status === "pending" && !episode.summary?.markdownContent) ||
     episode.status === "failed";
 
   return (
@@ -116,7 +114,6 @@ function EpisodeCard({
 
       <div className="flex flex-col gap-2 items-end justify-between">
         <SignalBadge
-          signalCounts={episode.signalCounts}
           status={episode.status}
           hasSummary={!!episode.summary?.markdownContent}
         />

@@ -4,13 +4,11 @@ import {
   doublePrecision,
   index,
   integer,
-  jsonb,
   pgEnum,
   pgTable,
   text,
   timestamp,
   unique,
-  vector,
 } from "drizzle-orm/pg-core";
 
 export const episodeStatusEnum = pgEnum("episode_status", [
@@ -20,34 +18,6 @@ export const episodeStatusEnum = pgEnum("episode_status", [
   "failed",
   "retrying",
 ]);
-
-export type DailySignalHybridDiagnostics = {
-  wordCount: number;
-  heuristic?: {
-    frameworkScore: number;
-    insightScore: number;
-    specificityScore: number;
-    qualityScore: number;
-    overallScore: number;
-    reasons: string[];
-  };
-  llm?: {
-    buckets: {
-      frameworkClarity: number;
-      insightNovelty: number;
-      tacticalSpecificity: number;
-      reasoningDepth: number;
-      overallScore: number;
-    };
-    reasoning: string;
-    reasons: string[];
-    usage?: {
-      promptTokens?: number;
-      completionTokens?: number;
-      totalTokens?: number;
-    };
-  };
-};
 
 export const podcast = pgTable(
   "podcast",
@@ -114,9 +84,6 @@ export const episode = pgTable(
     processingStartedAt: timestamp("processing_started_at", {
       withTimezone: true,
     }),
-    signalsGeneratedAt: timestamp("signals_generated_at", {
-      withTimezone: true,
-    }),
     hiddenAt: timestamp("hidden_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -154,9 +121,6 @@ export const article = pgTable(
     readwiseId: text("readwise_id"),
     status: episodeStatusEnum("status").default("pending").notNull(),
     errorMessage: text("error_message"),
-    signalsGeneratedAt: timestamp("signals_generated_at", {
-      withTimezone: true,
-    }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -178,13 +142,11 @@ export const transcriptChunk = pgTable(
   "transcript_chunk",
   {
     id: text("id").primaryKey(),
-    // Make episodeId nullable to support articles
     episodeId: text("episode_id")
       .references(() => episode.id, {
         onDelete: "cascade",
       })
       .default(sql`NULL`),
-    // Add articleId for article chunks
     articleId: text("article_id")
       .references(() => article.id, {
         onDelete: "cascade",
@@ -195,7 +157,6 @@ export const transcriptChunk = pgTable(
     startTimeSec: integer("start_time_sec").default(sql`NULL`),
     endTimeSec: integer("end_time_sec").default(sql`NULL`),
     wordCount: integer("word_count"),
-    embedding: vector("embedding", { dimensions: 1536 }).default(sql`NULL`),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -203,8 +164,6 @@ export const transcriptChunk = pgTable(
   (table) => [
     index().on(table.episodeId),
     index().on(table.articleId),
-    index().using("hnsw", table.embedding.op("vector_cosine_ops")),
-    // Ensure at most one source is set (can be standalone with neither)
     check(
       "chunk_source_check",
       sql`(
@@ -214,73 +173,6 @@ export const transcriptChunk = pgTable(
       )`,
     ),
   ],
-);
-
-// Core feedback loop - this is what trains your model
-export const dailySignal = pgTable(
-  "daily_signal",
-  {
-    id: text("id").primaryKey(),
-    chunkId: text("chunk_id")
-      .references(() => transcriptChunk.id, { onDelete: "cascade" })
-      .notNull(),
-    userId: text("user_id").notNull(),
-    signalDate: timestamp("signal_date", { withTimezone: true }).notNull(),
-    relevanceScore: doublePrecision("relevance_score").notNull(), // 0.0 to 1.0
-    similarityScore: doublePrecision("similarity_score"), // Keep for backward compatibility
-    embeddingScore: doublePrecision("embedding_score"),
-    scoringMethod: text("scoring_method"),
-    hybridDiagnostics:
-      jsonb("hybrid_diagnostics").$type<DailySignalHybridDiagnostics>(),
-    title: text("title"),
-    summary: text("summary"),
-    excerpt: text("excerpt"),
-    speakerName: text("speaker_name"),
-    userAction: text("user_action"), // "saved", "skipped", null (pending)
-    presentedAt: timestamp("presented_at", { withTimezone: true }),
-    actionedAt: timestamp("actioned_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-  },
-  (table) => [
-    index().on(table.userId, table.signalDate),
-    index().on(table.userAction),
-    index().on(table.relevanceScore),
-    index().on(table.scoringMethod),
-    index().on(table.chunkId),
-    unique().on(table.chunkId, table.userId),
-  ],
-);
-
-// Simple behavioral preferences - no embeddings needed
-export const userPreferences = pgTable(
-  "user_preferences",
-  {
-    id: text("id").primaryKey(),
-    userId: text("user_id").notNull().unique(),
-    totalSaved: integer("total_saved").default(0).notNull(),
-    totalSkipped: integer("total_skipped").default(0).notNull(),
-    // Simple behavioral tracking
-    preferredPodcasts: text("preferred_podcasts"), // JSON array of podcast IDs
-    preferredSpeakers: text("preferred_speakers"), // JSON array of speaker names
-    preferredContentLength: text("preferred_content_length")
-      .$type<"short" | "medium" | "long">()
-      .default("medium"),
-    averageEngagementScore: doublePrecision("average_engagement_score").default(
-      0.5,
-    ),
-    // Legacy columns - kept for backward compatibility, not actively used
-    savedCentroid: vector("saved_centroid", { dimensions: 1536 }),
-    embedding: vector("embedding", { dimensions: 1536 }),
-    lastUpdated: timestamp("last_updated", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-  },
-  (table) => [index().on(table.userId)],
 );
 
 // AI-powered speaker identification cache
@@ -332,131 +224,6 @@ export const episodeSummary = pgTable(
   ],
 );
 
-// Optional: for saved items you want to reference later
-export const savedChunk = pgTable(
-  "saved_chunk",
-  {
-    id: text("id").primaryKey(),
-    chunkId: text("chunk_id")
-      .references(() => transcriptChunk.id, { onDelete: "cascade" })
-      .notNull(),
-    userId: text("user_id").notNull(),
-    tags: text("tags"),
-    notes: text("notes"),
-    highlightExtractedQuote: text("highlight_extracted_quote"),
-    highlightExtractedAt: timestamp("highlight_extracted_at", {
-      withTimezone: true,
-    }),
-    savedAt: timestamp("saved_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-  },
-  (table) => [
-    index().on(table.userId),
-    index().on(table.savedAt),
-    index().on(table.highlightExtractedAt),
-  ],
-);
-
-export const flashcard = pgTable(
-  "flashcard",
-  {
-    id: text("id").primaryKey(),
-    userId: text("user_id").notNull(),
-    signalId: text("signal_id").references(() => dailySignal.id, {
-      onDelete: "cascade",
-    }),
-    front: text("front").notNull(),
-    back: text("back").notNull(),
-    tags: jsonb("tags").$type<string[]>(),
-    source: text("source"),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-  },
-  (table) => [
-    index().on(table.userId),
-    index().on(table.signalId),
-    index().on(table.createdAt),
-  ],
-);
-
-// Relations
-export const podcastRelations = relations(podcast, ({ many }) => ({
-  episodes: many(episode),
-}));
-
-export const episodeRelations = relations(episode, ({ one, many }) => ({
-  podcast: one(podcast, {
-    fields: [episode.podcastId],
-    references: [podcast.id],
-  }),
-  transcriptChunks: many(transcriptChunk),
-  speakerMapping: one(episodeSpeakerMapping),
-  summary: one(episodeSummary),
-}));
-
-export const transcriptChunkRelations = relations(
-  transcriptChunk,
-  ({ one, many }) => ({
-    episode: one(episode, {
-      fields: [transcriptChunk.episodeId],
-      references: [episode.id],
-    }),
-    article: one(article, {
-      fields: [transcriptChunk.articleId],
-      references: [article.id],
-    }),
-    dailySignals: many(dailySignal),
-    savedChunks: many(savedChunk),
-  }),
-);
-
-export const dailySignalRelations = relations(dailySignal, ({ one }) => ({
-  chunk: one(transcriptChunk, {
-    fields: [dailySignal.chunkId],
-    references: [transcriptChunk.id],
-  }),
-}));
-
-export const episodeSpeakerMappingRelations = relations(
-  episodeSpeakerMapping,
-  ({ one }) => ({
-    episode: one(episode, {
-      fields: [episodeSpeakerMapping.episodeId],
-      references: [episode.id],
-    }),
-  }),
-);
-
-export const episodeSummaryRelations = relations(episodeSummary, ({ one }) => ({
-  episode: one(episode, {
-    fields: [episodeSummary.episodeId],
-    references: [episode.id],
-  }),
-  article: one(article, {
-    fields: [episodeSummary.articleId],
-    references: [article.id],
-  }),
-}));
-
-export const savedChunkRelations = relations(savedChunk, ({ one }) => ({
-  chunk: one(transcriptChunk, {
-    fields: [savedChunk.chunkId],
-    references: [transcriptChunk.id],
-  }),
-}));
-
-export const flashcardRelations = relations(flashcard, ({ one }) => ({
-  signal: one(dailySignal, {
-    fields: [flashcard.signalId],
-    references: [dailySignal.id],
-  }),
-}));
-
 export const articleFeed = pgTable(
   "article_feed",
   {
@@ -480,19 +247,6 @@ export const articleFeed = pgTable(
     unique().on(table.userId, table.feedUrl),
   ],
 );
-
-export const articleRelations = relations(article, ({ one, many }) => ({
-  transcriptChunks: many(transcriptChunk),
-  feed: one(articleFeed, {
-    fields: [article.feedId],
-    references: [articleFeed.id],
-  }),
-  summary: one(episodeSummary),
-}));
-
-export const articleFeedRelations = relations(articleFeed, ({ many }) => ({
-  articles: many(article),
-}));
 
 export const favorite = pgTable(
   "favorite",
@@ -525,17 +279,6 @@ export const favorite = pgTable(
   ],
 );
 
-export const favoriteRelations = relations(favorite, ({ one }) => ({
-  episode: one(episode, {
-    fields: [favorite.episodeId],
-    references: [episode.id],
-  }),
-  article: one(article, {
-    fields: [favorite.articleId],
-    references: [article.id],
-  }),
-}));
-
 // Export settings per user - tracks last export timestamp for incremental exports
 export const userExportSettings = pgTable(
   "user_export_settings",
@@ -553,3 +296,77 @@ export const userExportSettings = pgTable(
   },
   (table) => [index().on(table.userId)],
 );
+
+// Relations
+export const podcastRelations = relations(podcast, ({ many }) => ({
+  episodes: many(episode),
+}));
+
+export const episodeRelations = relations(episode, ({ one, many }) => ({
+  podcast: one(podcast, {
+    fields: [episode.podcastId],
+    references: [podcast.id],
+  }),
+  transcriptChunks: many(transcriptChunk),
+  speakerMapping: one(episodeSpeakerMapping),
+  summary: one(episodeSummary),
+}));
+
+export const transcriptChunkRelations = relations(
+  transcriptChunk,
+  ({ one }) => ({
+    episode: one(episode, {
+      fields: [transcriptChunk.episodeId],
+      references: [episode.id],
+    }),
+    article: one(article, {
+      fields: [transcriptChunk.articleId],
+      references: [article.id],
+    }),
+  }),
+);
+
+export const episodeSpeakerMappingRelations = relations(
+  episodeSpeakerMapping,
+  ({ one }) => ({
+    episode: one(episode, {
+      fields: [episodeSpeakerMapping.episodeId],
+      references: [episode.id],
+    }),
+  }),
+);
+
+export const episodeSummaryRelations = relations(episodeSummary, ({ one }) => ({
+  episode: one(episode, {
+    fields: [episodeSummary.episodeId],
+    references: [episode.id],
+  }),
+  article: one(article, {
+    fields: [episodeSummary.articleId],
+    references: [article.id],
+  }),
+}));
+
+export const articleRelations = relations(article, ({ one, many }) => ({
+  transcriptChunks: many(transcriptChunk),
+  feed: one(articleFeed, {
+    fields: [article.feedId],
+    references: [articleFeed.id],
+  }),
+  summary: one(episodeSummary),
+}));
+
+export const articleFeedRelations = relations(articleFeed, ({ many }) => ({
+  articles: many(article),
+}));
+
+export const favoriteRelations = relations(favorite, ({ one }) => ({
+  episode: one(episode, {
+    fields: [favorite.episodeId],
+    references: [episode.id],
+  }),
+  article: one(article, {
+    fields: [favorite.articleId],
+    references: [article.id],
+  }),
+}));

@@ -1,28 +1,11 @@
 // Export all Inngest functions for the API route
 
 export {
-  episodeStatusMonitor,
-  feedHealthChecker,
-  userEngagementAnalyzer,
-} from "./additional-monitoring";
-export {
-  generateArticleSignalsFunction,
   processArticle,
-  processArticleWithSignals,
-  regenerateArticleSignals,
   reprocessArticle,
 } from "./article-processing";
-export { generateClipForMetaSignal } from "./clip-generation";
 export {
-  handleBulkSkip,
-  monthlyCleanup,
-  updateUserPreferences,
-} from "./continuous-learning";
-export {
-  dailyIntelligenceGenerateSignals,
   dailyIntelligenceProcessEpisode,
-  dailyIntelligenceProcessEpisodeWithSignals,
-  dailyIntelligenceProcessUser,
   dailyIntelligenceReprocessEpisode,
 } from "./daily-intelligence-pipeline";
 export {
@@ -33,8 +16,8 @@ export {
 } from "./feed-parser";
 export { healthCheck } from "./health-monitoring";
 export { helloWorld } from "./hello";
-export { generateMetaSignalForEpisode } from "./meta-signal-generation";
 export {
   generateArticleSummaryFunction,
   generateEpisodeSummaryFunction,
 } from "./summary-generation";
+export { fetchEpisodeTranscript } from "./transcript-fetch";

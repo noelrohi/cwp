@@ -17,34 +17,24 @@ import {
 } from "@tanstack/react-query";
 import { YoutubeIcon } from "lucide-react";
 import Link from "next/link";
-import { parseAsStringLiteral, useQueryState } from "nuqs";
+import { useQueryState } from "nuqs";
 import { use } from "react";
 import { toast } from "sonner";
 import { AddYouTubePlaylistDialog } from "@/components/blocks/podcasts/add-youtube-playlist-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useDebounce } from "@/hooks/use-debounce";
 import { getPodcastSourceType } from "@/server/lib/podcast-utils";
 import { useTRPC } from "@/server/trpc/client";
 
-const signals = ["all", "with-signals", "without-signals"] as const;
 const EPISODE_PAGE_SIZE = 20;
 
-export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
+export default function PodcastDetailPage(props: {
+  params: Promise<{ id: string }>;
+}) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const params = use(props.params);
-  const [filterBySignals, setFilterBySignals] = useQueryState(
-    "filter",
-    parseAsStringLiteral(signals).withDefault("all"),
-  );
   const [searchQuery, setSearchQuery] = useQueryState("q", {
     defaultValue: "",
   });
@@ -96,7 +86,6 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
   const episodesQuery = useInfiniteQuery({
     ...trpc.podcasts.episodesInfinite.infiniteQueryOptions({
       podcastId: params.id,
-      filterBySignals,
       query: debouncedSearchQuery.trim() || undefined,
       limit: EPISODE_PAGE_SIZE,
     }),
@@ -342,21 +331,6 @@ export default function PodcastDetailPage(props: PageProps<"/podcast/[id]">) {
                 className="pl-10 h-9"
               />
             </div>
-            <Select
-              value={filterBySignals}
-              onValueChange={(v: (typeof signals)[number]) =>
-                setFilterBySignals(v)
-              }
-            >
-              <SelectTrigger size="sm" className="w-full sm:w-[180px]">
-                <SelectValue placeholder="Filter episodes" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Episodes</SelectItem>
-                <SelectItem value="with-signals">With Signals</SelectItem>
-                <SelectItem value="without-signals">Without Signals</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
         </div>
 

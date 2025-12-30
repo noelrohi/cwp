@@ -1,21 +1,13 @@
 "use client";
 
 import {
-  AlertCircleIcon,
   ArrowLeft01Icon,
-  BodyPartMuscleIcon,
-  BookmarkCheck01Icon,
-  BookmarkRemove01Icon,
   Calendar03Icon,
-  Chat01Icon,
   Copy01Icon,
-  FingerPrintIcon,
   InformationCircleIcon,
   Link01Icon,
   Loading03Icon,
-  Scissor01Icon,
   SparklesIcon,
-  Undo02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -23,29 +15,13 @@ import { ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { parseAsStringEnum, useQueryState } from "nuqs";
-import { use, useState } from "react";
+import { use } from "react";
 import { toast } from "sonner";
 
-type SignalAction = "saved" | "skipped";
-
 import { Streamdown } from "streamdown";
-import {
-  SignalCard,
-  type SignalCardMetadataItem,
-} from "@/components/blocks/signals/signal-card";
 import { FavoriteButton } from "@/components/favorite-button";
-import { SnipDialog } from "@/components/snip-dialog";
-import { StreamdownWithSnip } from "@/components/streamdown-with-snip";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -61,13 +37,6 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Item, ItemFooter } from "@/components/ui/item";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Tooltip,
@@ -85,60 +54,17 @@ export default function PostDetailPage(props: {
   const params = use(props.params);
   const [activeTab, setActiveTab] = useQueryState(
     "tab",
-    parseAsStringEnum<"summary" | "article" | "signals">([
+    parseAsStringEnum<"summary" | "article">([
       "summary",
       "article",
-      "signals",
     ]).withDefault("summary"),
   );
-  const [signalFilter, setSignalFilter] = useQueryState(
-    "filter",
-    parseAsStringEnum<"all" | "pending" | "actioned">([
-      "all",
-      "pending",
-      "actioned",
-    ]).withDefault("pending"),
-  );
-  const [actionFilter, setActionFilter] = useQueryState(
-    "action",
-    parseAsStringEnum<"all" | "saved" | "skipped">([
-      "all",
-      "saved",
-      "skipped",
-    ]).withDefault("all"),
-  );
-  const [showProcessDialog, setShowProcessDialog] = useState(false);
-  const [showReprocessDialog, setShowReprocessDialog] = useState(false);
-  const [showGenerateDialog, setShowGenerateDialog] = useState(false);
-  const [showRegenerateDialog, setShowRegenerateDialog] = useState(false);
-  const [pendingSignalId, setPendingSignalId] = useState<string | null>(null);
-  const [pendingAction, setPendingAction] = useState<SignalAction | null>(null);
-  const [isSkippingAll, setIsSkippingAll] = useState(false);
-  const [selectedConfidence, setSelectedConfidence] = useState<
-    "all" | "high" | "medium" | "low"
-  >("all");
 
   const article = useQuery({
     ...trpc.articles.getById.queryOptions({
       id: params.id,
     }),
   });
-
-  const signals = useQuery(
-    trpc.signals.byArticle.queryOptions({
-      articleId: params.id,
-      filter: signalFilter,
-      actionFilter,
-      confidenceFilter:
-        selectedConfidence !== "all" ? selectedConfidence : undefined,
-    }),
-  );
-
-  const articleStats = useQuery(
-    trpc.signals.articleStats.queryOptions({
-      articleId: params.id,
-    }),
-  );
 
   const generateSummary = useMutation(
     trpc.articles.generateSummary.mutationOptions({
@@ -173,250 +99,12 @@ export default function PostDetailPage(props: {
         queryClient.invalidateQueries({
           queryKey: trpc.articles.getById.queryKey({ id: params.id }),
         });
-        queryClient.invalidateQueries({
-          queryKey: trpc.signals.byArticle.queryKey(),
-        });
-        queryClient.invalidateQueries({
-          queryKey: trpc.signals.articleStats.queryKey(),
-        });
-        setShowProcessDialog(false);
       },
       onError: (error) => {
         toast.error(`Failed to process article: ${error.message}`);
-        setShowProcessDialog(false);
       },
     }),
   );
-
-  const processArticleWithSignals = useMutation(
-    trpc.articles.processArticleWithSignals.mutationOptions({
-      onSuccess: () => {
-        toast.success("Article processing started with signal generation");
-        queryClient.invalidateQueries({
-          queryKey: trpc.articles.getById.queryKey({ id: params.id }),
-        });
-        queryClient.invalidateQueries({
-          queryKey: trpc.signals.byArticle.queryKey(),
-        });
-        queryClient.invalidateQueries({
-          queryKey: trpc.signals.articleStats.queryKey(),
-        });
-        setShowProcessDialog(false);
-      },
-      onError: (error) => {
-        toast.error(`Failed to process article: ${error.message}`);
-        setShowProcessDialog(false);
-      },
-    }),
-  );
-
-  const reprocessArticle = useMutation(
-    trpc.articles.reprocessArticle.mutationOptions({
-      onSuccess: () => {
-        toast.success(
-          "Article reprocessing started - all existing data will be replaced",
-        );
-        queryClient.invalidateQueries({
-          queryKey: trpc.articles.getById.queryKey({ id: params.id }),
-        });
-        queryClient.invalidateQueries({
-          queryKey: trpc.signals.byArticle.queryKey(),
-        });
-        queryClient.invalidateQueries({
-          queryKey: trpc.signals.articleStats.queryKey(),
-        });
-        setShowReprocessDialog(false);
-      },
-      onError: (error) => {
-        toast.error(`Failed to reprocess article: ${error.message}`);
-        setShowReprocessDialog(false);
-      },
-    }),
-  );
-
-  const generateSignals = useMutation(
-    trpc.articles.generateSignals.mutationOptions({
-      onSuccess: () => {
-        toast.success("Signal generation started - refreshing in a moment...");
-        setShowGenerateDialog(false);
-
-        // Poll for new signals (generation happens async via Inngest)
-        const pollInterval = setInterval(() => {
-          queryClient.invalidateQueries({
-            queryKey: trpc.articles.getById.queryKey({ id: params.id }),
-          });
-          queryClient.invalidateQueries({
-            queryKey: trpc.signals.byArticle.queryKey({ articleId: params.id }),
-          });
-          queryClient.invalidateQueries({
-            queryKey: trpc.signals.articleStats.queryKey({
-              articleId: params.id,
-            }),
-          });
-        }, 2000);
-
-        // Stop polling after 30 seconds
-        setTimeout(() => clearInterval(pollInterval), 30000);
-      },
-      onError: (error) => {
-        toast.error(`Failed to generate signals: ${error.message}`);
-        setShowGenerateDialog(false);
-      },
-    }),
-  );
-
-  const regenerateSignals = useMutation(
-    trpc.articles.regenerateSignals.mutationOptions({
-      onSuccess: () => {
-        toast.success(
-          "Signal regeneration started - refreshing in a moment...",
-        );
-        setShowRegenerateDialog(false);
-
-        // Poll for new signals (regeneration happens async via Inngest)
-        const pollInterval = setInterval(() => {
-          queryClient.invalidateQueries({
-            queryKey: trpc.signals.byArticle.queryKey({ articleId: params.id }),
-          });
-          queryClient.invalidateQueries({
-            queryKey: trpc.signals.articleStats.queryKey({
-              articleId: params.id,
-            }),
-          });
-        }, 2000);
-
-        // Stop polling after 30 seconds
-        setTimeout(() => clearInterval(pollInterval), 30000);
-      },
-      onError: (error) => {
-        toast.error(`Failed to regenerate signals: ${error.message}`);
-        setShowRegenerateDialog(false);
-      },
-    }),
-  );
-
-  const actionMutation = useMutation(trpc.signals.action.mutationOptions());
-  const undoMutation = useMutation(trpc.signals.undo.mutationOptions());
-  const skipAllMutation = useMutation(trpc.signals.skipAll.mutationOptions());
-
-  const handleAction = async (signalId: string, action: SignalAction) => {
-    setPendingSignalId(signalId);
-    setPendingAction(action);
-    try {
-      await actionMutation.mutateAsync({ signalId, action });
-      queryClient.invalidateQueries({
-        queryKey: trpc.signals.byArticle.queryKey(),
-      });
-      queryClient.invalidateQueries({
-        queryKey: trpc.signals.articleStats.queryKey(),
-      });
-      toast.success(action === "saved" ? "Signal saved" : "Signal skipped", {
-        action: {
-          label: "Undo",
-          onClick: async () => {
-            try {
-              await undoMutation.mutateAsync({ signalId });
-              queryClient.invalidateQueries({
-                queryKey: trpc.signals.byArticle.queryKey(),
-              });
-              queryClient.invalidateQueries({
-                queryKey: trpc.signals.articleStats.queryKey(),
-              });
-              toast.success("Action undone");
-            } catch (error) {
-              const message =
-                error instanceof Error
-                  ? error.message
-                  : "Unable to undo action.";
-              toast.error(message);
-            }
-          },
-        },
-      });
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Unable to update signal.";
-      toast.error(message);
-    } finally {
-      setPendingSignalId(null);
-      setPendingAction(null);
-    }
-  };
-
-  const handleUndo = async (signalId: string) => {
-    setPendingSignalId(signalId);
-    try {
-      await undoMutation.mutateAsync({ signalId });
-      queryClient.invalidateQueries({
-        queryKey: trpc.signals.byArticle.queryKey(),
-      });
-      queryClient.invalidateQueries({
-        queryKey: trpc.signals.articleStats.queryKey(),
-      });
-      toast.success("Action undone");
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Unable to undo action.";
-      toast.error(message);
-    } finally {
-      setPendingSignalId(null);
-    }
-  };
-
-  const handleCopySignals = () => {
-    const signalsText = relatedSignals
-      .map((signal, idx) => {
-        const score = signal.relevanceScore
-          ? `${Math.round(signal.relevanceScore * 100)}%`
-          : "N/A";
-        const article = signal.article?.title || "Unknown Article";
-        const author = signal.article?.author || "Unknown author";
-        const content = signal.chunk.content.trim();
-
-        return `Signal ${idx + 1}:
-Score: ${score}
-Article: ${article}
-Author: ${author}
-Content: ${content}
----`;
-      })
-      .join("\n\n");
-
-    navigator.clipboard.writeText(signalsText);
-    toast.success(
-      `Copied ${relatedSignals.length} signal${relatedSignals.length !== 1 ? "s" : ""} to clipboard`,
-    );
-  };
-
-  const handleSkipAll = async () => {
-    setIsSkippingAll(true);
-    try {
-      const result = await skipAllMutation.mutateAsync({
-        articleId: params.id,
-        confidenceFilter:
-          selectedConfidence !== "all" ? selectedConfidence : undefined,
-      });
-
-      queryClient.invalidateQueries({
-        queryKey: trpc.signals.byArticle.queryKey(),
-      });
-      queryClient.invalidateQueries({
-        queryKey: trpc.signals.articleStats.queryKey(),
-      });
-      toast.success(`Skipped ${result.skippedCount} signals`);
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Unable to skip signals.";
-      toast.error(message);
-    } finally {
-      setIsSkippingAll(false);
-    }
-  };
-
-  const handleCopyArticleId = () => {
-    navigator.clipboard.writeText(params.id);
-    toast.success("Article ID copied to clipboard");
-  };
 
   if (article.isPending) {
     return (
@@ -459,32 +147,10 @@ Content: ${content}
   const articleData = article.data;
   const currentStatus = articleData?.status;
   const currentErrorMessage = articleData?.errorMessage;
-
-  const relatedSignals = (signals.data ?? []).sort((a, b) => {
-    const timeA = a.chunk.startTimeSec ?? 0;
-    const timeB = b.chunk.startTimeSec ?? 0;
-    return timeA - timeB;
-  });
-  // Check mutation state (ground truth) not status field
-  const isProcessing =
-    processArticle.isPending ||
-    reprocessArticle.isPending ||
-    processArticleWithSignals.isPending;
-  const isGenerating = generateSignals.isPending;
-  const isRegenerating = regenerateSignals.isPending;
-  // Don't trust status field - check actual data existence
-  const hasSignalsGenerated =
-    Boolean(articleData?.signalsGeneratedAt) ||
-    (articleStats.data?.total ?? 0) > 0;
-  // Check if summary exists - use summary relation from article data (works on all tabs)
+  const isProcessing = processArticle.isPending;
   const hasSummary = Boolean(articleData?.summary?.markdownContent);
-  // For UI logic: consider "processed" if we have a summary (actual work was done)
-  const isProcessed = hasSummary || currentStatus === "processed";
-  const lastSignalsGeneratedAt = articleData?.signalsGeneratedAt
-    ? new Date(articleData.signalsGeneratedAt)
-    : null;
-  const isBusy =
-    isProcessing || isGenerating || isRegenerating || generateSummary.isPending;
+  const isBusy = isProcessing || generateSummary.isPending;
+
   const statusLabel = (() => {
     switch (currentStatus) {
       case "processed":
@@ -502,51 +168,6 @@ Content: ${content}
     }
   })();
 
-  const statusTooltipItems = (() => {
-    const items: Array<{ text: string; tone?: "error" }> = [];
-    if (statusLabel) {
-      items.push({ text: `Status: ${statusLabel}` });
-    }
-    if (isProcessing) {
-      items.push({
-        text: "Processing in progress. We'll refresh details as soon as it's finished.",
-      });
-    }
-    if (isGenerating) {
-      items.push({
-        text: "Signal generation running. Fresh insights will appear when scoring completes.",
-      });
-    }
-    if (isRegenerating) {
-      items.push({
-        text: "Signal regeneration is refreshing existing scores.",
-      });
-    }
-    if (generateSummary.isPending) {
-      items.push({
-        text: "Summary generation in progress.",
-      });
-    }
-    if (hasSignalsGenerated && lastSignalsGeneratedAt) {
-      items.push({
-        text: `Signals generated ${lastSignalsGeneratedAt.toLocaleString(
-          "en-US",
-          {
-            month: "short",
-            day: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-          },
-        )}.`,
-      });
-    } else if (isProcessed) {
-      items.push({ text: "Signals not generated yet." });
-    }
-    if (currentErrorMessage) {
-      items.push({ text: `Last error: ${currentErrorMessage}`, tone: "error" });
-    }
-    return items;
-  })();
   const activeOperation = (() => {
     if (generateSummary.isPending) {
       return {
@@ -562,38 +183,13 @@ Content: ${content}
       return {
         title: "Processing article",
         description:
-          "Extracting content, generating embeddings, and setting up signals. This usually takes 1-3 minutes.",
+          "Extracting content and chunking for analysis. This usually takes 1-2 minutes.",
         icon: Loading03Icon,
         spinning: true,
         showProgress: true,
       } as const;
     }
-    if (isGenerating) {
-      return {
-        title: "Generating signals",
-        description:
-          "Scoring chunks to surface up to 30 insights. We'll update this page automatically once they're ready.",
-        icon: Loading03Icon,
-        spinning: true,
-        showProgress: false,
-      } as const;
-    }
-    if (isRegenerating) {
-      return {
-        title: "Regenerating signals",
-        description:
-          "Refreshing scores and replacing saved items with the latest recommendations.",
-        icon: Loading03Icon,
-        spinning: true,
-        showProgress: false,
-      } as const;
-    }
     return null;
-  })();
-  const processButtonLabel = (() => {
-    if (isProcessing) return "Processing...";
-    if (currentStatus === "failed") return "Reprocess Article";
-    return "Process Article";
   })();
 
   return (
@@ -607,24 +203,6 @@ Content: ${content}
           <HugeiconsIcon icon={ArrowLeft01Icon} size={16} />
           Go back
         </button>
-
-        {process.env.NODE_ENV === "development" && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleCopyArticleId}
-                className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
-              >
-                <HugeiconsIcon icon={FingerPrintIcon} size={12} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Copy Article ID</p>
-            </TooltipContent>
-          </Tooltip>
-        )}
       </div>
 
       <div className="space-y-4">
@@ -658,35 +236,27 @@ Content: ${content}
                     </dd>
                   </div>
                 )}
-                {statusTooltipItems.length > 0 && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                        aria-label="Article status details"
-                      >
-                        <HugeiconsIcon icon={InformationCircleIcon} size={14} />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-xs bg-background text-foreground">
-                      <div className="space-y-1 text-xs">
-                        {statusTooltipItems.map((item, index) => (
-                          <p
-                            key={`${item.text}-${index}`}
-                            className={
-                              item.tone === "error"
-                                ? "text-destructive"
-                                : undefined
-                            }
-                          >
-                            {item.text}
-                          </p>
-                        ))}
-                      </div>
-                    </TooltipContent>
-                  </Tooltip>
-                )}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      aria-label="Article status details"
+                    >
+                      <HugeiconsIcon icon={InformationCircleIcon} size={14} />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs bg-background text-foreground">
+                    <div className="space-y-1 text-xs">
+                      <p>Status: {statusLabel}</p>
+                      {currentErrorMessage && (
+                        <p className="text-destructive">
+                          Last error: {currentErrorMessage}
+                        </p>
+                      )}
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
               </dl>
               {currentErrorMessage && (
                 <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
@@ -700,20 +270,14 @@ Content: ${content}
             <ButtonGroup>
               <CopyArticleContentButton articleId={params.id} />
               <FavoriteButton articleId={params.id} />
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button size="sm" variant="outline">
-                    <ChevronDown className="size-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem asChild>
-                    <Link href={`/chat?articleId=${params.id}`}>
-                      <HugeiconsIcon icon={Chat01Icon} size={16} />
-                      Chat with Article
-                    </Link>
-                  </DropdownMenuItem>
-                  {articleData?.url && (
+              {articleData?.url && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="sm" variant="outline">
+                      <ChevronDown className="size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
                     <DropdownMenuItem asChild>
                       <Link
                         href={articleData.url}
@@ -721,356 +285,31 @@ Content: ${content}
                         rel="noopener noreferrer"
                       >
                         <HugeiconsIcon icon={Link01Icon} size={16} />
-                        Read Article
+                        Read Original Article
                       </Link>
                     </DropdownMenuItem>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </ButtonGroup>
 
             {!hasSummary && (
-              <Dialog
-                open={showProcessDialog}
-                onOpenChange={setShowProcessDialog}
+              <Button
+                disabled={isBusy}
+                size="sm"
+                onClick={() => generateSummary.mutate({ articleId: params.id })}
               >
-                <DialogTrigger asChild>
-                  <Button
-                    disabled={isProcessing || generateSummary.isPending}
-                    size="sm"
-                  >
-                    {isProcessing || generateSummary.isPending ? (
-                      <HugeiconsIcon
-                        icon={Loading03Icon}
-                        size={16}
-                        className="animate-spin"
-                      />
-                    ) : (
-                      <HugeiconsIcon icon={SparklesIcon} size={16} />
-                    )}
-                    {processButtonLabel}
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>
-                      {currentStatus === "failed"
-                        ? "Reprocess Article"
-                        : "Process Article"}
-                    </DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4">
-                    <div className="space-y-2 text-sm text-muted-foreground">
-                      <p className="font-medium text-foreground">
-                        This will fully process the article:
-                      </p>
-                      <ul className="list-disc list-inside space-y-1 ml-2">
-                        <li>Fetch article content from URL</li>
-                        <li>Generate AI summary (key takeaways & lessons)</li>
-                        <li>Split into semantic chunks (~100-800 words)</li>
-                        <li>Generate embeddings for search</li>
-                        <li>Generate up to 30 personalized signals</li>
-                      </ul>
-                      <p className="mt-3 p-3 bg-muted rounded-lg">
-                        <strong className="text-foreground">💡 Tip:</strong> If
-                        you only want a summary preview, use the "Summarize
-                        Article" button in the Summary tab.
-                      </p>
-                      <p className="mt-3">
-                        <strong>Duration:</strong> Usually 2-4 minutes depending
-                        on article length
-                      </p>
-                    </div>
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        variant="outline"
-                        onClick={() => setShowProcessDialog(false)}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        onClick={() =>
-                          processArticleWithSignals.mutate({
-                            articleId: params.id,
-                          })
-                        }
-                        disabled={isProcessing || generateSummary.isPending}
-                      >
-                        {isProcessing || generateSummary.isPending
-                          ? "Processing..."
-                          : "Start Processing"}
-                      </Button>
-                    </div>
-                  </div>
-                </DialogContent>
-              </Dialog>
-            )}
-
-            {hasSummary &&
-              !hasSignalsGenerated &&
-              (articleStats.data?.total ?? 0) === 0 && (
-                <Dialog
-                  open={showGenerateDialog}
-                  onOpenChange={setShowGenerateDialog}
-                >
-                  <DialogTrigger asChild>
-                    <Button
-                      disabled={
-                        isGenerating ||
-                        isProcessing ||
-                        generateSummary.isPending
-                      }
-                      size="sm"
-                    >
-                      {isGenerating ||
-                      isProcessing ||
-                      generateSummary.isPending ? (
-                        <HugeiconsIcon
-                          icon={Loading03Icon}
-                          size={16}
-                          className="animate-spin"
-                        />
-                      ) : (
-                        <HugeiconsIcon icon={SparklesIcon} size={16} />
-                      )}
-                      Generate Signals
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>
-                        Generate Signals for This Article
-                      </DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <div className="space-y-2 text-sm text-muted-foreground">
-                        <p className="font-medium text-foreground">
-                          This will analyze the article content and create
-                          personalized signals:
-                        </p>
-                        <ul className="ml-2 list-disc list-inside space-y-1">
-                          <li>
-                            Score all chunks using your current preferences
-                          </li>
-                          <li>Generate up to 30 signals for review</li>
-                          <li>
-                            Apply stratified sampling across the full score
-                            range
-                          </li>
-                        </ul>
-                        <p className="mt-3">
-                          <strong>Duration:</strong> Usually 20-40 seconds
-                        </p>
-                      </div>
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="outline"
-                          onClick={() => setShowGenerateDialog(false)}
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          onClick={() =>
-                            generateSignals.mutate({ articleId: params.id })
-                          }
-                          disabled={
-                            isGenerating ||
-                            isProcessing ||
-                            generateSummary.isPending
-                          }
-                        >
-                          {isGenerating ||
-                          isProcessing ||
-                          generateSummary.isPending
-                            ? "Generating..."
-                            : "Generate Signals"}
-                        </Button>
-                      </div>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              )}
-
-            {hasSummary && hasSignalsGenerated && (
-              <>
-                <Dialog
-                  open={showRegenerateDialog}
-                  onOpenChange={setShowRegenerateDialog}
-                >
-                  <DialogTrigger asChild>
-                    <Button
-                      disabled={
-                        isRegenerating ||
-                        isProcessing ||
-                        generateSummary.isPending
-                      }
-                      variant="outline"
-                      size="sm"
-                    >
-                      {isRegenerating || isProcessing ? (
-                        <HugeiconsIcon
-                          icon={Loading03Icon}
-                          size={16}
-                          className="animate-spin"
-                        />
-                      ) : (
-                        <HugeiconsIcon icon={SparklesIcon} size={16} />
-                      )}
-                      Regenerate Signals
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Regenerate Signals</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <div className="space-y-2 text-sm text-muted-foreground">
-                        <p className="font-medium text-foreground">
-                          This will regenerate signals for this article only:
-                        </p>
-                        <ul className="list-disc list-inside space-y-1 ml-2">
-                          <li>
-                            Re-score all chunks using your latest preferences
-                          </li>
-                          <li>
-                            Add new signals from previously unselected chunks
-                          </li>
-                          <li>
-                            Apply current stratified sampling (top 30 across
-                            0-100% distribution)
-                          </li>
-                        </ul>
-
-                        {articleStats.data && (
-                          <div className="mt-3 p-3 bg-muted rounded-lg">
-                            <p className="font-medium text-foreground mb-1">
-                              Current article signals:
-                            </p>
-                            <div className="flex gap-4 text-xs">
-                              <span>{articleStats.data.total} total</span>
-                              {articleStats.data.pending > 0 && (
-                                <span className="text-amber-600 dark:text-amber-400">
-                                  {articleStats.data.pending} pending
-                                </span>
-                              )}
-                              {articleStats.data.saved > 0 && (
-                                <span className="text-green-600 dark:text-green-400">
-                                  {articleStats.data.saved} saved
-                                </span>
-                              )}
-                              {articleStats.data.skipped > 0 && (
-                                <span className="text-muted-foreground">
-                                  {articleStats.data.skipped} skipped
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="outline"
-                          onClick={() => setShowRegenerateDialog(false)}
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          onClick={() =>
-                            regenerateSignals.mutate({ articleId: params.id })
-                          }
-                          disabled={
-                            isRegenerating ||
-                            isProcessing ||
-                            generateSummary.isPending
-                          }
-                        >
-                          {isRegenerating ||
-                          isProcessing ||
-                          generateSummary.isPending
-                            ? "Regenerating..."
-                            : "Regenerate Signals"}
-                        </Button>
-                      </div>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-
-                <Dialog
-                  open={showReprocessDialog}
-                  onOpenChange={setShowReprocessDialog}
-                >
-                  <DialogTrigger asChild>
-                    <Button disabled={isBusy} variant="destructive" size="sm">
-                      {isProcessing ? (
-                        <HugeiconsIcon
-                          icon={Loading03Icon}
-                          size={16}
-                          className="animate-spin"
-                        />
-                      ) : (
-                        <HugeiconsIcon icon={SparklesIcon} size={16} />
-                      )}
-                      Reprocess Article
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle className="text-destructive flex items-center gap-2">
-                        <HugeiconsIcon icon={AlertCircleIcon} size={20} />
-                        Reprocess Article from Scratch
-                      </DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <div className="space-y-2 text-sm text-muted-foreground">
-                        <p className="font-medium text-destructive">
-                          This will DELETE all existing data and reprocess from
-                          scratch:
-                        </p>
-                        <ul className="list-disc list-inside space-y-1 ml-2">
-                          <li>Delete all content chunks</li>
-                          <li>Delete all signals (saved and skipped)</li>
-                          <li>Delete article summary</li>
-                          <li>Re-fetch content from URL</li>
-                          <li>Regenerate AI summary</li>
-                          <li>Re-chunk with current settings</li>
-                          <li>Generate new embeddings</li>
-                        </ul>
-
-                        {articleStats.data && articleStats.data.saved > 0 && (
-                          <div className="mt-3 p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
-                            <p className="font-medium text-destructive mb-1 flex items-center gap-1.5">
-                              <HugeiconsIcon icon={AlertCircleIcon} size={16} />
-                              You will lose {articleStats.data.saved} saved
-                              signal
-                              {articleStats.data.saved !== 1 ? "s" : ""} from
-                              this article
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="outline"
-                          onClick={() => setShowReprocessDialog(false)}
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          variant="destructive"
-                          onClick={() =>
-                            reprocessArticle.mutate({ articleId: params.id })
-                          }
-                          disabled={isBusy}
-                        >
-                          {isProcessing
-                            ? "Reprocessing..."
-                            : "Delete and Reprocess"}
-                        </Button>
-                      </div>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              </>
+                {isBusy ? (
+                  <HugeiconsIcon
+                    icon={Loading03Icon}
+                    size={16}
+                    className="animate-spin"
+                  />
+                ) : (
+                  <HugeiconsIcon icon={SparklesIcon} size={16} />
+                )}
+                {isBusy ? "Processing..." : "Summarize Article"}
+              </Button>
             )}
           </div>
 
@@ -1110,12 +349,6 @@ Content: ${content}
           </TabsTrigger>
           <TabsTrigger value="article" className="flex-1">
             Full Article
-          </TabsTrigger>
-          <TabsTrigger value="signals" className="flex-1">
-            Signals{" "}
-            <Badge variant="outline" className="ml-1.5">
-              {articleStats.data?.total ?? 0}
-            </Badge>
           </TabsTrigger>
         </TabsList>
       </Tabs>
@@ -1204,10 +437,6 @@ Content: ${content}
                     </>
                   )}
                 </Button>
-                <p className="text-sm text-muted-foreground mt-3">
-                  Want full processing with signals? Use the "Process Article"
-                  button at the top.
-                </p>
               </EmptyContent>
             </Empty>
           )}
@@ -1220,13 +449,9 @@ Content: ${content}
             <LoadingState />
           ) : rawContent.data?.rawContent ? (
             <Item className="space-y-6" variant="muted">
-              <StreamdownWithSnip
-                content={rawContent.data.rawContent}
-                className="text-base prose prose-neutral dark:prose-invert max-w-none"
-                articleId={params.id}
-                selectionSource="article"
-                disallowedElements={["img"]}
-              />
+              <Streamdown className="text-base prose prose-neutral dark:prose-invert max-w-none">
+                {rawContent.data.rawContent}
+              </Streamdown>
             </Item>
           ) : (
             <Empty>
@@ -1270,374 +495,6 @@ Content: ${content}
           )}
         </section>
       )}
-
-      {activeTab === "signals" && (
-        <section className="space-y-3 sm:space-y-4">
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div className="flex items-center justify-between gap-2">
-                <Tabs
-                  value={signalFilter}
-                  onValueChange={(v) =>
-                    setSignalFilter(v as typeof signalFilter)
-                  }
-                >
-                  <TabsList>
-                    <TabsTrigger value="pending">
-                      Pending{" "}
-                      <span className="ml-1 text-muted-foreground">
-                        {articleStats.data?.pending ?? 0}
-                      </span>
-                    </TabsTrigger>
-                    <TabsTrigger value="actioned">
-                      Processed{" "}
-                      <span className="ml-1 text-muted-foreground">
-                        {articleStats.data
-                          ? articleStats.data.saved + articleStats.data.skipped
-                          : 0}
-                      </span>
-                    </TabsTrigger>
-                    <TabsTrigger value="all">
-                      All{" "}
-                      <span className="ml-1 text-muted-foreground">
-                        {articleStats.data?.total ?? 0}
-                      </span>
-                    </TabsTrigger>
-                  </TabsList>
-                </Tabs>
-
-                {signalFilter === "pending" && relatedSignals.length > 0 && (
-                  <Button
-                    variant="outline"
-                    size="icon-sm"
-                    onClick={handleSkipAll}
-                    disabled={isSkippingAll}
-                    className="sm:hidden"
-                  >
-                    {isSkippingAll ? (
-                      <HugeiconsIcon
-                        icon={Loading03Icon}
-                        size={16}
-                        className="animate-spin"
-                      />
-                    ) : (
-                      <HugeiconsIcon icon={BookmarkRemove01Icon} size={16} />
-                    )}
-                    <span className="sr-only">Skip All</span>
-                  </Button>
-                )}
-
-                {relatedSignals.length > 0 && (
-                  <Button
-                    variant="outline"
-                    size="icon-sm"
-                    onClick={handleCopySignals}
-                    className="sm:hidden"
-                  >
-                    <HugeiconsIcon icon={Copy01Icon} size={16} />
-                    <span className="sr-only">Copy Signals</span>
-                  </Button>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2">
-                {signalFilter === "actioned" && (
-                  <Select
-                    value={actionFilter}
-                    onValueChange={(v) =>
-                      setActionFilter(v as "all" | "saved" | "skipped")
-                    }
-                  >
-                    <SelectTrigger size="sm" className="w-[140px]">
-                      <SelectValue placeholder="Filter" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">
-                        All{" "}
-                        <span className="text-xs font-mono text-muted-foreground">
-                          (
-                          {articleStats.data &&
-                          articleStats.data.saved + articleStats.data.skipped >
-                            0
-                            ? articleStats.data.saved +
-                              articleStats.data.skipped
-                            : 0}
-                          )
-                        </span>
-                      </SelectItem>
-                      <SelectItem value="saved">
-                        Saved{" "}
-                        <span className="text-xs font-mono text-muted-foreground">
-                          ({articleStats.data?.saved ?? 0})
-                        </span>
-                      </SelectItem>
-                      <SelectItem value="skipped">
-                        Skipped{" "}
-                        <span className="text-xs font-mono text-muted-foreground">
-                          ({articleStats.data?.skipped ?? 0})
-                        </span>
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                )}
-                {relatedSignals.length > 0 && (
-                  <Button
-                    variant="outline"
-                    size="icon-sm"
-                    onClick={handleCopySignals}
-                    className="hidden sm:flex sm:size-auto sm:h-8 sm:px-3"
-                  >
-                    <HugeiconsIcon icon={Copy01Icon} size={16} />
-                    <span className="hidden sm:inline">Copy Signals</span>
-                  </Button>
-                )}
-                {signalFilter === "pending" && relatedSignals.length > 0 && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleSkipAll}
-                    disabled={isSkippingAll}
-                  >
-                    {isSkippingAll ? (
-                      <HugeiconsIcon
-                        icon={Loading03Icon}
-                        size={16}
-                        className="animate-spin"
-                      />
-                    ) : (
-                      <HugeiconsIcon icon={BookmarkRemove01Icon} size={16} />
-                    )}
-                    Skip All ({articleStats.data?.pending ?? 0})
-                  </Button>
-                )}
-                <Select
-                  value={selectedConfidence}
-                  onValueChange={(value) =>
-                    setSelectedConfidence(
-                      value as "all" | "high" | "medium" | "low",
-                    )
-                  }
-                >
-                  <SelectTrigger size="sm" className="w-[180px]">
-                    <SelectValue placeholder="Confidence" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Confidence</SelectItem>
-                    <SelectItem value="high">High (≥65%)</SelectItem>
-                    <SelectItem value="medium">Medium (40-65%)</SelectItem>
-                    <SelectItem value="low">Low (&lt;40%)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </div>
-
-          {signals.isPending ? (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {Array.from({ length: 4 }).map((_, index) => (
-                <div
-                  key={index}
-                  className="animate-pulse rounded-xl border border-border/60 bg-muted/40 p-4"
-                >
-                  <div className="h-4 w-1/2 rounded bg-muted-foreground/30" />
-                  <div className="mt-3 h-3 w-full rounded bg-muted-foreground/20" />
-                  <div className="mt-2 h-3 w-3/4 rounded bg-muted-foreground/20" />
-                </div>
-              ))}
-            </div>
-          ) : signals.error ? (
-            <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-base text-destructive">
-              Unable to load related signals.
-            </div>
-          ) : relatedSignals.length === 0 ? (
-            signalFilter === "pending" && articleStats.data?.total === 0 ? (
-              isProcessed ? (
-                <Empty>
-                  <EmptyHeader>
-                    <EmptyMedia variant="icon">
-                      <HugeiconsIcon icon={SparklesIcon} size={20} />
-                    </EmptyMedia>
-                    <EmptyTitle>Generate Personalized Signals</EmptyTitle>
-                    <EmptyDescription>
-                      Article is processed and ready! Generate up to 30 insights
-                      ranked by your preferences.
-                    </EmptyDescription>
-                  </EmptyHeader>
-                  <EmptyContent>
-                    <Button
-                      size="lg"
-                      onClick={() =>
-                        generateSignals.mutate({ articleId: params.id })
-                      }
-                      disabled={isGenerating}
-                    >
-                      {isGenerating ? (
-                        <>
-                          <HugeiconsIcon
-                            icon={Loading03Icon}
-                            size={16}
-                            className="animate-spin"
-                          />
-                          Generating Signals...
-                        </>
-                      ) : (
-                        <>
-                          <HugeiconsIcon icon={SparklesIcon} size={16} />
-                          Generate Signals
-                        </>
-                      )}
-                    </Button>
-                  </EmptyContent>
-                </Empty>
-              ) : (
-                <Empty>
-                  <EmptyHeader>
-                    <EmptyMedia variant="icon">
-                      <HugeiconsIcon icon={SparklesIcon} size={20} />
-                    </EmptyMedia>
-                    <EmptyTitle>No Signals Yet</EmptyTitle>
-                    <EmptyDescription>
-                      Process this article to get signals. Use the "Process
-                      Article" button at the top.
-                    </EmptyDescription>
-                  </EmptyHeader>
-                </Empty>
-              )
-            ) : (
-              <div className="rounded-xl border border-border/50 bg-muted/30 p-6 text-base text-muted-foreground">
-                {signalFilter === "pending"
-                  ? "No pending signals. All signals have been processed."
-                  : signalFilter === "actioned"
-                    ? "No processed signals yet. Start reviewing signals to see them here."
-                    : "No signals found for this article."}
-              </div>
-            )
-          ) : (
-            <div className="space-y-4">
-              {relatedSignals.map((signal) => {
-                const isPending = pendingSignalId === signal.id;
-                const isSignalPending = !signal.userAction;
-                const publishedLabel = formatDate(signal.article?.publishedAt);
-                const metadata: SignalCardMetadataItem[] = [];
-                if (publishedLabel) {
-                  metadata.push({ label: publishedLabel });
-                }
-                if (
-                  signal.relevanceScore !== null &&
-                  signal.relevanceScore !== undefined
-                ) {
-                  metadata.push({
-                    icon: <HugeiconsIcon icon={BodyPartMuscleIcon} size={12} />,
-                    label: `${Math.round(signal.relevanceScore * 100)}%`,
-                  });
-                }
-                return (
-                  <SignalCard
-                    key={signal.id}
-                    className="rounded-2xl"
-                    chunkContent={signal.chunk.content}
-                    metadata={metadata}
-                    renderMarkdown
-                    snipButton={
-                      <SnipDialog
-                        signalId={signal.id}
-                        defaultBack={signal.chunk.content}
-                        trigger={
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="flex-1 sm:flex-none"
-                          >
-                            <HugeiconsIcon icon={Scissor01Icon} size={16} />
-                            Snip
-                          </Button>
-                        }
-                      />
-                    }
-                  >
-                    {isSignalPending ? (
-                      <>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="flex-1 sm:flex-none"
-                          onClick={() => handleAction(signal.id, "skipped")}
-                          disabled={isPending}
-                        >
-                          {isPending && pendingAction === "skipped" ? (
-                            <HugeiconsIcon
-                              icon={Loading03Icon}
-                              size={16}
-                              className="animate-spin"
-                            />
-                          ) : (
-                            <HugeiconsIcon
-                              icon={BookmarkRemove01Icon}
-                              size={16}
-                            />
-                          )}
-                          Skip
-                        </Button>
-                        <Button
-                          size="sm"
-                          className="flex-1 sm:flex-none"
-                          onClick={() => handleAction(signal.id, "saved")}
-                          disabled={isPending}
-                        >
-                          {isPending && pendingAction === "saved" ? (
-                            <HugeiconsIcon
-                              icon={Loading03Icon}
-                              size={16}
-                              className="animate-spin"
-                            />
-                          ) : (
-                            <HugeiconsIcon
-                              icon={BookmarkCheck01Icon}
-                              size={16}
-                            />
-                          )}
-                          Save
-                        </Button>
-                      </>
-                    ) : (
-                      <>
-                        <Badge
-                          variant={
-                            signal.userAction === "saved"
-                              ? "default"
-                              : "secondary"
-                          }
-                          className="text-xs"
-                        >
-                          {signal.userAction === "saved" ? "Saved" : "Skipped"}
-                        </Badge>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="flex-1 sm:flex-none"
-                          onClick={() => handleUndo(signal.id)}
-                          disabled={isPending}
-                        >
-                          {isPending ? (
-                            <HugeiconsIcon
-                              icon={Loading03Icon}
-                              size={16}
-                              className="animate-spin"
-                            />
-                          ) : (
-                            <HugeiconsIcon icon={Undo02Icon} size={16} />
-                          )}
-                          Undo
-                        </Button>
-                      </>
-                    )}
-                  </SignalCard>
-                );
-              })}
-            </div>
-          )}
-        </section>
-      )}
     </main>
   );
 }
@@ -1651,17 +508,6 @@ function LoadingState() {
       <div className="h-4 w-3/4 bg-muted rounded" />
     </div>
   );
-}
-
-function formatDate(value: Date | string | null | undefined): string | null {
-  if (!value) return null;
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
 }
 
 function CopyArticleContentButton({ articleId }: { articleId: string }) {

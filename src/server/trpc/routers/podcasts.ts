@@ -1,23 +1,8 @@
-import {
-  and,
-  asc,
-  count,
-  desc,
-  eq,
-  exists,
-  ilike,
-  not,
-  sql,
-} from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, not, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import Parser from "rss-parser";
 import { z } from "zod";
-import {
-  dailySignal,
-  episode,
-  podcast,
-  transcriptChunk,
-} from "@/server/db/schema/podcast";
+import { episode, podcast } from "@/server/db/schema/podcast";
 import { createTRPCRouter, protectedProcedure } from "../init";
 
 export const podcastsRouter = createTRPCRouter({
@@ -59,10 +44,6 @@ export const podcastsRouter = createTRPCRouter({
     .input(
       z.object({
         podcastId: z.string(),
-        filterBySignals: z
-          .enum(["all", "with-signals", "without-signals"])
-          .optional()
-          .default("all"),
         query: z.string().optional(),
         limit: z.number().int().min(1).max(50).optional().default(20),
         cursor: z
@@ -78,31 +59,6 @@ export const podcastsRouter = createTRPCRouter({
       const limit = input.limit ?? 20;
 
       const orderTimestampExpr = sql`coalesce(${episode.publishedAt}, ${episode.createdAt})`;
-      const signalExists = exists(
-        ctx.db
-          .select({ value: sql`1` })
-          .from(dailySignal)
-          .innerJoin(
-            transcriptChunk,
-            eq(dailySignal.chunkId, transcriptChunk.id),
-          )
-          .where(
-            and(
-              eq(dailySignal.userId, ctx.user.id),
-              eq(transcriptChunk.episodeId, episode.id),
-            ),
-          ),
-      );
-
-      const filterCondition = (() => {
-        if (input.filterBySignals === "with-signals") {
-          return signalExists;
-        }
-        if (input.filterBySignals === "without-signals") {
-          return not(signalExists);
-        }
-        return undefined;
-      })();
 
       const cursorCondition = input.cursor
         ? (() => {
@@ -133,7 +89,6 @@ export const podcastsRouter = createTRPCRouter({
         where: and(
           eq(episode.podcastId, input.podcastId),
           eq(episode.userId, ctx.user.id),
-          filterCondition,
           cursorCondition,
           searchCondition,
         ),
