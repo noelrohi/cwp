@@ -1,5 +1,6 @@
 import {
   AlertCircleIcon,
+  File01Icon,
   Loading03Icon,
   TickDouble02Icon,
   TimeQuarterPassIcon,
@@ -16,9 +17,27 @@ export type SignalBadgeStatus =
 export interface SignalBadgeProps {
   status: SignalBadgeStatus;
   hasSummary: boolean;
+  hasTranscript?: boolean;
 }
 
-export function SignalBadge({ status, hasSummary }: SignalBadgeProps) {
+export function SignalBadge({
+  status,
+  hasSummary,
+  hasTranscript,
+}: SignalBadgeProps) {
+  // Transcribed but not summarized
+  if (hasTranscript && !hasSummary && status === "pending") {
+    return (
+      <div
+        className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-400"
+        title="Transcript available, ready for summary"
+      >
+        <HugeiconsIcon icon={File01Icon} size={16} />
+        <span className="text-xs font-medium">Transcribed</span>
+      </div>
+    );
+  }
+
   if (status === "pending" && !hasSummary) {
     return (
       <div
