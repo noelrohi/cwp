@@ -116,6 +116,7 @@ function EpisodeCard({
         <SignalBadge
           status={episode.status}
           hasSummary={!!episode.summary?.markdownContent}
+          hasTranscript={!!episode.transcriptUrl}
         />
         {isUnprocessed && (
           <Button
