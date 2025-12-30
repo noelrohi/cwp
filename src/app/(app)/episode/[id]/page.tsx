@@ -18,7 +18,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { use, useState } from "react";
+import { use, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Streamdown } from "streamdown";
 import { SyncYouTubeVideoDialog } from "@/components/blocks/episodes/sync-youtube-video-dialog";
@@ -73,12 +73,22 @@ export default function EpisodeDetailPage(props: {
   const params = use(props.params);
   const [transcript, setTranscript] = useState<TranscriptData | null>(null);
   const [showProcessDialog, setShowProcessDialog] = useState(false);
+  const [isPollingForTranscript, setIsPollingForTranscript] = useState(false);
 
   const episode = useQuery({
     ...trpc.episodes.get.queryOptions({
       episodeId: params.id,
     }),
+    refetchInterval: isPollingForTranscript ? 5000 : false,
   });
+
+  // Stop polling when transcript becomes available
+  useEffect(() => {
+    if (isPollingForTranscript && episode.data?.transcriptUrl) {
+      setIsPollingForTranscript(false);
+      toast.success("Transcript is ready!");
+    }
+  }, [isPollingForTranscript, episode.data?.transcriptUrl]);
 
   const generateSummary = useMutation(
     trpc.episodes.generateSummary.mutationOptions({
@@ -121,17 +131,17 @@ export default function EpisodeDetailPage(props: {
       onSuccess: (result) => {
         if (result.status === "exists") {
           toast.success("Transcript already available");
+          queryClient.invalidateQueries({
+            queryKey: trpc.episodes.get.queryKey({ episodeId: params.id }),
+          });
         } else {
-          toast.success(
-            "Transcript fetching started. This usually takes 1-2 minutes.",
-          );
+          // Start polling for transcript completion
+          setIsPollingForTranscript(true);
         }
-        queryClient.invalidateQueries({
-          queryKey: trpc.episodes.get.queryKey({ episodeId: params.id }),
-        });
       },
       onError: (error) => {
         toast.error(`Failed to fetch transcript: ${error.message}`);
+        setIsPollingForTranscript(false);
       },
     }),
   );
@@ -243,6 +253,16 @@ export default function EpisodeDetailPage(props: {
   })();
 
   const activeOperation = (() => {
+    if (isPollingForTranscript) {
+      return {
+        title: "Fetching transcript",
+        description:
+          "Transcribing the audio. This usually takes 1-2 minutes. The page will update automatically when ready.",
+        icon: Loading03Icon,
+        spinning: true,
+        showProgress: true,
+      } as const;
+    }
     if (generateSummary.isPending) {
       return {
         title: "Generating summary",
@@ -557,9 +577,9 @@ export default function EpisodeDetailPage(props: {
                   onClick={() =>
                     fetchTranscript.mutate({ episodeId: params.id })
                   }
-                  disabled={fetchTranscript.isPending}
+                  disabled={fetchTranscript.isPending || isPollingForTranscript}
                 >
-                  {fetchTranscript.isPending ? (
+                  {fetchTranscript.isPending || isPollingForTranscript ? (
                     <HugeiconsIcon
                       icon={Loading03Icon}
                       size={16}
@@ -568,7 +588,11 @@ export default function EpisodeDetailPage(props: {
                   ) : (
                     <HugeiconsIcon icon={Download01Icon} size={16} />
                   )}
-                  {fetchTranscript.isPending ? "Fetching..." : "Get Transcript"}
+                  {fetchTranscript.isPending
+                    ? "Starting..."
+                    : isPollingForTranscript
+                      ? "Transcribing..."
+                      : "Get Transcript"}
                 </Button>
               )}
 
