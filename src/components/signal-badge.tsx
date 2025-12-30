@@ -14,20 +14,12 @@ export type SignalBadgeStatus =
   | "retrying";
 
 export interface SignalBadgeProps {
-  signalCounts: { total: number; pending: number };
   status: SignalBadgeStatus;
   hasSummary: boolean;
 }
 
-export function SignalBadge({
-  signalCounts,
-  status,
-  hasSummary,
-}: SignalBadgeProps) {
-  const totalSignals = signalCounts?.total ?? 0;
-  const pendingSignals = signalCounts?.pending ?? 0;
-
-  if (status === "pending" && !hasSummary && totalSignals === 0) {
+export function SignalBadge({ status, hasSummary }: SignalBadgeProps) {
+  if (status === "pending" && !hasSummary) {
     return (
       <div
         className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted text-muted-foreground"
@@ -55,38 +47,6 @@ export function SignalBadge({
     );
   }
 
-  if (
-    (status === "processing" || status === "retrying") &&
-    hasSummary &&
-    totalSignals === 0
-  ) {
-    return (
-      <div
-        className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400"
-        title="Generating signals"
-      >
-        <HugeiconsIcon
-          icon={Loading03Icon}
-          size={16}
-          className="animate-spin"
-        />
-        <span className="text-xs font-medium">Adding signals</span>
-      </div>
-    );
-  }
-
-  if (hasSummary && totalSignals === 0) {
-    return (
-      <div
-        className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400"
-        title="Content summarized"
-      >
-        <HugeiconsIcon icon={TickDouble02Icon} size={16} />
-        <span className="text-xs font-medium">Summarized</span>
-      </div>
-    );
-  }
-
   if (status === "failed") {
     return (
       <div
@@ -99,37 +59,25 @@ export function SignalBadge({
     );
   }
 
-  if (totalSignals > 0 && pendingSignals === totalSignals) {
-    return (
-      <div
-        className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400"
-        title={`${pendingSignals} signals pending review`}
-      >
-        <HugeiconsIcon icon={AlertCircleIcon} size={16} />
-        <span className="text-xs font-medium">Pending ({pendingSignals})</span>
-      </div>
-    );
-  }
-
-  if (totalSignals > 0 && pendingSignals === 0) {
+  if (hasSummary) {
     return (
       <div
         className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400"
-        title={`All ${totalSignals} signals reviewed`}
+        title="Content summarized"
       >
         <HugeiconsIcon icon={TickDouble02Icon} size={16} />
-        <span className="text-xs font-medium">Done</span>
+        <span className="text-xs font-medium">Summarized</span>
       </div>
     );
   }
 
   return (
     <div
-      className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400"
-      title={`${pendingSignals} pending, ${totalSignals - pendingSignals} reviewed`}
+      className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted text-muted-foreground"
+      title="Ready for processing"
     >
-      <HugeiconsIcon icon={AlertCircleIcon} size={16} />
-      <span className="text-xs font-medium">{pendingSignals} pending</span>
+      <HugeiconsIcon icon={TimeQuarterPassIcon} size={16} />
+      <span className="text-xs font-medium">Pending</span>
     </div>
   );
 }

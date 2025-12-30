@@ -15,7 +15,6 @@ import Link from "next/link";
 import { useQueryState } from "nuqs";
 import { useState } from "react";
 import { toast } from "sonner";
-import { ExportDropdown } from "@/components/blocks/export-dropdown";
 import { ReadwiseSyncDialog } from "@/components/blocks/integrations";
 import { SignalBadge } from "@/components/signal-badge";
 import { Button } from "@/components/ui/button";
@@ -107,7 +106,6 @@ export default function ReadwisePage() {
           Readwise Library
         </h1>
         <div className="flex gap-2">
-          <ExportDropdown />
           <ReadwiseSyncDialog>
             <Button>
               <HugeiconsIcon icon={DatabaseSync01Icon} size={16} />
@@ -221,7 +219,6 @@ export default function ReadwisePage() {
 
               <div className="flex items-center gap-2">
                 <SignalBadge
-                  signalCounts={article.signalCounts}
                   status={article.status}
                   hasSummary={!!article.summary?.markdownContent}
                 />

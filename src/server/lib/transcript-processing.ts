@@ -1,7 +1,6 @@
 import { createClient as createDeepgramClient } from "@deepgram/sdk";
 import { put } from "@vercel/blob";
-import { and, eq, sql } from "drizzle-orm";
-import { generateEmbeddingBatch } from "@/lib/embedding";
+import { eq } from "drizzle-orm";
 import type { db as dbInstance } from "@/server/db";
 import {
   episode as episodeSchema,
@@ -181,7 +180,6 @@ export async function chunkEpisodeTranscript({
   minTokens,
   maxTokens,
   transcriptData,
-  skipEmbeddings = false,
 }: ChunkTranscriptParams): Promise<TranscriptChunkResult> {
   if (!episode.transcriptUrl) {
     throw new Error("Episode or transcript not found");
@@ -214,40 +212,9 @@ export async function chunkEpisodeTranscript({
     return { chunkCount: 0 };
   }
 
-  // Generate embeddings if not skipped
-  let embeddings: (number[] | null)[] = [];
-
-  if (!skipEmbeddings) {
-    console.time("chunk-transcript-embeddings");
-    const BATCH_SIZE = 100;
-
-    for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
-      const batch = chunks.slice(i, i + BATCH_SIZE);
-      console.log(
-        `Processing embedding batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(chunks.length / BATCH_SIZE)} (${batch.length} chunks)`,
-      );
-
-      try {
-        const batchEmbeddings = await generateEmbeddingBatch(
-          batch.map((chunk) => chunk.content),
-        );
-        embeddings.push(...batchEmbeddings);
-      } catch (error) {
-        console.error(
-          `Failed to generate embeddings for batch starting at ${i}:`,
-          error,
-        );
-        embeddings.push(...new Array(batch.length).fill(null));
-      }
-    }
-    console.timeEnd("chunk-transcript-embeddings");
-  } else {
-    embeddings = new Array(chunks.length).fill(null);
-  }
-
-  // Batch insert all chunks with their embeddings
+  // Batch insert all chunks (without embeddings)
   console.time("chunk-transcript-db-insert");
-  const chunksWithEmbeddings = chunks.map((chunk, index) => ({
+  const chunksToInsert = chunks.map((chunk, index) => ({
     id: `chunk_${episode.id}_${index}`,
     episodeId: episode.id,
     speaker: chunk.speaker,
@@ -255,77 +222,13 @@ export async function chunkEpisodeTranscript({
     startTimeSec: Math.floor(chunk.startSec),
     endTimeSec: Math.ceil(chunk.endSec),
     wordCount: chunk.content.trim().split(/\s+/).length,
-    embedding: embeddings[index],
+    embedding: null,
   }));
 
-  await db.insert(transcriptChunk).values(chunksWithEmbeddings);
+  await db.insert(transcriptChunk).values(chunksToInsert);
   console.timeEnd("chunk-transcript-db-insert");
 
   return { chunkCount: chunks.length };
-}
-
-/**
- * Generate embeddings for chunks that don't have them yet
- * This can be run asynchronously after chunking to improve performance
- */
-export async function generateMissingEmbeddings({
-  db,
-  episode,
-}: {
-  db: DatabaseClient;
-  episode: EpisodeRecord;
-}): Promise<{ embeddingsGenerated: number }> {
-  // Find chunks without embeddings
-  const chunksNeedingEmbeddings = await db
-    .select()
-    .from(transcriptChunk)
-    .where(
-      and(
-        eq(transcriptChunk.episodeId, episode.id),
-        sql`${transcriptChunk.embedding} IS NULL`,
-      ),
-    );
-
-  if (chunksNeedingEmbeddings.length === 0) {
-    return { embeddingsGenerated: 0 };
-  }
-
-  console.log(
-    `Generating embeddings for ${chunksNeedingEmbeddings.length} chunks`,
-  );
-
-  const BATCH_SIZE = 100;
-  let embeddingsGenerated = 0;
-
-  for (let i = 0; i < chunksNeedingEmbeddings.length; i += BATCH_SIZE) {
-    const batch = chunksNeedingEmbeddings.slice(i, i + BATCH_SIZE);
-
-    try {
-      const batchEmbeddings = await generateEmbeddingBatch(
-        batch.map((chunk) => chunk.content),
-      );
-
-      for (let j = 0; j < batch.length; j++) {
-        const chunk = batch[j];
-        const embedding = batchEmbeddings[j];
-
-        if (embedding) {
-          await db
-            .update(transcriptChunk)
-            .set({ embedding })
-            .where(eq(transcriptChunk.id, chunk.id));
-          embeddingsGenerated++;
-        }
-      }
-    } catch (error) {
-      console.error(
-        `Failed to generate embeddings for batch starting at ${i}:`,
-        error,
-      );
-    }
-  }
-
-  return { embeddingsGenerated };
 }
 
 interface BuildChunksParams {
@@ -422,7 +325,6 @@ function createSemanticBreakDetector(
     "What matters",
   ];
 
-  // Enhanced punctuation patterns - prioritize sentence endings
   const strongPunctuation = /[.!?]+\s*$/;
   const mediumPunctuation = /[,;:]\s*$/;
 
@@ -438,17 +340,14 @@ function createSemanticBreakDetector(
     const currentWord = allWords[wordIndex];
     const nextWord = allWords[wordIndex + 1];
 
-    // MUST break on speaker change - this is non-negotiable
     if (currentWord.speaker !== nextWord.speaker) {
       return { shouldBreak: true, mustBreak: true, priority: "high" };
     }
 
-    // MUST break on large gaps (likely pauses)
     if (nextWord.start - currentWord.end > 3) {
       return { shouldBreak: true, mustBreak: true, priority: "high" };
     }
 
-    // HIGH priority: Strong punctuation + semantic boundaries
     if (strongPunctuation.test(currentWord.word.trim())) {
       if (
         strongBoundaries.some((phrase) =>
@@ -458,7 +357,6 @@ function createSemanticBreakDetector(
         return { shouldBreak: true, mustBreak: false, priority: "high" };
       }
 
-      // HIGH priority: sentence ending + utterance boundary
       if (currentWord.utteranceIndex !== nextWord.utteranceIndex) {
         const currentUtterance = transcript[currentWord.utteranceIndex];
         const nextUtterance = transcript[nextWord.utteranceIndex];
@@ -467,11 +365,9 @@ function createSemanticBreakDetector(
         }
       }
 
-      // MEDIUM priority: just sentence ending
       return { shouldBreak: true, mustBreak: false, priority: "medium" };
     }
 
-    // MEDIUM priority: Medium punctuation at utterance boundary
     if (
       mediumPunctuation.test(currentWord.word.trim()) &&
       currentWord.utteranceIndex !== nextWord.utteranceIndex
@@ -511,21 +407,8 @@ function buildChunksFromTranscript({
       const hasEnding = /[.!?]\s*$/.test(currentChunk.content.trim());
       const meetsMinWords = currentCount >= minTokens;
 
-      console.log(
-        `[CHUNK] ${currentCount} words, hasEnding: ${hasEnding}, speaker: ${currentChunk.speaker}`,
-      );
-      console.log(
-        `[CHUNK] Preview: "${currentChunk.content.slice(0, 100)}..."`,
-      );
-
-      // Only push chunks that meet minimum length OR are complete speaker turns OR forced
       if (meetsMinWords || hasEnding || forceKeep) {
-        console.log(
-          `[CHUNK] ✓ KEPT (minWords: ${meetsMinWords}, ending: ${hasEnding}, forced: ${forceKeep})`,
-        );
         chunks.push({ ...currentChunk });
-      } else {
-        console.log(`[CHUNK] ✗ DROPPED (too short, no ending)`);
       }
     }
     currentChunk = { content: "", speaker: null, startSec: 0, endSec: 0 };
@@ -535,23 +418,14 @@ function buildChunksFromTranscript({
   for (let i = 0; i < allWords.length; i++) {
     const word = allWords[i];
 
-    // Initialize chunk with first word
     if (currentCount === 0) {
       currentChunk.startSec = Math.floor(word.start);
       currentChunk.speaker = word.speaker?.toString() ?? null;
-      console.log(
-        `[DEBUG] Starting new chunk at word ${i}, speaker: ${currentChunk.speaker}`,
-      );
     }
 
-    // CRITICAL: Verify speaker consistency within chunk
     const wordSpeaker = word.speaker?.toString() ?? null;
     if (currentCount > 0 && currentChunk.speaker !== wordSpeaker) {
-      // Force break on speaker change - this should never happen with our new logic
-      // but adding as a safety net
       pushCurrentChunk();
-
-      // Start new chunk with this word
       currentChunk.startSec = Math.floor(word.start);
       currentChunk.speaker = wordSpeaker;
     }
@@ -560,46 +434,25 @@ function buildChunksFromTranscript({
     currentCount += 1;
     currentChunk.endSec = Math.ceil(word.end);
 
-    // Debug every 100 words
-    if (i % 100 === 0 && i > 0) {
-      console.log(
-        `[DEBUG] Word ${i}: currentCount=${currentCount}, maxTokens=${maxTokens}, content length=${currentChunk.content.length} chars`,
-      );
-    }
-
     const breakInfo = getBreakPoint(i);
 
-    // Determine if we should break
     let shouldBreak = false;
     let forceKeep = false;
 
     if (breakInfo.mustBreak) {
-      // Mandatory breaks (speaker changes, long pauses)
-      console.log(
-        `[DEBUG] Word ${i}: MUST BREAK (speaker change or long pause)`,
-      );
       shouldBreak = true;
     } else if (currentCount >= maxTokens) {
-      // Hard limit at maxTokens - MUST break to prevent embedding failures
-      // Even if there's no good punctuation, we force the break
-      console.log(
-        `[DEBUG] Word ${i}: HARD LIMIT REACHED (${currentCount} >= ${maxTokens})`,
-      );
       shouldBreak = true;
       forceKeep = true;
     } else if (currentCount >= minTokens) {
-      // We have minimum content, check for good break points
       if (breakInfo.priority === "high") {
-        // High priority breaks (sentence endings + semantic boundaries)
         shouldBreak = true;
       } else if (
         currentCount >= maxTokens * 0.8 &&
         breakInfo.priority === "medium"
       ) {
-        // Medium priority breaks when approaching max length
         shouldBreak = true;
       } else if (currentCount >= maxTokens * 0.9 && breakInfo.shouldBreak) {
-        // Any break point when very close to max length
         shouldBreak = true;
       }
     }
@@ -609,12 +462,10 @@ function buildChunksFromTranscript({
     }
   }
 
-  // Handle final chunk
   if (currentCount > 0) {
     pushCurrentChunk();
   }
 
-  // Log summary statistics
   const wordCounts = chunks.map((c) => c.content.split(/\s+/).length);
   const avgWords = wordCounts.length
     ? Math.round(wordCounts.reduce((a, b) => a + b, 0) / wordCounts.length)
